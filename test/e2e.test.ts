@@ -8,8 +8,10 @@ vi.setConfig({ testTimeout: 15_000 });
 const serverUrl =
   process.env.TUNNEL_SERVER_URL ??
   "https://cheap-tunnel.garple-pretend-customer-should-be-iterate-dev-stg-will-chan.workers.dev";
-const apiSecret = process.env.TUNNEL_API_SECRET;
-const authHeaders = apiSecret ? { authorization: `Bearer ${apiSecret}` } : undefined;
+const authHeaders =
+  process.env.TUNNEL_USERNAME && process.env.TUNNEL_PASSWORD
+    ? { authorization: basicAuth(process.env.TUNNEL_USERNAME, process.env.TUNNEL_PASSWORD) }
+    : undefined;
 
 describe("Cap'n Web tunnel e2e", () => {
   test.concurrent("forwards HTTP", async ({ task, expect }) => {
@@ -79,7 +81,7 @@ describe("Cap'n Web tunnel e2e", () => {
 
 async function connectTunnel(testName: string) {
   const name = slug(`${testName}-${process.pid}-${Date.now()}-${Math.random()}`);
-  const url = new URL(`/__capnweb_tunnels/${name}/`, serverUrl);
+  const url = new URL(`/${name}/`, serverUrl);
   const client = new CapnwebTunnelClient(url, {
     fetch: testFetch,
     headers: authHeaders,
@@ -111,7 +113,7 @@ async function testFetch(request: Request): Promise<Response> {
 }
 
 function tunnelPath(url: URL): string {
-  return "/" + url.pathname.split("/").slice(3).join("/");
+  return "/" + url.pathname.split("/").slice(2).join("/");
 }
 
 function streamResponse(): Response {
@@ -159,6 +161,10 @@ function makeBytes(size: number): Uint8Array<ArrayBuffer> {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function basicAuth(username: string, password: string): string {
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
 function websocketMessages(url: URL): Promise<string[]> {

@@ -2,22 +2,29 @@ import { CapnwebTunnelServer } from "./server";
 
 interface Env {
   TUNNEL: DurableObjectNamespace;
-  TUNNEL_API_SECRET?: string;
+  TUNNEL_USERNAME?: string;
+  TUNNEL_PASSWORD?: string;
 }
 
-const TUNNEL_PREFIX = "/__capnweb_tunnels/";
+function tunnelName(request: Request): string | undefined {
+  const url = new URL(request.url);
+  const wildcardName = url.hostname.match(/^([^.]+)\.tunnels\./)?.[1];
+  if (wildcardName) return decodeURIComponent(wildcardName);
+
+  const pathName = url.pathname.split("/").filter(Boolean)[0];
+  return pathName ? decodeURIComponent(pathName) : undefined;
+}
 
 function tunnelObject(request: Request, env: Env): DurableObjectStub | undefined {
-  const url = new URL(request.url);
-  if (!url.pathname.startsWith(TUNNEL_PREFIX)) return undefined;
-  const name = url.pathname.slice(TUNNEL_PREFIX.length).split("/")[0];
-  if (!name) return undefined;
-  return env.TUNNEL.get(env.TUNNEL.idFromName(decodeURIComponent(name)));
+  const name = tunnelName(request);
+  return name ? env.TUNNEL.get(env.TUNNEL.idFromName(name)) : undefined;
 }
 
 function authorized(request: Request, env: Env): boolean {
-  return !env.TUNNEL_API_SECRET ||
-    request.headers.get("authorization") === `Bearer ${env.TUNNEL_API_SECRET}`;
+  if (!env.TUNNEL_USERNAME && !env.TUNNEL_PASSWORD) return true;
+  if (!env.TUNNEL_USERNAME || !env.TUNNEL_PASSWORD) return false;
+  return request.headers.get("authorization") ===
+    `Basic ${btoa(`${env.TUNNEL_USERNAME}:${env.TUNNEL_PASSWORD}`)}`;
 }
 
 export class TunnelDurableObject implements DurableObject {
