@@ -1,4 +1,4 @@
-name = "cheap-tunnel"
+name = "capnweb-tunnel"
 main = "src/worker.ts"
 compatibility_date = "2026-05-15"
 
