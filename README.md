@@ -22,29 +22,60 @@ and adapt it.
 - [src/server.ts](./src/server.ts): `CapnwebTunnelServer` for Cloudflare Workers
   and Durable Objects.
 - [src/client.ts](./src/client.ts): `CapnwebTunnelClient` for Node.
-- [src/worker.ts](./src/worker.ts): example Worker routing named tunnels.
+- [src/worker.ts](./src/worker.ts): example Worker using one tunnel.
 
 ## Worker Routes
 
 ```text
-/[name]            -> named Durable Object tunnel
-/[name]/__connect  -> Cap'n Web client connection
-https://[name].tunnels.example.com/* -> named Durable Object tunnel
+/*          -> default Durable Object tunnel
+/__connect  -> Cap'n Web client connection
 ```
 
-For the nicest URLs, deploy the Worker and add a wildcard route like:
+Cloudflare's deploy button clones and deploys this Worker for you. Cloudflare's
+docs note that Deploy to Cloudflare buttons require a public GitHub/GitLab
+repository.
+
+For a simple deployment, put the Worker on one hostname:
+
+```sh
+npx wrangler deploy --route tunnels.example.com/*
+```
+
+Then connect the client to `https://tunnels.example.com`. This works with
+Cloudflare Universal SSL because `tunnels.example.com` is a first-level
+subdomain of `example.com`.
+
+If you want nicer wildcard tunnel URLs like:
 
 ```text
-*.tunnels.example.com/*
+https://my-test.tunnels.example.com
 ```
 
-Then `my-test.tunnels.example.com` uses the `my-test` Durable Object tunnel.
-Without a wildcard route, use `/my-test` on the Worker URL instead.
+deploy with a wildcard Worker route:
 
-Cloudflare's deploy button clones and deploys this Worker for you. After
-deploying, add the wildcard route above in your Worker routes/custom domains.
-Cloudflare's docs note that Deploy to Cloudflare buttons require a public
-GitHub/GitLab repository.
+```sh
+npx wrangler deploy \
+  --route tunnels.example.com/* \
+  --route "*.tunnels.example.com/*"
+```
+
+You also need a proxied wildcard DNS record for `*.tunnels.example.com`, and
+Cloudflare must have an edge certificate covering `*.tunnels.example.com`.
+Universal SSL on a normal full-zone setup covers `example.com` and
+`*.example.com`; it does not cover nested wildcards like
+`*.tunnels.example.com`. Use Advanced Certificate Manager / Total TLS, or order
+an advanced certificate for `*.tunnels.example.com`.
+
+If you do not want Advanced Certificate Manager, use `https://tunnels.example.com`
+instead of `https://name.tunnels.example.com`, or route directly from
+`*.example.com/*` if you are happy to reserve the whole first-level wildcard for
+tunnels.
+
+Cloudflare docs:
+
+- Universal SSL: https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/
+- Universal SSL limitations: https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/
+- Worker routes: https://developers.cloudflare.com/workers/configuration/routing/routes/
 
 ## Durable Object Integration
 
@@ -75,32 +106,19 @@ async fetch(request: Request): Promise<Response> {
 ```ts
 import { CapnwebTunnelClient } from "./client";
 
-const client = new CapnwebTunnelClient("https://example.workers.dev/test", {
+const client = new CapnwebTunnelClient("https://example.workers.dev", {
   fetch: (request) => fetch(request),
 });
 
 await client.connect();
 ```
 
-## Authentication
-
-Authentication is optional. If `TUNNEL_USERNAME` and `TUNNEL_PASSWORD` are set
-on the Worker, every tunnel request must include HTTP Basic auth:
-
-```text
-Authorization: Basic base64(username:password)
-```
-
-The client and CLI send this automatically when the same env vars are set.
-
 ## CLI
 
 ```sh
 TUNNEL_SERVER_URL=https://example.workers.dev \
-npm run cli -- 3000 --name my-tunnel
+npm run cli -- 3000
 ```
-
-If `--name` is omitted, the CLI picks a random name like `apple-fast-tree`.
 
 ## Test
 
@@ -110,5 +128,4 @@ npm run typecheck
 TUNNEL_SERVER_URL=https://example.workers.dev npm test
 ```
 
-`TUNNEL_SERVER_URL` defaults to the deployed prototype URL. Set
-`TUNNEL_USERNAME` and `TUNNEL_PASSWORD` when testing an authenticated Worker.
+`TUNNEL_SERVER_URL` defaults to the deployed prototype URL.
