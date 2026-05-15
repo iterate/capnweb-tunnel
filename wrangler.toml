@@ -1,0 +1,11 @@
+name = "cheap-tunnel"
+main = "src/worker.ts"
+compatibility_date = "2026-05-15"
+
+[[durable_objects.bindings]]
+name = "TUNNEL"
+class_name = "TunnelDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TunnelDurableObject"]

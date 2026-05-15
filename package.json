@@ -1,0 +1,25 @@
+{
+  "name": "capnweb-tunnel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "vitest run test/e2e.test.ts",
+    "cli": "node --experimental-strip-types src/cli.ts"
+  },
+  "dependencies": {
+    "capnweb": "^0.8.0",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260515.1",
+    "@types/node": "^25.8.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
+    "wrangler": "^4.92.0"
+  }
+}
