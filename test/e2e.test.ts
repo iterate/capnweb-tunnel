@@ -47,16 +47,56 @@ test.concurrent("streams a binary response", async ({ task }) => {
 
 test.concurrent("streams SSE events", async ({ task }) => {
   using tunnel = await createTunnelFixture(task.name, () => {
-    const array = Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`)
-    return new Response(
-      array.join("",),
-      {headers: { "content-type": "text/event-stream; charset=utf-8" }},
+    const events = Array.from(
+      { length: 5 },
+      (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`,
     );
+    return new Response(events.join(""), {
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    });
   });
 
   const response = await fetch(tunnel.url);
   expect(response.headers.get("content-type")).toContain("text/event-stream");
   expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
+});
+
+test.concurrent("streams response chunks before the local fetcher finishes", async ({ task }) => {
+  const encoder = new TextEncoder();
+  const secondChunk = Promise.withResolvers<void>();
+
+  using tunnel = await createTunnelFixture(task.name, () => {
+    async function* events() {
+      yield encoder.encode("first\n");
+      await secondChunk.promise;
+      yield encoder.encode("second\n");
+    }
+
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          for await (const chunk of events()) controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+      { headers: { "content-type": "text/event-stream; charset=utf-8" } },
+    );
+  });
+
+  const response = await fetch(tunnel.url);
+  if (!response.body) throw new Error("Response has no body");
+
+  const reader = response.body.getReader();
+  const first = await reader.read();
+  expect(new TextDecoder().decode(first.value)).toBe("first\n");
+
+  secondChunk.resolve();
+
+  const second = await reader.read();
+  expect(new TextDecoder().decode(second.value)).toBe("second\n");
+
+  const done = await reader.read();
+  expect(done.done).toBe(true);
 });
 
 test.concurrent("uploads a raw file body", async ({ task }) => {
