@@ -13,6 +13,5 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true
   },
-  "include": ["src"],
-  "exclude": ["src/new-cli.ts"]
+  "include": ["src"]
 }

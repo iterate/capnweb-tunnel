@@ -1,17 +1,17 @@
-import { newWebSocketRpcSession, RpcTarget, type RpcStub } from "capnweb";
-import type { CapnwebTunnelClientCapability, CapnwebTunnelServerCapability, Fetcher } from "./types";
+import { newWebSocketRpcSession, RpcTarget } from "capnweb";
+import type { CaptunClientCapability, CaptunServerCapability, CaptunFetcher } from "./types";
 
 /** Connects a public Worker URL to a local fetch implementation.
  *
- * Capnweb gives us one WebSocket RPC session. The client immediately calls
+ * Captun gives us one WebSocket RPC session. The client immediately calls
  * `useFetcher(fetcher)`, passing an RPC target the Worker can call later.
  *
  * https://github.com/cloudflare/capnweb
  */
-export class CapnwebTunnelClient {
+export class CaptunClient {
   private constructor() {}
 
-  static async connect(options: { serverUrl: string | URL; fetch: Fetcher; secret?: string }): Promise<Disposable> {
+  static async connect(options: { serverUrl: string | URL; fetch: CaptunFetcher; secret?: string }): Promise<Disposable> {
     const connectUrl = new URL(options.serverUrl);
     connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
     if (!connectUrl.pathname.endsWith("/__connect")) {
@@ -19,8 +19,8 @@ export class CapnwebTunnelClient {
     }
     if (options.secret) connectUrl.searchParams.set("secret", options.secret);
 
-    const fetcher = new CapnwebTunnelClientImplementation(options.fetch);
-    const server = newWebSocketRpcSession<CapnwebTunnelServerCapability>(connectUrl.toString());
+    const fetcher = new CaptunClientImplementation(options.fetch);
+    const server = newWebSocketRpcSession<CaptunServerCapability>(connectUrl.toString());
     // This is where we pass our local fetch function to the server.
     await server.useFetcher(fetcher);
     return {
@@ -31,10 +31,13 @@ export class CapnwebTunnelClient {
   }
 }
 
-class CapnwebTunnelClientImplementation extends RpcTarget implements CapnwebTunnelClientCapability {
-  private _fetch: Fetcher;
+/**
+ * This RpcTarget is passed to the tunnel server.
+ */
+class CaptunClientImplementation extends RpcTarget implements CaptunClientCapability {
+  private _fetch: CaptunFetcher;
 
-  constructor(fetch: Fetcher) {
+  constructor(fetch: CaptunFetcher) {
     super();
     this._fetch = fetch;
   }

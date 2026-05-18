@@ -1,0 +1,69 @@
+{
+  "measuredAt": "2026-05-18",
+  "description": "Time from starting tunnel creation to the first successful HTTP fetch through that tunnel.",
+  "results": [
+    {
+      "provider": "captun",
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 188,
+      "p90": 188,
+      "p99": 188
+    },
+    {
+      "provider": "captun",
+      "count": 10,
+      "successes": 10,
+      "failures": 0,
+      "p50": 172,
+      "p90": 186,
+      "p99": 189
+    },
+    {
+      "provider": "captun",
+      "count": 100,
+      "successes": 100,
+      "failures": 0,
+      "p50": 483,
+      "p90": 518,
+      "p99": 534
+    },
+    {
+      "provider": "captun",
+      "count": 500,
+      "successes": 500,
+      "failures": 0,
+      "p50": 1870,
+      "p90": 1930,
+      "p99": 1970
+    },
+    {
+      "provider": "captun",
+      "count": 1000,
+      "successes": 1000,
+      "failures": 0,
+      "p50": 3610,
+      "p90": 4070,
+      "p99": 4120
+    },
+    {
+      "provider": "ngrok",
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 1620,
+      "p90": 1620,
+      "p99": 1620
+    },
+    {
+      "provider": "cloudflared",
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 8960,
+      "p90": 8960,
+      "p99": 8960
+    }
+  ]
+}

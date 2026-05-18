@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { CapnwebTunnelClient } from "../src/client.ts";
+import { CaptunClient } from "../src/client.ts";
 
 // Stress the expensive path: many named tunnels, each returning a large streamed
-// binary response through Capnweb. This measures aggregate tunnel throughput,
+// binary response through Captun. This measures aggregate tunnel throughput,
 // not just connection establishment.
 
 type Measurement = {
@@ -33,8 +33,8 @@ type Result = {
 };
 
 const counts = (process.env.COUNTS ?? "1,10,25,50,100").split(",").map((value) => Number(value.trim()));
-const serverUrl = process.env.TUNNEL_SERVER_URL ?? "https://capnweb-tunnel-sharded-bench.templestein.workers.dev";
-const out = process.env.OUT ?? "docs/performance/large-streams-single-shard.json";
+const serverUrl = process.env.CAPTUN_SERVER_URL ?? "https://captun.example.workers.dev";
+const out = process.env.OUT ?? "docs/performance/captun-streams.json";
 const bytes = Number(process.env.BYTES ?? 2 * 1024 * 1024);
 const chunkBytes = Number(process.env.CHUNK_BYTES ?? 64 * 1024);
 const modes = (process.env.MODES ?? "stream").split(",").map((value) => value.trim()).filter(Boolean);
@@ -54,9 +54,9 @@ const connectConcurrency = Number(process.env.CONNECT_CONCURRENCY ?? 0);
 if (warmupCount > 0) {
   console.log(`warming ${warmupCount} tunnels`);
   await runPool(warmupCount, Math.min(warmupCount, Math.max(connectConcurrency, 25)), async (index) => {
-    const session = await CapnwebTunnelClient.connect({
+    const session = await CaptunClient.connect({
       serverUrl: tunnelUrl(`${namePrefix}-warm-${index}`),
-      secret: process.env.TUNNEL_SECRET,
+      secret: process.env.CAPTUN_SECRET,
       fetch: () => testResponse("stream"),
     });
     session[Symbol.dispose]();
@@ -110,16 +110,16 @@ async function runPool<T>(count: number, concurrency: number, task: (index: numb
 
 async function measure(index: number, mode: string): Promise<Measurement> {
   // Deterministic names make runs reproducible and let us intentionally spread
-  // or collide names across shards by changing NAME_PREFIX and TUNNEL_SHARDS.
+  // or collide names across shards by changing NAME_PREFIX and CAPTUN_SHARDS.
   const url = tunnelUrl(`${namePrefix}-${index}`);
   const started = performance.now();
   const cpuStarted = process.cpuUsage();
   const eventLoopStarted = performance.eventLoopUtilization();
   let tunnel: Disposable | undefined;
   try {
-    tunnel = await CapnwebTunnelClient.connect({
+    tunnel = await CaptunClient.connect({
       serverUrl: url,
-      secret: process.env.TUNNEL_SECRET,
+      secret: process.env.CAPTUN_SECRET,
       fetch: () => testResponse(mode),
     });
     const connectedAt = performance.now();

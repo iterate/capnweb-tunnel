@@ -1,17 +1,17 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
-import { CapnwebTunnelClient } from "../src/client.ts";
+import { CaptunClient } from "../src/client.ts";
 
 // Measures time from "start creating a tunnel" to the first successful public
 // HTTP fetch through that tunnel. It can compare this project with cloudflared
-// quick tunnels and ngrok, but only Capnweb is intended for high-concurrency
+// quick tunnels and ngrok, but only Captun is intended for high-concurrency
 // runs here.
 
-type Provider = "capnweb" | "cloudflared" | "ngrok";
+type Provider = "captun" | "cloudflared" | "ngrok";
 
 type Measurement = {
   index: number;
@@ -32,9 +32,9 @@ type Result = {
   measurements: Measurement[];
 };
 
-const providers = (process.env.PROVIDERS ?? "capnweb").split(",").map((value) => value.trim() as Provider);
+const providers = (process.env.PROVIDERS ?? "captun").split(",").map((value) => value.trim() as Provider);
 const counts = (process.env.COUNTS ?? "1,10,100,500,1000,2000").split(",").map((value) => Number(value.trim()));
-const capnwebUrl = process.env.CAPNWEB_URL ?? "https://{name}.tunnels.templestein.com";
+const captunUrl = process.env.CAPTUN_SERVER_URL ?? "https://{name}.tunnels.example.com";
 const out = process.env.OUT ?? `docs/performance/startup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
 const timeoutMs = Number(process.env.TIMEOUT_MS ?? 60_000);
 
@@ -61,7 +61,7 @@ try {
   }
 
   await mkdir("docs/performance", { recursive: true });
-  await writeFile(out, `${JSON.stringify({ originUrl, capnwebUrl, timeoutMs, results }, null, 2)}\n`);
+  await writeFile(out, `${JSON.stringify({ originUrl, captunUrl, timeoutMs, results }, null, 2)}\n`);
   console.log(`wrote ${out}`);
 } finally {
   origin.close();
@@ -87,22 +87,22 @@ async function benchmark(provider: Provider, count: number, originUrl: string): 
 
 async function measure(provider: Provider, index: number, originUrl: string): Promise<Measurement> {
   try {
-    if (provider === "capnweb") return await measureCapnweb(index, originUrl);
+    if (provider === "captun") return await measureCaptun(index, originUrl);
     return await measureProcess(provider, index, originUrl);
   } catch (error) {
     return { index, ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-async function measureCapnweb(index: number, originUrl: string): Promise<Measurement> {
+async function measureCaptun(index: number, originUrl: string): Promise<Measurement> {
   const name = `bench-${randomBytes(8).toString("hex")}`;
-  const url = tunnelUrl(capnwebUrl, name);
+  const url = tunnelUrl(captunUrl, name);
   const started = performance.now();
   let tunnel: Disposable | undefined;
   try {
-    tunnel = await CapnwebTunnelClient.connect({
+    tunnel = await CaptunClient.connect({
       serverUrl: url,
-      secret: process.env.TUNNEL_SECRET,
+      secret: process.env.CAPTUN_SECRET,
       fetch: (request) => {
         const incoming = new URL(request.url);
         return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
@@ -115,7 +115,7 @@ async function measureCapnweb(index: number, originUrl: string): Promise<Measure
   }
 }
 
-async function measureProcess(provider: Exclude<Provider, "capnweb">, index: number, originUrl: string): Promise<Measurement> {
+async function measureProcess(provider: Exclude<Provider, "captun">, index: number, originUrl: string): Promise<Measurement> {
   const started = performance.now();
   const child = spawnProcess(provider, originUrl);
   let output = "";
@@ -154,7 +154,7 @@ async function measureProcess(provider: Exclude<Provider, "capnweb">, index: num
   }
 }
 
-function spawnProcess(provider: Exclude<Provider, "capnweb">, originUrl: string) {
+function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string) {
   if (provider === "cloudflared") {
     return spawn("cloudflared", ["tunnel", "--url", originUrl, "--no-autoupdate", "--metrics", "localhost:0"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -232,7 +232,7 @@ function lastLines(value: string) {
   return value.split("\n").slice(-8).join("\n");
 }
 
-function stop(child: ChildProcessWithoutNullStreams) {
+function stop(child: ChildProcess) {
   if (child.exitCode !== null || child.killed) return;
   child.kill("SIGTERM");
   setTimeout(() => {

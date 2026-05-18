@@ -10,11 +10,11 @@ type Result = {
   p99?: number;
 };
 
-const input = process.env.INPUT ?? "docs/performance/capnweb-startup.json";
+const input = process.env.INPUT ?? "docs/performance/captun-startup.json";
 const output = process.env.OUTPUT ?? "docs/performance/startup.svg";
 
 const data = JSON.parse(await readFile(input, "utf8")) as { results: Result[] };
-const rows = data.results.filter((row) => row.provider === "capnweb" && row.p50 && row.p90 && row.p99);
+const rows = data.results.filter((row) => row.provider === "captun" && row.p50 && row.p90 && row.p99);
 const width = 920;
 const height = 520;
 const margin = { top: 42, right: 116, bottom: 72, left: 86 };
@@ -34,11 +34,11 @@ console.log(`wrote ${output}`);
 
 function svg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">
-  <title id="title">Capnweb tunnel startup time by concurrency</title>
+  <title id="title">Captun startup time by concurrency</title>
   <desc id="desc">Line chart showing p50, p90, and p99 time to first successful fetch as simultaneous tunnel creation increases.</desc>
   <rect width="${width}" height="${height}" fill="white"/>
   <text x="${margin.left}" y="28" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#111827">Time to first successful fetch</text>
-  <text x="${margin.left}" y="50" font-family="system-ui, sans-serif" font-size="13" fill="#4b5563">Capnweb tunnel startup under simultaneous tunnel creation</text>
+  <text x="${margin.left}" y="50" font-family="system-ui, sans-serif" font-size="13" fill="#4b5563">Captun startup under simultaneous tunnel creation</text>
   ${grid()}
   ${series.map(line).join("\n")}
   ${rows.map(points).join("\n")}

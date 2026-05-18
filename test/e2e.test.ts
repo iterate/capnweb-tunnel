@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { describe, test, vi } from "vitest";
-import { CapnwebTunnelClient } from "../src/client";
+import { CaptunClient } from "../src/client";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-const serverUrl = requiredEnv("TUNNEL_SERVER_URL");
+const serverUrl = process.env.CAPTUN_SERVER_URL;
+const describeE2e = serverUrl ? describe : describe.skip;
 
-describe("Capnweb tunnel e2e", () => {
+describeE2e("Captun e2e", () => {
   test.concurrent("forwards HTTP", async ({ task, expect }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     try {
@@ -77,9 +78,9 @@ describe("Capnweb tunnel e2e", () => {
 async function connectTunnel(testName: string) {
   const name = tunnelName(testName);
   const url = tunnelUrl(name);
-  const tunnel = await CapnwebTunnelClient.connect({
+  const tunnel = await CaptunClient.connect({
     serverUrl: url,
-    secret: process.env.TUNNEL_SECRET,
+    secret: process.env.CAPTUN_SECRET,
     fetch: testFetch,
   });
   return { url, tunnel };
@@ -93,6 +94,7 @@ function tunnelName(testName: string) {
 }
 
 function tunnelUrl(name: string) {
+  if (!serverUrl) throw new Error("CAPTUN_SERVER_URL is required to run Captun e2e tests");
   if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
 
   const url = new URL(serverUrl);
@@ -176,10 +178,4 @@ function makeBytes(size: number) {
 
 function sha256(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");
-}
-
-function requiredEnv(name: string) {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required to run e2e tests`);
-  return value;
 }

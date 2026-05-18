@@ -1,0 +1,24 @@
+{
+  "measuredAt": "2026-05-18",
+  "description": "Concurrent 2MiB responses through established named Captun tunnels.",
+  "results": [
+    {
+      "shards": 1,
+      "count": 100,
+      "successes": 100,
+      "failures": 0,
+      "p50": 26340,
+      "p90": 26720,
+      "p99": 26780
+    },
+    {
+      "shards": 256,
+      "count": 150,
+      "successes": 150,
+      "failures": 0,
+      "p50": 9760,
+      "p90": 13170,
+      "p99": 18050
+    }
+  ]
+}

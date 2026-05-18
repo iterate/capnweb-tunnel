@@ -1,12 +1,23 @@
 {
-  "name": "capnweb-tunnel",
+  "name": "captun",
   "version": "0.0.0",
   "private": false,
   "type": "module",
   "packageManager": "pnpm@10.11.1",
-  "bin": {
-    "capnweb-tunnel": "dist/cli.js"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iterate/captun.git"
   },
+  "bin": {
+    "captun": "./src/cli.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "wrangler.toml"
+  ],
   "publishConfig": {
     "exports": {
       ".": {
@@ -17,15 +28,17 @@
   },
   "exports": {
     ".": {
+      "types": "./src/index.ts",
       "default": "./src/index.ts"
     }
   },
   "scripts": {
     "build": "rm -rf dist && tsc --project tsconfig.lib.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm --filter @captun/weather-reporter typecheck",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "vitest run test/*.test.ts",
+    "test": "pnpm run test:root && pnpm --filter @captun/weather-reporter test",
+    "test:root": "vitest run test/*.test.ts",
     "test:unit": "vitest run test/worker.test.ts",
     "cli": "node src/cli.ts"
   },

@@ -1,23 +1,31 @@
 import { DurableObject } from "cloudflare:workers";
-import { CapnwebTunnelServer } from "./server";
+import { CaptunServer } from "./server";
 
-interface Env {
-  TUNNEL: DurableObjectNamespace<TunnelDurableObject>;
-  TUNNEL_SECRET?: string;
-  TUNNEL_SHARDS?: string;
+interface CaptunEnv {
+  CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
+  CAPTUN_SECRET?: string;
+  CAPTUN_SHARDS?: string;
 }
 
-export class TunnelDurableObject extends DurableObject<Env> {
-  private readonly tunnels = new Map<string, CapnwebTunnelServer>();
+/**
+ * A shard Durable Object owns many named tunnels.
+ *
+ * `CAPTUN_SHARDS=1` keeps every tunnel in one warm object, which gives the
+ * lowest connection latency. Raising `CAPTUN_SHARDS` spreads tunnel names over
+ * more objects, which adds cold starts when new shards wake up but gives better
+ * aggregate throughput for lots of concurrent large responses.
+ */
+export class CaptunServerShard extends DurableObject<CaptunEnv> {
+  private readonly tunnels = new Map<string, CaptunServer>();
 
   fetch(request: Request) {
-    const route = tunnelRouteParts("localhost", new URL(request.url).pathname);
+    const route = CaptunRouteParts("localhost", new URL(request.url).pathname);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
 
     let tunnel = this.tunnels.get(route.name);
     if (!tunnel) {
-      tunnel = new CapnwebTunnelServer({
-        secret: this.env.TUNNEL_SECRET,
+      tunnel = new CaptunServer({
+        secret: this.env.CAPTUN_SECRET,
         onDisconnect: () => this.tunnels.delete(route.name),
       });
       this.tunnels.set(route.name, tunnel);
@@ -28,25 +36,25 @@ export class TunnelDurableObject extends DurableObject<Env> {
 }
 
 export default {
-  fetch(request: Request, env: Env) {
-    const route = tunnelRoute(request);
+  fetch(request: Request, env: CaptunEnv) {
+    const route = captunRoute(request);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
-    const shard = tunnelShardName(route.tunnelName, Number(env.TUNNEL_SHARDS ?? 1));
-    return env.TUNNEL.getByName(shard).fetch(route.request);
+    const shard = CaptunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS ?? 1));
+    return env.CaptunServerShard.getByName(shard).fetch(route.request);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<CaptunEnv>;
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request.
  *
  * `my-test.my-tunnels.com/hello` uses `my-test` and keeps `/hello`.
- * `capnweb-tunnel.<cf-account>.workers.dev/my-test/hello` uses `my-test`
+ * `captun.<cf-account>.workers.dev/my-test/hello` uses `my-test`
  * and forwards `/hello`.
  *
  * See `test/worker.test.ts` for the routing table.
  */
-function tunnelRoute(request: Request) {
+function captunRoute(request: Request) {
   const url = new URL(request.url);
-  const route = tunnelRouteParts(url.hostname, url.pathname);
+  const route = CaptunRouteParts(url.hostname, url.pathname);
   if (!route) return undefined;
 
   url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
@@ -58,7 +66,7 @@ function tunnelRoute(request: Request) {
  * This is the pure routing rule; keep the examples in `test/worker.test.ts`
  * in sync when changing it.
  */
-export function tunnelRouteParts(hostname: string, pathname: string) {
+export function CaptunRouteParts(hostname: string, pathname: string) {
   if (!usesFolderRouting(hostname)) {
     const [name] = hostname.split(".");
     if (!name) return undefined;
@@ -71,7 +79,7 @@ export function tunnelRouteParts(hostname: string, pathname: string) {
   return decodedName ? { name: decodedName, path: `/${rest.join("/")}` } : undefined;
 }
 
-export function tunnelShardName(tunnelName: string, shardCount: number) {
+export function CaptunShardName(tunnelName: string, shardCount: number) {
   if (!Number.isFinite(shardCount) || shardCount <= 1) return "tunnel-shard-0";
   let hash = 2166136261;
   for (let index = 0; index < tunnelName.length; index++) {

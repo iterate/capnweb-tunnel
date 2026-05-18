@@ -1,4 +1,4 @@
-name = "capnweb-tunnel"
+name = "captun"
 main = "src/worker.ts"
 compatibility_date = "2026-05-15"
 
@@ -7,9 +7,9 @@ enabled = true
 head_sampling_rate = 1
 
 [[durable_objects.bindings]]
-name = "TUNNEL"
-class_name = "TunnelDurableObject"
+name = "CaptunServerShard"
+class_name = "CaptunServerShard"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["TunnelDurableObject"]
+new_sqlite_classes = ["CaptunServerShard"]
