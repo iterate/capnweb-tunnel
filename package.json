@@ -32,12 +32,6 @@
       "import": "./src/server.ts"
     }
   },
-  "imports": {
-    "#types": {
-      "types": "./src/types.ts",
-      "default": "./src/types.ts"
-    }
-  },
   "publishConfig": {
     "bin": {
       "captun": "./dist/cli.js"
@@ -54,12 +48,6 @@
       "./server": {
         "types": "./dist/server.d.ts",
         "import": "./dist/server.js"
-      }
-    },
-    "imports": {
-      "#types": {
-        "types": "./dist/types.d.ts",
-        "default": "./dist/types.js"
       }
     }
   },

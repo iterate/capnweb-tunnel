@@ -11,7 +11,7 @@ import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
 import { createCli } from "trpc-cli";
 import { z } from "zod/v4";
-import { createCaptunTunnel } from "captun/client";
+import { createCaptunTunnel } from "./client.ts";
 
 type Config = {
   serverUrl: string;

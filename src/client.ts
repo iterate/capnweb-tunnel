@@ -1,5 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "#types";
+import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "./types.js";
 
 /** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
@@ -67,9 +67,7 @@ async function waitUntilOpen(socket: WebSocket) {
     socket.addEventListener(
       "error",
       () => settle(() => reject(new Error("WebSocket connection failed"))),
-      {
-        signal: listeners.signal,
-      },
+      { signal: listeners.signal },
     );
     socket.addEventListener(
       "close",
