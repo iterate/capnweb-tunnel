@@ -119,13 +119,19 @@ See [examples/weather-reporter](./examples/weather-reporter) for a small workspa
 
 ## 3. Performance
 
-On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. In the same benchmark shape, one ngrok ad-hoc tunnel reached 1.62s and one cloudflared quick tunnel reached 8.96s after waiting for its `trycloudflare.com` DNS record.
+On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. Rechecking provider startup on the same day showed ngrok was much faster than the earlier sample: one ngrok ad-hoc tunnel reached 451ms, and 10 concurrent ngrok tunnels reached 658ms p50. Cloudflared quick tunnels still took about 8.5-9s when successful because the `trycloudflare.com` hostname was printed several seconds before DNS/public routing was ready.
 
 | Ad-hoc tunnel | First fetch |
 | --- | ---: |
 | Captun | 188ms |
-| ngrok | 1.62s |
-| cloudflared quick tunnel | 8.96s |
+| ngrok | 451ms |
+| cloudflared quick tunnel | 8.51s |
+
+| 10 concurrent ad-hoc tunnels | Successful | p50 | p90 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Captun | 10/10 | 172ms | 186ms | 189ms |
+| ngrok | 10/10 | 658ms | 695ms | 985ms |
+| cloudflared quick tunnel | 2/10 | 8.89s | 9.00s | 9.00s |
 
 One shard is the default because it spins up fastest. More shards trade extra cold starts for more total throughput: 100 concurrent 2MiB streams through one shard took 26.34s p50, while 150 concurrent 2MiB streams spread over 256 warmed shards took 9.76s p50.
 

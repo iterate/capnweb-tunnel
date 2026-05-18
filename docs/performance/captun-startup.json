@@ -52,18 +52,36 @@
       "count": 1,
       "successes": 1,
       "failures": 0,
-      "p50": 1620,
-      "p90": 1620,
-      "p99": 1620
+      "p50": 451,
+      "p90": 451,
+      "p99": 451
+    },
+    {
+      "provider": "ngrok",
+      "count": 10,
+      "successes": 10,
+      "failures": 0,
+      "p50": 658,
+      "p90": 695,
+      "p99": 985
     },
     {
       "provider": "cloudflared",
       "count": 1,
       "successes": 1,
       "failures": 0,
-      "p50": 8960,
-      "p90": 8960,
-      "p99": 8960
+      "p50": 8506,
+      "p90": 8506,
+      "p99": 8506
+    },
+    {
+      "provider": "cloudflared",
+      "count": 10,
+      "successes": 2,
+      "failures": 8,
+      "p50": 8888,
+      "p90": 9001,
+      "p99": 9001
     }
   ]
 }

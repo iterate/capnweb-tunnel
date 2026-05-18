@@ -35,8 +35,17 @@ Startup from London on May 18, 2026:
 | Ad-hoc tunnel | First fetch |
 | --- | ---: |
 | Captun | 188ms |
-| ngrok | 1.62s |
-| cloudflared quick tunnel | 8.96s |
+| ngrok | 451ms |
+| cloudflared quick tunnel | 8.51s |
+
+Provider recheck on May 18, 2026:
+
+| Concurrent ad-hoc tunnels | Successful | p50 | p90 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| ngrok x 10 | 10/10 | 658ms | 695ms | 985ms |
+| cloudflared quick tunnel x 10 | 2/10 | 8.89s | 9.00s | 9.00s |
+
+The cloudflared failures were not local process startup failures. The tunnel processes registered with Cloudflare in LHR, but most `trycloudflare.com` hostnames never served traffic before the 120s benchmark timeout. A separate phase probe printed URLs after 4.8-6.2s, resolved DNS after 8.2-9.5s, and served the first fetch after 8.5-9.7s.
 
 Captun concurrent startup:
 
