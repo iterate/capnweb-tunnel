@@ -22,8 +22,7 @@
     "worker-configuration.d.ts",
     "test/**/*.ts",
     "scripts/**/*.ts",
-    "examples/weather-reporter/src/**/*.ts",
-    "examples/weather-reporter/test/**/*.ts",
+    "examples/weather-reporter/*.ts",
     "vite.config.ts"
   ]
 }

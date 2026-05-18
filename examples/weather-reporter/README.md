@@ -31,4 +31,4 @@ doppler run -- pnpm exec wrangler deploy
 WEATHER_REPORTER_URL=https://weather-reporter.garple-pretend-customer-should-be-iterate-dev-stg-will-chan.workers.dev pnpm test
 ```
 
-The test awaits `createCaptunTunnel()` at `WEATHER_REPORTER_URL + "/__intercept-egress-traffic"`, mocks the `wttr.in` response, then calls `/check-weather` on the deployed Worker.
+The test awaits `createCaptunTunnel()` at `WEATHER_REPORTER_URL + "/__intercept-egress-traffic"`, mocks the `wttr.in` response, then calls `/weather/london` and `/weather/new+york` on the deployed Worker.

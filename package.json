@@ -47,7 +47,11 @@
     "publish:dry-run": "pnpm publish --dry-run --no-git-checks"
   },
   "dependencies": {
-    "capnweb": "^0.8.0"
+    "@inquirer/prompts": "^8.4.3",
+    "@orpc/server": "^1.14.3",
+    "capnweb": "^0.8.0",
+    "trpc-cli": "^0.14.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",

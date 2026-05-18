@@ -11,14 +11,20 @@ describe("weather reporter e2e", () => {
     using _tunnel = await createCaptunTunnel({
       url: `${myWeatherAppUrl}/__intercept-egress-traffic`,
       fetch(request) {
-        if (!request.url.startsWith("https://wttr.in/London?format=j1")) {
-          return new Response("Unexpected egress", { status: 500 });
+        if (request.url === "https://wttr.in/london?format=j1") {
+          return Response.json({ current_condition: [{ temp_C: "18" }] });
         }
-        return Response.json({ current_condition: [{ temp_C: "18" }] });
+        if (request.url === "https://wttr.in/new+york?format=j1") {
+          return Response.json({ current_condition: [{ temp_C: "22" }] });
+        }
+        return new Response("Unexpected egress", { status: 500 });
       },
     });
 
-    const response = await fetch(`${myWeatherAppUrl}/check-weather?city=London`);
-    expect(await response.text()).toBe("The temperature in London is 18 celsius");
+    const london = await fetch(`${myWeatherAppUrl}/weather/london`);
+    expect(await london.text()).toBe("The temperature in london is 18 celsius");
+
+    const newYork = await fetch(`${myWeatherAppUrl}/weather/new+york`);
+    expect(await newYork.text()).toBe("The temperature in new+york is 22 celsius");
   });
 });

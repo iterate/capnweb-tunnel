@@ -11,11 +11,9 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
   async fetch(request: Request) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/check-weather") {
-      const city = url.searchParams.get("city") ?? "London";
-      const response = await this.egressFetch(
-        new Request(`https://wttr.in/${encodeURIComponent(city)}?format=j1`),
-      );
+    const city = url.pathname.match(/^\/weather\/([^/]+)$/)?.[1];
+    if (city) {
+      const response = await this.egressFetch(new Request(`https://wttr.in/${city}?format=j1`));
       const weather = (await response.json()) as { current_condition: [{ temp_C: string }] };
       return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
     }
