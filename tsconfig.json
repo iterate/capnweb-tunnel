@@ -18,6 +18,7 @@
     }
   },
   "include": [
+    "src/**/*.ts",
     "worker-configuration.d.ts",
     "test/**/*.ts",
     "scripts/**/*.ts",
