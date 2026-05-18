@@ -3,13 +3,18 @@
 Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a Node process over [Cap'n Web](https://github.com/cloudflare/capnweb).
 
 ```bash
-pnpm install
-pnpm run deploy
+# 1. Deploy your tunnel Worker (Cloudflare login or CLOUDFLARE_API_TOKEN required)
+npx captun deploy
 
+# 2. Tunnel a local port through it
 python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+npx captun 3000 --name demo
+
+# 3. Hit your local server publicly
 curl https://captun.<your-account>.workers.dev/demo/
 ```
+
+`captun deploy` runs Wrangler, sets `CAPTUN_SECRET` on the Worker, and writes `~/.config/captun/config.json` (or `$XDG_CONFIG_HOME/captun/config.json`). Subsequent `captun <port>` calls read that config automatically.
 
 Or use it directly from code:
 
@@ -26,33 +31,52 @@ The core client/server pieces are small TypeScript modules around [Cap'n Web](ht
 
 ## 1. CLI Usage
 
-Deploy the Worker first:
+### Deploy to `*.workers.dev`
 
 ```bash
-pnpm install
-pnpm run deploy
+npx captun deploy
 ```
 
-Then expose a local port through a named folder tunnel:
+Generates a random `CAPTUN_SECRET`, deploys the Worker, and saves `serverUrl` + `secret` to `~/.config/captun/config.json`. Pass `--secret <value>` to set your own.
+
+### Deploy to a custom domain
+
+```bash
+npx captun deploy \
+  --route '*.tunnels.example.com/*' \
+  --zone example.com
+```
+
+`--zone` is required whenever Wrangler can't infer a zone from the route pattern (it usually can't). The Worker route is registered against that zone and tunnels resolve as `https://<name>.tunnels.example.com/`.
+
+Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so wildcards like `*.tunnels.example.com` work for free; deeper wildcards normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/).
+
+### Tunnel a local port
 
 ```bash
 python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
-curl https://captun.<your-account>.workers.dev/demo/
+npx captun 3000 --name demo
 ```
 
-If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker, pass the same value to the CLI through `CAPTUN_SECRET` or `--secret`:
+`captun <port>` reads `~/.config/captun/config.json`, so you only need flags to override:
 
 ```bash
-pnpm exec wrangler secret put CAPTUN_SECRET
-CAPTUN_SECRET=secret CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+npx captun 3000 --name demo \
+  --server-url https://captun.<your-account>.workers.dev \
+  --secret <captun-secret>
 ```
 
-The repo script runs the source CLI. The packaged command is `captun`, so installed consumers can run the same tunnel with `CAPTUN_SERVER_URL=... captun --name demo 3000`.
+Environment overrides also work: `CAPTUN_SERVER_URL`, `CAPTUN_SECRET`. With no config and no overrides, `captun <port>` defaults to `http://localhost:8787` for local Worker development (`pnpm run dev`).
 
-Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
+If you omit `--name`, the CLI generates a random hyphenated tunnel name.
 
-Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com` for around $10/year is often the simplest option. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
+### Routing
+
+Folder tunnels are the golden path on `*.workers.dev`, `tunnels.*`, and apex hosts: the Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
+
+Subdomain tunnels (`*.tunnels.example.com/*`) feel cleaner if you have a domain to spare; buying a throwaway domain like `tunnels.example.com` for around $10/year is often the simplest option.
+
+### Sharding
 
 By default, all tunnel names live in one warm `CaptunServerShard` Durable Object. That minimizes cold-start latency. Set `CAPTUN_SHARDS` only when you need more aggregate throughput for many concurrent large responses:
 
@@ -144,6 +168,14 @@ pnpm run dev
 ```
 
 Run tests with `pnpm test`. The unit tests run without external services; the root e2e suite also runs when `CAPTUN_SERVER_URL` is set, with optional `CAPTUN_SECRET`.
+
+End-to-end smoke tests (build, dry-run deploy, local `wrangler dev`, tunnel + curl) live in [`scripts/smoke/`](./scripts/smoke) with documentation in [docs/smoke-test.md](./docs/smoke-test.md):
+
+```bash
+pnpm smoke                                 # run the local suite
+./scripts/smoke-test.sh list               # see all steps
+./scripts/smoke-test.sh step-5-tunnel-local
+```
 
 ## 4. Performance
 
