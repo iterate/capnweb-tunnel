@@ -8,6 +8,7 @@ pnpm run deploy
 
 python3 -m http.server 3000
 CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+
 curl https://captun.<your-account>.workers.dev/demo/
 ```
 
