@@ -20,7 +20,7 @@ console.log(`tunneling ${tunnel} -> ${origin}`);
 await client.connect();
 await new Promise(() => {});
 
-function tunnelUrl(baseUrl: string, name: string): string {
+function tunnelUrl(baseUrl: string, name: string) {
   const url = new URL(baseUrl);
   if (url.hostname.match(/^[^.]+\.tunnels\./)) {
     url.pathname = "/";
@@ -30,7 +30,7 @@ function tunnelUrl(baseUrl: string, name: string): string {
   return url.toString();
 }
 
-function parseArgs(args: string[]): { port: string; name: string } {
+function parseArgs(args: string[]) {
   const nameIndex = args.indexOf("--name");
   const name = nameIndex === -1 ? randomName() : args[nameIndex + 1];
   const port = args.find((arg, index) => index !== nameIndex && index !== nameIndex + 1) ?? "3000";
@@ -38,10 +38,12 @@ function parseArgs(args: string[]): { port: string; name: string } {
   return { port, name };
 }
 
-function randomName(): string {
+function randomName() {
   return [pick(adjectives), pick(speeds), pick(things)].join("-");
 }
 
-function pick(words: string[]): string {
-  return words[Math.floor(Math.random() * words.length)]!;
+function pick(words: string[]) {
+  const word = words[Math.floor(Math.random() * words.length)];
+  if (!word) throw new Error("Cannot pick from an empty word list");
+  return word;
 }

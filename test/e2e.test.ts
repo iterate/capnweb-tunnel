@@ -53,11 +53,7 @@ describe("Capnweb tunnel e2e", () => {
     form.set("file", new Blob([file.buffer]), "proof.bin");
 
     const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
-    const json = (await response.json()) as { parts: Array<{ name: string; bytes?: number; sha256?: string }> };
-    expect(json.parts.find((part) => part.name === "file")).toMatchObject({
-      bytes: file.byteLength,
-      sha256: sha256(file),
-    });
+    expect(hasMultipartFilePart(await response.json(), file.byteLength, sha256(file))).toBe(true);
     client.close();
   });
 
@@ -73,11 +69,23 @@ async function connectTunnel(testName: string) {
   return { url, client };
 }
 
-function slug(value: string): string {
+function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-async function testFetch(request: Request): Promise<Response> {
+function hasMultipartFilePart(value: unknown, bytes: number, hash: string) {
+  if (typeof value !== "object" || value === null) return false;
+  const parts = Reflect.get(value, "parts");
+  if (!Array.isArray(parts)) return false;
+  return parts.some((part) => {
+    if (typeof part !== "object" || part === null) return false;
+    return Reflect.get(part, "name") === "file"
+      && Reflect.get(part, "bytes") === bytes
+      && Reflect.get(part, "sha256") === hash;
+  });
+}
+
+async function testFetch(request: Request) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (path === "/stream") return streamResponse();
@@ -87,7 +95,7 @@ async function testFetch(request: Request): Promise<Response> {
   return Response.json({ path, body: await request.text() });
 }
 
-function streamResponse(): Response {
+function streamResponse() {
   let sent = 0;
   return new Response(new ReadableStream({
     pull(controller) {
@@ -97,39 +105,40 @@ function streamResponse(): Response {
   }), { headers: { "content-type": "application/octet-stream" } });
 }
 
-function sseResponse(): Response {
+function sseResponse() {
   return new Response(Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`).join(""), {
     headers: { "content-type": "text/event-stream; charset=utf-8" },
   });
 }
 
-async function uploadResponse(request: Request): Promise<Response> {
+async function uploadResponse(request: Request) {
   const bytes = new Uint8Array(await request.arrayBuffer());
   return Response.json({ bytes: bytes.byteLength, sha256: sha256(bytes) });
 }
 
-async function multipartResponse(request: Request): Promise<Response> {
+async function multipartResponse(request: Request) {
   const form = await request.formData();
   const parts = [];
-  for (const [name, value] of form.entries() as Iterable<[string, string | File]>) {
+  for (const [name, value] of form.entries()) {
     if (typeof value === "string") parts.push({ name, value });
     else parts.push({ name, bytes: value.size, sha256: sha256(new Uint8Array(await value.arrayBuffer())) });
   }
   return Response.json({ parts });
 }
 
-async function readBytes(response: Response): Promise<number> {
+async function readBytes(response: Response) {
+  if (!response.body) throw new Error("Response has no body");
   let bytes = 0;
-  for await (const chunk of response.body!) bytes += chunk.byteLength;
+  for await (const chunk of response.body) bytes += chunk.byteLength;
   return bytes;
 }
 
-function makeBytes(size: number): Uint8Array<ArrayBuffer> {
+function makeBytes(size: number) {
   const bytes = new Uint8Array(new ArrayBuffer(size));
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
   return bytes;
 }
 
-function sha256(bytes: Uint8Array): string {
+function sha256(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");
 }

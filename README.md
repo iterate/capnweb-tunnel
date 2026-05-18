@@ -51,19 +51,18 @@ fully mocked internet.
 But you can use it for whatever you like. Use it instead of ngrok or Cloudflare
 Tunnels when you want a small, fast tunnel that lives in your codebase.
 
-## Files
+## How Does It Work?
 
-- [src/types.ts](./src/types.ts): the small shared Capnweb interface.
-- [src/server.ts](./src/server.ts): `CapnwebTunnelServer` for Cloudflare Workers
-  and Durable Objects.
-- [src/client.ts](./src/client.ts): `CapnwebTunnelClient` for Node.
-- [src/worker.ts](./src/worker.ts): example Worker routing named tunnels.
+We just pass `fetch()` through `fetch()`. No, really.
 
-## How It Works
+With Capnweb, a client can make a WebSocket connection to a server and pass the
+server a fetch function. The server can then forward requests to it. That is the
+whole tunnel: the Worker receives normal HTTP requests, calls the client-provided
+`fetch(request)`, and returns the resulting `Response`.
 
-The whole tunnel is just one Capnweb RPC session over a WebSocket. The client
-passes the server a capability with one method, `fetch(request)`, and the Worker
-calls that capability whenever public HTTP traffic arrives.
+All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE,
+and uploads are already web standards. This is the web-standards way this should
+work.
 
 ```mermaid
 sequenceDiagram
@@ -88,6 +87,14 @@ That is the key flow:
 4. Once connected, the client can call RPC methods on the server.
 5. The first call is `useFetcher(fetcher)`.
 6. From then on, the server sends HTTP requests through `fetcher.fetch(request)`.
+
+## Files
+
+- [src/types.ts](./src/types.ts): the small shared Capnweb interface.
+- [src/server.ts](./src/server.ts): `CapnwebTunnelServer` for Cloudflare Workers
+  and Durable Objects.
+- [src/client.ts](./src/client.ts): `CapnwebTunnelClient` for Node.
+- [src/worker.ts](./src/worker.ts): example Worker routing named tunnels.
 
 ## Worker Routes
 

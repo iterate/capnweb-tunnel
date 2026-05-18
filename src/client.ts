@@ -1,9 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget, type RpcStub } from "capnweb";
-import type { CapnwebTunnelFetcher, CapnwebTunnelServerApi, TunnelFetch } from "./types";
-
-export interface CapnwebTunnelClientOptions {
-  fetch: TunnelFetch;
-}
+import type { CapnwebTunnelServerCapability, Fetcher } from "./types";
 
 /** Connects a public Worker URL to a local fetch implementation.
  *
@@ -13,43 +9,33 @@ export interface CapnwebTunnelClientOptions {
  * https://github.com/cloudflare/capnweb
  */
 export class CapnwebTunnelClient {
-  #url: URL;
-  #server?: RpcStub<CapnwebTunnelServerApi>;
-  #fetch: TunnelFetch;
+  #connectUrl: string;
+  #server?: RpcStub<CapnwebTunnelServerCapability>;
+  #fetcher: RpcTarget & { fetch: Fetcher };
 
-  constructor(serverUrl: string | URL, options: CapnwebTunnelClientOptions) {
-    this.#url = new URL(serverUrl);
-    this.#fetch = options.fetch;
-  }
-
-  async connect(): Promise<string> {
-    this.#server = newWebSocketRpcSession<CapnwebTunnelServerApi>(this.#connectUrl());
-    return this.#server.useFetcher(new LocalFetcher(this.#fetch));
-  }
-
-  close(): void {
-    this.#server?.[Symbol.dispose]();
-  }
-
-  #connectUrl(): string {
-    const url = new URL(this.#url);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    if (!url.pathname.endsWith("/__connect")) {
-      url.pathname = `${url.pathname.replace(/\/$/, "")}/__connect`;
+  constructor(serverUrl: string | URL, options: { fetch: Fetcher }) {
+    const connectUrl = new URL(serverUrl);
+    connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
+    if (!connectUrl.pathname.endsWith("/__connect")) {
+      connectUrl.pathname = `${connectUrl.pathname.replace(/\/$/, "")}/__connect`;
     }
-    return url.toString();
-  }
-}
 
-class LocalFetcher extends RpcTarget implements CapnwebTunnelFetcher {
-  #fetch: TunnelFetch;
-
-  constructor(fetch: TunnelFetch) {
-    super();
-    this.#fetch = fetch;
+    this.#connectUrl = connectUrl.toString();
+    const localFetch = options.fetch;
+    this.#fetcher = new (class extends RpcTarget {
+      fetch(request: Request) {
+        return localFetch(request);
+      }
+    })();
   }
 
-  fetch(request: Request): Response | Promise<Response> {
-    return this.#fetch(request);
+  async connect() {
+    this.#server = newWebSocketRpcSession<CapnwebTunnelServerCapability>(this.#connectUrl);
+    // This is where we pass our local fetch function to the server
+    await this.#server.useFetcher(this.#fetcher);
+  }
+
+  close() {
+    this.#server?.[Symbol.dispose]();
   }
 }

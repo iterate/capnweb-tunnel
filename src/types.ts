@@ -1,11 +1,16 @@
 import type { RpcTarget } from "capnweb";
 
-export type TunnelFetch = (request: Request) => Response | Promise<Response>;
+/** Local fetch implementation the client exposes through the tunnel. */
+export type Fetcher = (request: Request) => Response | Promise<Response>;
 
-export interface CapnwebTunnelFetcher extends RpcTarget {
-  fetch(request: Request): Response | Promise<Response>;
+/** Capability passed from the client to the server after connecting. */
+export interface CapnwebTunnelClientCapability extends RpcTarget {
+  /** Handles HTTP requests that the server forwards back to the client. */
+  fetch: Fetcher;
 }
 
-export interface CapnwebTunnelServerApi extends RpcTarget {
-  useFetcher(fetcher: CapnwebTunnelFetcher): string | Promise<string>;
+/** Server RPC API the client calls once the WebSocket session is connected. */
+export interface CapnwebTunnelServerCapability extends RpcTarget {
+  /** Registers the client-provided fetcher. */
+  useFetcher(fetcher: CapnwebTunnelClientCapability): void | Promise<void>;
 }
