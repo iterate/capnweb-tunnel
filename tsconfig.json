@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -8,21 +7,14 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "declaration": true,
     "allowImportingTsExtensions": true,
-    "types": ["node"],
-    "paths": {
-      "captun": ["./src/index.ts"],
-      "captun/client": ["./src/client.ts"],
-      "captun/server": ["./src/server.ts"]
-    }
+    "types": ["node"]
   },
   "include": [
     "src/**/*.ts",
     "worker-configuration.d.ts",
     "test/**/*.ts",
     "scripts/**/*.ts",
-    "examples/weather-reporter/*.ts",
-    "vite.config.ts"
+    "examples/weather-reporter/*.ts"
   ]
 }

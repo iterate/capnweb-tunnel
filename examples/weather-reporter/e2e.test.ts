@@ -1,5 +1,6 @@
-import { describe, expect, test, vi } from "vite-plus/test";
-import { createCaptunTunnel } from "../../src/client";
+import { describe, expect, test, vi } from "vitest";
+
+import { createCaptunTunnel } from "../../src/client.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 

@@ -130,7 +130,7 @@ sequenceDiagram
   Server-->>HTTP: Response
 ```
 
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own `vite-plus` e2e tests.
+See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own e2e tests.
 
 ## 3. Development
 

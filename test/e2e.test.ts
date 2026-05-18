@@ -1,79 +1,70 @@
 import { createHash } from "node:crypto";
-import { describe, test, vi } from "vite-plus/test";
-import { createCaptunTunnel } from "../src/client";
+import { describe, expect, test, vi } from "vitest";
+
+import { createCaptunTunnel } from "../src/client.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
 const serverUrl = process.env.CAPTUN_SERVER_URL;
-const describeE2e = serverUrl ? describe : describe.skip;
+const testE2e = serverUrl ? test.concurrent : test.skip;
 
-describeE2e("Captun e2e", () => {
-  test.concurrent("forwards HTTP", async ({ task, expect }) => {
+describe("Captun e2e", () => {
+  testE2e("forwards HTTP", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
-    try {
-      const response = await fetch(new URL("hello", url), {
-        method: "POST",
-        body: "hello through tunnel",
-      });
-      expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
-    } finally {
-      tunnel[Symbol.dispose]();
-    }
+    using _tunnel = tunnel;
+
+    const response = await fetch(new URL("hello", url), {
+      method: "POST",
+      body: "hello through tunnel",
+    });
+    expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
   });
 
-  test.concurrent("streams a binary response", async ({ task, expect }) => {
+  testE2e("streams a binary response", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
-    try {
-      const response = await fetch(new URL("stream", url));
-      expect(response.status).toBe(200);
-      expect(await readBytes(response)).toBe(2_097_152);
-    } finally {
-      tunnel[Symbol.dispose]();
-    }
+    using _tunnel = tunnel;
+
+    const response = await fetch(new URL("stream", url));
+    expect(response.status).toBe(200);
+    expect(await readBytes(response)).toBe(2_097_152);
   });
 
-  test.concurrent("streams SSE events", async ({ task, expect }) => {
+  testE2e("streams SSE events", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
-    try {
-      const response = await fetch(new URL("sse", url));
-      expect(response.headers.get("content-type")).toContain("text/event-stream");
-      expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
-    } finally {
-      tunnel[Symbol.dispose]();
-    }
+    using _tunnel = tunnel;
+
+    const response = await fetch(new URL("sse", url));
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
   });
 
-  test.concurrent("uploads a raw file body", async ({ task, expect }) => {
+  testE2e("uploads a raw file body", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
-    try {
-      const bytes = makeBytes(1024 * 1024);
-      const response = await fetch(new URL("upload", url), {
-        method: "POST",
-        headers: { "content-type": "application/octet-stream" },
-        body: bytes.buffer,
-      });
-      expect(await response.json()).toMatchObject({
-        bytes: bytes.byteLength,
-        sha256: sha256(bytes),
-      });
-    } finally {
-      tunnel[Symbol.dispose]();
-    }
+    using _tunnel = tunnel;
+
+    const bytes = makeBytes(1024 * 1024);
+    const response = await fetch(new URL("upload", url), {
+      method: "POST",
+      headers: { "content-type": "application/octet-stream" },
+      body: bytes.buffer,
+    });
+    expect(await response.json()).toMatchObject({
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+    });
   });
 
-  test.concurrent("uploads multipart form data", async ({ task, expect }) => {
+  testE2e("uploads multipart form data", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
-    try {
-      const file = makeBytes(256 * 1024);
-      const form = new FormData();
-      form.set("name", "multipart-proof");
-      form.set("file", new Blob([file.buffer]), "proof.bin");
+    using _tunnel = tunnel;
 
-      const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
-      expect(hasMultipartFilePart(await response.json(), file.byteLength, sha256(file))).toBe(true);
-    } finally {
-      tunnel[Symbol.dispose]();
-    }
+    const file = makeBytes(256 * 1024);
+    const form = new FormData();
+    form.set("name", "multipart-proof");
+    form.set("file", new Blob([file.buffer]), "proof.bin");
+
+    const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
+    expect(hasMultipartFilePart(await response.json(), file.byteLength, sha256(file))).toBe(true);
   });
 });
 

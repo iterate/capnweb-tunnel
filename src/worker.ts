@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "./server";
-import type { CaptunServerTunnel } from "./types";
+import { acceptCaptunTunnel } from "./server.ts";
+import type { CaptunServerTunnel } from "./types.ts";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
@@ -27,12 +27,14 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       const expectedAuthorization = this.env.CAPTUN_SECRET
         ? `Bearer ${this.env.CAPTUN_SECRET}`
         : undefined;
+      const actualAuthorization = new TextEncoder().encode(
+        routedRequest.headers.get("authorization") || "",
+      );
+      const encodedExpectedAuthorization = new TextEncoder().encode(expectedAuthorization || "");
       if (
         expectedAuthorization &&
-        !crypto.subtle.timingSafeEqual(
-          new TextEncoder().encode(routedRequest.headers.get("authorization") ?? ""),
-          new TextEncoder().encode(expectedAuthorization),
-        )
+        (actualAuthorization.length !== encodedExpectedAuthorization.length ||
+          !crypto.subtle.timingSafeEqual(actualAuthorization, encodedExpectedAuthorization))
       ) {
         return new Response("Unauthorized\n", { status: 401 });
       }
@@ -59,10 +61,18 @@ export default {
   fetch(request: Request, env: CaptunEnv) {
     const route = captunRoute(request);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
-    const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS ?? 1));
+    const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS || 1));
     return env.CaptunServerShard.getByName(shard).fetch(route.request);
   },
 } satisfies ExportedHandler<CaptunEnv>;
+
+/** Rebuilds the request only when the Durable Object route prefix must be stripped. */
+function rewritePath(request: Request, pathname: string) {
+  const url = new URL(request.url);
+  if (url.pathname === pathname) return request;
+  url.pathname = pathname;
+  return new Request(url, request);
+}
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request. */
 function captunRoute(request: Request) {
@@ -75,7 +85,7 @@ function captunRoute(request: Request) {
 }
 
 /** Extracts the tunnel name and forwarded path from just the hostname and path. */
-export function captunRouteParts(hostname: string, pathname: string) {
+function captunRouteParts(hostname: string, pathname: string) {
   if (!usesFolderRouting(hostname)) {
     const [name] = hostname.split(".");
     if (!name) return undefined;
@@ -89,7 +99,7 @@ export function captunRouteParts(hostname: string, pathname: string) {
 }
 
 /** Maps a tunnel name to a stable Durable Object shard name. */
-export function captunShardName(tunnelName: string, shardCount: number) {
+function captunShardName(tunnelName: string, shardCount: number) {
   if (!Number.isFinite(shardCount) || shardCount <= 1) return "tunnel-shard-0";
   let hash = 2166136261;
   for (let index = 0; index < tunnelName.length; index++) {
@@ -117,12 +127,4 @@ function safeDecodeURIComponent(value: string) {
   } catch {
     return undefined;
   }
-}
-
-/** Rebuilds the request only when the Durable Object route prefix must be stripped. */
-function rewritePath(request: Request, pathname: string) {
-  const url = new URL(request.url);
-  if (url.pathname === pathname) return request;
-  url.pathname = pathname;
-  return new Request(url, request);
 }
