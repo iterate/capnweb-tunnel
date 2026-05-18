@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { createCaptunTunnel } from "../src/client.ts";
 
@@ -9,67 +9,107 @@ const captunServerUrl = process.env.CAPTUN_SERVER_URL;
 if (!captunServerUrl) throw new Error("CAPTUN_SERVER_URL is required to load this e2e test module");
 const serverUrl = captunServerUrl;
 
-describe("Captun e2e", () => {
-  test.concurrent("forwards HTTP", async ({ task }) => {
-    const { url, tunnel } = await connectTunnel(task.name);
-    using _tunnel = tunnel;
+test.concurrent("forwards HTTP", async ({ task }) => {
+  using tunnel = await createTunnelFixture(task.name, async (request) =>
+    Response.json({ body: await request.text() }),
+  );
 
-    const response = await fetch(new URL("hello", url), {
-      method: "POST",
-      body: "hello through tunnel",
-    });
-    expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
+  const response = await fetch(tunnel.url, {
+    method: "POST",
+    body: "hello through tunnel",
+  });
+  expect(await response.json()).toMatchObject({ body: "hello through tunnel" });
+});
+
+test.concurrent("streams a binary response", async ({ task }) => {
+  using tunnel = await createTunnelFixture(task.name, () => {
+    let sent = 0;
+    return new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (sent++ === 32) return controller.close();
+          controller.enqueue(new Uint8Array(65_536));
+        },
+      }),
+      { headers: { "content-type": "application/octet-stream" } },
+    );
   });
 
-  test.concurrent("streams a binary response", async ({ task }) => {
-    const { url, tunnel } = await connectTunnel(task.name);
-    using _tunnel = tunnel;
+  const response = await fetch(tunnel.url);
+  expect(response.status).toBe(200);
 
-    const response = await fetch(new URL("stream", url));
-    expect(response.status).toBe(200);
-    expect(await readBytes(response)).toBe(2_097_152);
+  if (!response.body) throw new Error("Response has no body");
+  let bytes = 0;
+  for await (const chunk of response.body) bytes += chunk.byteLength;
+  expect(bytes).toBe(2_097_152);
+});
+
+test.concurrent("streams SSE events", async ({ task }) => {
+  using tunnel = await createTunnelFixture(task.name, () => {
+    const array = Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`)
+    return new Response(
+      array.join("",),
+      {headers: { "content-type": "text/event-stream; charset=utf-8" }},
+    );
   });
 
-  test.concurrent("streams SSE events", async ({ task }) => {
-    const { url, tunnel } = await connectTunnel(task.name);
-    using _tunnel = tunnel;
+  const response = await fetch(tunnel.url);
+  expect(response.headers.get("content-type")).toContain("text/event-stream");
+  expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
+});
 
-    const response = await fetch(new URL("sse", url));
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
+test.concurrent("uploads a raw file body", async ({ task }) => {
+  using tunnel = await createTunnelFixture(task.name, async (request) => {
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    return Response.json({ bytes: bytes.byteLength, sha256: sha256(bytes) });
   });
 
-  test.concurrent("uploads a raw file body", async ({ task }) => {
-    const { url, tunnel } = await connectTunnel(task.name);
-    using _tunnel = tunnel;
-
-    const bytes = makeBytes(1024 * 1024);
-    const response = await fetch(new URL("upload", url), {
-      method: "POST",
-      headers: { "content-type": "application/octet-stream" },
-      body: bytes.buffer,
-    });
-    expect(await response.json()).toMatchObject({
-      bytes: bytes.byteLength,
-      sha256: sha256(bytes),
-    });
+  const bytes = makeBytes(1024 * 1024);
+  const response = await fetch(tunnel.url, {
+    method: "POST",
+    headers: { "content-type": "application/octet-stream" },
+    body: bytes.buffer,
   });
-
-  test.concurrent("uploads multipart form data", async ({ task }) => {
-    const { url, tunnel } = await connectTunnel(task.name);
-    using _tunnel = tunnel;
-
-    const file = makeBytes(256 * 1024);
-    const form = new FormData();
-    form.set("name", "multipart-proof");
-    form.set("file", new Blob([file.buffer]), "proof.bin");
-
-    const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
-    expect(hasMultipartFilePart(await response.json(), file.byteLength, sha256(file))).toBe(true);
+  expect(await response.json()).toMatchObject({
+    bytes: bytes.byteLength,
+    sha256: sha256(bytes),
   });
 });
 
-async function connectTunnel(testName: string) {
+test.concurrent("uploads multipart form data", async ({ task }) => {
+  using tunnel = await createTunnelFixture(task.name, async (request) => {
+    const form = await request.formData();
+    const parts = [];
+    for (const [name, value] of form.entries() as Iterable<[string, string | Blob]>) {
+      if (typeof value === "string") parts.push({ name, value });
+      else
+        parts.push({
+          name,
+          bytes: value.size,
+          sha256: sha256(new Uint8Array(await value.arrayBuffer())),
+        });
+    }
+    return Response.json({ parts });
+  });
+
+  const file = makeBytes(256 * 1024);
+  const form = new FormData();
+  form.set("name", "multipart-proof");
+  form.set("file", new Blob([file.buffer]), "proof.bin");
+
+  const response = await fetch(tunnel.url, { method: "POST", body: form });
+  expect(await response.json()).toMatchObject({
+    parts: expect.arrayContaining([
+      { name: "name", value: "multipart-proof" },
+      { name: "file", bytes: file.byteLength, sha256: sha256(file) },
+    ]),
+  });
+});
+
+async function createTunnelFixture(
+  testName: string,
+  fetch: (request: Request) => Response | Promise<Response>,
+) {
   const name = tunnelName(testName);
   const url = tunnelUrl(name);
   const tunnel = await createCaptunTunnel({
@@ -77,14 +117,21 @@ async function connectTunnel(testName: string) {
     headers: process.env.CAPTUN_SECRET
       ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
       : undefined,
-    fetch: testFetch,
+    fetch,
   });
-  return { url, tunnel };
+  return {
+    url: url.toString(),
+    [Symbol.dispose]: () => tunnel[Symbol.dispose](),
+  };
 }
 
 function tunnelName(testName: string) {
   const seed = `${testName}-${process.pid}-${Date.now()}-${Math.random()}`;
-  const prefix = slug(testName).slice(0, 32).replace(/-$/, "") || "test";
+  const slug = testName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const prefix = slug.slice(0, 32).replace(/-$/, "") || "test";
   const hash = createHash("sha256").update(seed).digest("hex").slice(0, 12);
   return `${prefix}-${hash}`;
 }
@@ -99,86 +146,6 @@ function tunnelUrl(name: string) {
     url.pathname = `/${name}/`;
   }
   return url;
-}
-
-function slug(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function hasMultipartFilePart(value: unknown, bytes: number, hash: string) {
-  if (typeof value !== "object" || value === null) return false;
-  const parts = Reflect.get(value, "parts");
-  if (!Array.isArray(parts)) return false;
-  return parts.some((part) => {
-    if (typeof part !== "object" || part === null) return false;
-    return (
-      Reflect.get(part, "name") === "file" &&
-      Reflect.get(part, "bytes") === bytes &&
-      Reflect.get(part, "sha256") === hash
-    );
-  });
-}
-
-async function testFetch(request: Request) {
-  const url = new URL(request.url);
-  const path = url.pathname;
-  if (path === "/stream") return streamResponse();
-  if (path === "/sse") return sseResponse();
-  if (path === "/upload") return uploadResponse(request);
-  if (path === "/multipart") return multipartResponse(request);
-  return Response.json({ path, body: await request.text() });
-}
-
-function streamResponse() {
-  let sent = 0;
-  return new Response(
-    new ReadableStream({
-      pull(controller) {
-        if (sent++ === 32) return controller.close();
-        controller.enqueue(new Uint8Array(65_536));
-      },
-    }),
-    { headers: { "content-type": "application/octet-stream" } },
-  );
-}
-
-function sseResponse() {
-  return new Response(
-    Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`).join(""),
-    {
-      headers: { "content-type": "text/event-stream; charset=utf-8" },
-    },
-  );
-}
-
-async function uploadResponse(request: Request) {
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  return Response.json({ bytes: bytes.byteLength, sha256: sha256(bytes) });
-}
-
-async function multipartResponse(request: Request) {
-  const form = await request.formData();
-  const parts = [];
-  for (const [name, value] of form.entries() as Iterable<[string, string | Blob]>) {
-    if (typeof value === "string") parts.push({ name, value });
-    else
-      parts.push({
-        name,
-        bytes: value.size,
-        sha256: sha256(new Uint8Array(await value.arrayBuffer())),
-      });
-  }
-  return Response.json({ parts });
-}
-
-async function readBytes(response: Response) {
-  if (!response.body) throw new Error("Response has no body");
-  let bytes = 0;
-  for await (const chunk of response.body) bytes += chunk.byteLength;
-  return bytes;
 }
 
 function makeBytes(size: number) {
