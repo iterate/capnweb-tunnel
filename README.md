@@ -3,6 +3,10 @@
 Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a Node process over [Cap'n Web](https://github.com/cloudflare/capnweb).
 
 ```bash
+npx captun deploy
+```
+
+```bash
 pnpm install
 pnpm run deploy
 
