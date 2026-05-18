@@ -23,8 +23,11 @@ export async function createCaptunTunnel(
 }
 
 class LocalFetcher extends RpcTarget implements CaptunClientRemoteFetcher {
-  constructor(private readonly options: CaptunClientCreateTunnelOptions) {
+  private options: CaptunClientCreateTunnelOptions;
+
+  constructor(options: CaptunClientCreateTunnelOptions) {
     super();
+    this.options = options;
   }
 
   fetch(request: Request) {

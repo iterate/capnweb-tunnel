@@ -12,27 +12,36 @@ import { os } from "@orpc/server";
 import { createCli } from "trpc-cli";
 import { z } from "zod/v4";
 import { createCaptunTunnel } from "./client.ts";
-import type { Fetcher } from "./types.ts";
 
 type Config = {
   serverUrl: string;
   secret?: string;
 };
 
-const adjectives = "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(" ");
-const speeds = "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(" ");
-const things = "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(" ");
+const adjectives =
+  "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(
+    " ",
+  );
+const speeds =
+  "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(
+    " ",
+  );
+const things =
+  "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(
+    " ",
+  );
 
 const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const configPath = resolve(homedir(), ".capnweb-tunnel.json");
+const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+const configPath = resolve(xdgConfigHome || resolve(homedir(), ".config"), "captun", "config.json");
 
 const router = os.router({
   tunnel: os
     .meta({
       default: true,
-      description: "Expose a local HTTP server through your Capnweb tunnel Worker.",
-      examples: ["capnweb-tunnel 3000", "capnweb-tunnel 5173 --name my-app"],
+      description: "Expose a local HTTP server through your Captun tunnel Worker.",
+      examples: ["captun 3000", "captun 5173 --name my-app"],
     })
     .input(
       z.object({
@@ -50,24 +59,25 @@ const router = os.router({
     )
     .handler(async ({ input }) => {
       const config = await readConfig();
-      const serverUrl =
-        input.serverUrl ?? process.env.CAPTUN_SERVER_URL ?? process.env.TUNNEL_SERVER_URL ?? config?.serverUrl;
+      const serverUrl = input.serverUrl || config?.serverUrl;
       if (!serverUrl) {
-        throw new Error(`No tunnel server configured. Run "capnweb-tunnel deploy" first or pass --server-url.`);
+        throw new Error(
+          `No tunnel server configured. Run "captun deploy" first or pass --server-url.`,
+        );
       }
 
-      const secret = input.secret ?? process.env.CAPTUN_SECRET ?? process.env.TUNNEL_SECRET ?? config?.secret;
-      const name = input.name ?? randomName();
+      const secret = input.secret || config?.secret;
+      const name = input.name || randomName();
       const tunnel = tunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;
 
       const tunnelSession = await createCaptunTunnel({
         url: new URL("__connect", tunnel),
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
-        fetch: ((request) => {
+        fetch: (request) => {
           const url = new URL(request.url);
           return fetch(new Request(new URL(url.pathname + url.search, origin), request));
-        }) satisfies Fetcher["fetch"],
+        },
       });
 
       console.log(`tunneling ${tunnel} -> ${origin}`);
@@ -80,29 +90,33 @@ const router = os.router({
 
   deploy: os
     .meta({
-      description: "Deploy the Capnweb tunnel Worker with Wrangler and save local CLI config.",
+      description: "Deploy the Captun tunnel Worker with Wrangler and save local CLI config.",
       prompt: true,
-      examples: ["capnweb-tunnel deploy", "capnweb-tunnel deploy --route '*.tunnels.example.com/*'"],
+      examples: ["captun deploy", "captun deploy --route '*.tunnels.example.com/*'"],
     })
     .input(
       z.object({
-        route: z.string().optional().describe("Optional Worker route, for example *.tunnels.example.com/*"),
+        route: z
+          .string()
+          .optional()
+          .describe("Optional Worker route, for example *.tunnels.example.com/*"),
         secret: z
           .string()
-          .default(() => randomSecret())
-          .describe("Secret required by tunnel clients"),
+          .optional()
+          .describe("Secret required by tunnel clients; generated when omitted"),
       }),
     )
     .handler(async ({ input }) => {
-      const serverUrl = await deployWorker(input);
-      await writeConfig({ serverUrl, secret: input.secret });
+      const secret = input.secret || randomSecret();
+      const serverUrl = await deployWorker({ route: input.route, secret });
+      await writeConfig({ serverUrl, secret });
       return { serverUrl, configPath };
     }),
 });
 
 const cli = createCli({
   router,
-  name: "capnweb-tunnel",
+  name: "captun",
   version: "0.0.0",
   description: "Expose local HTTP servers through a tiny Cloudflare Worker tunnel.",
 });
@@ -110,7 +124,7 @@ const cli = createCli({
 await cli.run({ prompts });
 
 async function deployWorker(input: { route?: string; secret: string }) {
-  const tempDir = await mkdtemp(resolve(tmpdir(), "capnweb-tunnel-"));
+  const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
   const secretsFile = resolve(tempDir, "secrets.json");
   try {
     await writeFile(secretsFile, JSON.stringify({ CAPTUN_SECRET: input.secret }), { mode: 0o600 });
@@ -131,7 +145,9 @@ async function deployWorker(input: { route?: string; secret: string }) {
     if (input.route) args.push("--route", input.route);
 
     const output = await runWrangler(args);
-    const serverUrl = input.route ? serverUrlFromRoute(input.route) : serverUrlFromWranglerOutput(output);
+    const serverUrl = input.route
+      ? serverUrlFromRoute(input.route)
+      : serverUrlFromWranglerOutput(output);
     if (!serverUrl) {
       throw new Error("Wrangler deploy succeeded, but the Worker URL was not found in its output.");
     }

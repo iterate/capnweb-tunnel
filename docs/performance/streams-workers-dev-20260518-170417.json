@@ -2,9 +2,7 @@
   "serverUrl": "https://captun.garple-pretend-customer-should-be-iterate-dev-stg-will-chan.workers.dev",
   "bytes": 2097152,
   "chunkBytes": 65536,
-  "modes": [
-    "stream"
-  ],
+  "modes": ["stream"],
   "readMode": "stream",
   "timeoutMs": 60000,
   "results": [

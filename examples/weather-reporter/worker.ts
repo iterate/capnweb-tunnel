@@ -15,7 +15,9 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     if (city) {
       const response = await this.egressFetch(new Request(`https://wttr.in/${city}?format=j1`));
       const weather = (await response.json()) as { current_condition: [{ temp_C: string }] };
-      return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
+      return new Response(
+        `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+      );
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {

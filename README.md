@@ -4,14 +4,9 @@ Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare T
 
 ```bash
 npx captun deploy
-```
-
-```bash
-pnpm install
-pnpm run deploy
 
 python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+npx captun --name demo 3000
 
 curl https://captun.<your-account>.workers.dev/demo/
 ```
@@ -34,26 +29,25 @@ The core client/server pieces are small TypeScript modules around [Cap'n Web](ht
 Deploy the Worker first:
 
 ```bash
-pnpm install
-pnpm run deploy
+npx captun deploy
 ```
 
 Then expose a local port through a named folder tunnel:
 
 ```bash
 python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+captun --name demo 3000
 curl https://captun.<your-account>.workers.dev/demo/
 ```
 
-If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker, pass the same value to the CLI through `CAPTUN_SECRET` or `--secret`:
+If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker manually, pass the same value to the CLI with `--secret`:
 
 ```bash
 pnpm exec wrangler secret put CAPTUN_SECRET
-CAPTUN_SECRET=secret CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
+captun --server-url https://captun.<your-account>.workers.dev --secret secret --name demo 3000
 ```
 
-The repo script runs the source CLI. The packaged command is `captun`, so installed consumers can run the same tunnel with `CAPTUN_SERVER_URL=... captun --name demo 3000`.
+`captun deploy` stores the deployed Worker URL and generated secret in `$XDG_CONFIG_HOME/captun/config.json`, or `~/.config/captun/config.json` when `XDG_CONFIG_HOME` is not set. `--server-url` and `--secret` override the saved config. The repo script runs the same source CLI with `pnpm run cli --`.
 
 Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
 
