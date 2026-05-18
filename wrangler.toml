@@ -2,6 +2,10 @@ name = "capnweb-tunnel"
 main = "src/worker.ts"
 compatibility_date = "2026-05-15"
 
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [[durable_objects.bindings]]
 name = "TUNNEL"
 class_name = "TunnelDurableObject"

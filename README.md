@@ -1,6 +1,6 @@
 # capnweb-tunnel
 
-`capnweb-tunnel` is a tiny reference implementation of a self-hosted ngrok or
+`capnweb-tunnel` is a super fast and tiny reference implementation of a self-hosted ngrok or
 Cloudflare Tunnel alternative. It runs the public server on Cloudflare Workers
 and lets a local Node process provide the `fetch()` implementation that handles
 incoming HTTP requests.
@@ -43,6 +43,12 @@ The core client/server/types implementation is about 100 lines of code, built on
 [Capnweb](https://github.com/cloudflare/capnweb). Ask your AI agent to copy it
 into your project and adapt it.
 
+For test and development traffic this should also be basically free: the
+[Cloudflare Workers Free plan](https://developers.cloudflare.com/workers/platform/pricing/)
+includes 100,000 Worker requests per day, and SQLite-backed Durable Objects are
+available on the free plan with their own daily included request and duration
+limits. Check the pricing page before running serious volume.
+
 We use it in end-to-end tests for deployed Cloudflare Workers: public internet
 egress is sent back to the Vitest test runner, where responses are replayed from
 a HAR archive. That lets us run real E2E tests against deployed Workers with a
@@ -50,6 +56,53 @@ fully mocked internet.
 
 But you can use it for whatever you like. Use it instead of ngrok or Cloudflare
 Tunnels when you want a small, fast tunnel that lives in your codebase.
+
+## Performance
+
+Startup is measured as time from starting tunnel creation to the first successful
+HTTP fetch through that tunnel. On May 18, 2026 from London, a single Capnweb
+tunnel reached first fetch in 527ms. A single ngrok ad-hoc tunnel reached first
+fetch in 1.62s. A cloudflared quick tunnel reached first fetch in 8.96s after
+waiting for its `trycloudflare.com` DNS record to exist.
+
+| Ad-hoc tunnel | Result |
+| --- | ---: |
+| Capnweb | 527ms |
+| ngrok | 1.62s |
+| cloudflared quick tunnel | 8.96s |
+
+For Capnweb, the single-tunnel median breaks down like this:
+
+| Phase | Median |
+| --- | ---: |
+| WebSocket + Capnweb `useFetcher()` connect | 412ms |
+| Server calls client `fetch()` | 64ms |
+| Client fetches local origin | 2ms |
+| First public HTTP fetch after connect | 91ms |
+| Total startup to first fetch | 503ms |
+
+![Capnweb tunnel startup chart](docs/performance/startup.svg)
+
+| Simultaneous Capnweb tunnels | Successful | p50 | p90 | p99 |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 1/1 | 527ms | 527ms | 527ms |
+| 10 | 10/10 | 541ms | 585ms | 628ms |
+| 100 | 100/100 | 1.18s | 1.42s | 1.54s |
+| 500 | 500/500 | 9.43s | 9.52s | 9.53s |
+| 1000 | 764/1000 | 15.50s | 15.64s | 15.66s |
+| 2000 | 856/2000 | 41.08s | 41.21s | 41.39s |
+
+This benchmark is intentionally measuring the "make a lot of tunnels ASAP"
+shape. I did not try to force ngrok or cloudflared through thousands of parallel
+ad-hoc tunnels; their ad-hoc products and account limits are not designed for
+that shape. The honest story is: individual Capnweb tunnels are fast, hundreds
+of them can be created in parallel, and this deployment starts saturating
+between 500 and 1000 simultaneous tunnel creations. The raw benchmark data and
+scripts are in [docs/performance](./docs/performance) and
+[scripts/benchmark-startup.ts](./scripts/benchmark-startup.ts). The cloudflared
+benchmark waits for DNS before its first HTTP probe; probing too early can poison
+the local resolver with a negative lookup before the quick tunnel hostname is
+published.
 
 ## How Does It Work?
 
@@ -123,6 +176,8 @@ TUNNEL_SERVER_URL=https://capnweb-tunnel.<your-account>.workers.dev \
 npm run cli -- --name my-test 3000
 ```
 
+The CLI keeps the tunnel open until you stop it with Ctrl+C.
+
 Then send HTTP traffic to:
 
 ```text
@@ -131,6 +186,26 @@ https://capnweb-tunnel.<your-account>.workers.dev/my-test/anything
 
 The Worker strips `/my-test` before calling the client fetcher, so the local
 server sees `/anything`.
+
+## Connect Secret
+
+By default, anyone who can reach `/:name/__connect` can attach a client for that
+tunnel name. For real deployments, set a Worker secret:
+
+```bash
+npx wrangler secret put TUNNEL_SECRET
+```
+
+For local `wrangler dev`, put the same name in `.dev.vars`.
+
+Then pass the same value to the client. The client appends it to the Cap'n Web
+connect URL as `?secret=<secret>`:
+
+```bash
+TUNNEL_SECRET=<secret> npm run cli -- --name my-test 3000
+# or:
+npm run cli -- --name my-test --secret <secret> 3000
+```
 
 ## Custom Hostnames
 
@@ -227,6 +302,7 @@ TUNNEL_SERVER_URL=https://example.workers.dev npm run cli -- --name my-test 3000
 ```bash
 npm install
 npm run typecheck
+npm run test:unit
 ```
 
 In one terminal:
@@ -238,12 +314,12 @@ npm run dev
 In another terminal:
 
 ```bash
-npm test
+TUNNEL_SERVER_URL=http://localhost:8787 npm test
 ```
 
-`TUNNEL_SERVER_URL` defaults to `http://localhost:8787`. Set it to a deployed
-Worker URL to test against Cloudflare. For wildcard subdomains, use `{name}` as
-a placeholder so each concurrent test gets its own hostname:
+Set `TUNNEL_SERVER_URL` to a deployed Worker URL to test against Cloudflare. For
+wildcard subdomains, use `{name}` as a placeholder so each concurrent test gets
+its own hostname:
 
 ```bash
 TUNNEL_SERVER_URL=https://{name}.tunnels.example.com npm test

@@ -1,11 +1,13 @@
+import { DurableObject } from "cloudflare:workers";
 import { CapnwebTunnelServer } from "./server";
 
 interface Env {
-  TUNNEL: DurableObjectNamespace;
+  TUNNEL: DurableObjectNamespace<TunnelDurableObject>;
+  TUNNEL_SECRET?: string;
 }
 
-export class TunnelDurableObject implements DurableObject {
-  private readonly tunnel = new CapnwebTunnelServer();
+export class TunnelDurableObject extends DurableObject<Env> {
+  private readonly tunnel = new CapnwebTunnelServer({ secret: this.env.TUNNEL_SECRET });
 
   fetch(request: Request) {
     return this.tunnel.fetch(request);
@@ -18,7 +20,7 @@ export default {
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
     return env.TUNNEL.get(env.TUNNEL.idFromName(route.name)).fetch(route.request);
   },
-};
+} satisfies ExportedHandler<Env>;
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request.
  *
@@ -47,11 +49,13 @@ export function tunnelRouteParts(hostname: string, pathname: string) {
   if (!usesFolderRouting(hostname)) {
     const [name] = hostname.split(".");
     if (!name) return undefined;
-    return { name: decodeURIComponent(name), path: pathname };
+    const decodedName = safeDecodeURIComponent(name);
+    return decodedName ? { name: decodedName, path: pathname } : undefined;
   }
   const [name, ...rest] = pathname.split("/").filter(Boolean);
   if (!name || name === "__connect") return undefined;
-  return { name: decodeURIComponent(name), path: `/${rest.join("/")}` };
+  const decodedName = safeDecodeURIComponent(name);
+  return decodedName ? { name: decodedName, path: `/${rest.join("/")}` } : undefined;
 }
 
 /** Chooses folder routing for vanilla Worker hosts and apex/local dev hosts. */
@@ -61,4 +65,12 @@ function usesFolderRouting(hostname: string) {
     || hostname.endsWith(".workers.dev")
     || hostname.startsWith("tunnels.")
     || hostname.split(".").length < 3;
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
 }

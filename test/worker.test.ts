@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { CapnwebTunnelServer } from "../src/server";
 import { tunnelRouteParts } from "../src/worker";
 
 describe("tunnelRouteParts", () => {
@@ -21,11 +22,26 @@ describe("tunnelRouteParts", () => {
     ["my-test.my-tunnels.com", "/__connect", "my-test", "/__connect"],
     ["my-test.mysubdomain.mydomain.com", "/hello", "my-test", "/hello"],
     ["some-tunnel.example.com", "/some-path", "some-tunnel", "/some-path"],
+    ["capnweb-tunnel.account.workers.dev", "/bad%/hello", undefined, undefined],
   ];
 
   test.each(cases)("%s%s -> %s %s", (hostname, path, tunnelName, forwardedPath) => {
     expect(tunnelRouteParts(hostname, path)).toEqual(
       tunnelName ? { name: tunnelName, path: forwardedPath } : undefined,
     );
+  });
+});
+
+describe("CapnwebTunnelServer", () => {
+  test("returns 503 before a client connects", async () => {
+    const response = await new CapnwebTunnelServer().fetch(new Request("https://example.com/hello"));
+    expect(response.status).toBe(503);
+  });
+
+  test("rejects connect requests with the wrong secret", async () => {
+    const response = await new CapnwebTunnelServer({ secret: "secret" }).fetch(
+      new Request("https://example.com/__connect?secret=wrong"),
+    );
+    expect(response.status).toBe(401);
   });
 });

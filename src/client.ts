@@ -13,12 +13,13 @@ export class CapnwebTunnelClient {
   #server?: RpcStub<CapnwebTunnelServerCapability>;
   #fetcher: RpcTarget & { fetch: Fetcher };
 
-  constructor(serverUrl: string | URL, options: { fetch: Fetcher }) {
+  constructor(serverUrl: string | URL, options: { fetch: Fetcher; secret?: string }) {
     const connectUrl = new URL(serverUrl);
     connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
     if (!connectUrl.pathname.endsWith("/__connect")) {
       connectUrl.pathname = `${connectUrl.pathname.replace(/\/$/, "")}/__connect`;
     }
+    if (options.secret) connectUrl.searchParams.set("secret", options.secret);
 
     this.#connectUrl = connectUrl.toString();
     const localFetch = options.fetch;

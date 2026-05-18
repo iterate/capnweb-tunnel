@@ -10,11 +10,25 @@ import type { CapnwebTunnelClientCapability } from "./types";
  * Worker WebSockets: https://developers.cloudflare.com/workers/runtime-apis/websockets/ */
 export class CapnwebTunnelServer {
   #fetcher?: RpcStub<CapnwebTunnelClientCapability>;
+  #secret?: string;
+
+  constructor(options: { secret?: string } = {}) {
+    this.#secret = options.secret;
+  }
 
   async fetch(request: Request) {
     const url = new URL(request.url);
-    if (url.pathname.endsWith("/__connect")) {
-      return newWorkersRpcResponse(request, new TunnelControl(this));
+    if (url.pathname === "/__connect") {
+      if (this.#secret && url.searchParams.get("secret") !== this.#secret) {
+        return new Response("Unauthorized\n", { status: 401 });
+      }
+      const server = this;
+      // Keep the RPC surface narrow; RpcTarget exposes all prototype methods.
+      return newWorkersRpcResponse(request, new (class extends RpcTarget {
+        useFetcher(fetcher: RpcStub<CapnwebTunnelClientCapability>) {
+          server.useFetcher(fetcher);
+        }
+      })());
     }
     if (!this.#fetcher) return new Response("No tunnel client connected\n", { status: 503 });
     return this.#fetcher.fetch(request);
@@ -29,18 +43,5 @@ export class CapnwebTunnelServer {
     this.#fetcher.onRpcBroken(() => {
       this.#fetcher = undefined;
     });
-  }
-}
-
-class TunnelControl extends RpcTarget {
-  #server: CapnwebTunnelServer;
-
-  constructor(server: CapnwebTunnelServer) {
-    super();
-    this.#server = server;
-  }
-
-  useFetcher(fetcher: RpcStub<CapnwebTunnelClientCapability>) {
-    this.#server.useFetcher(fetcher);
   }
 }
