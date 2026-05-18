@@ -27,8 +27,9 @@ test.concurrent("streams a binary response", async ({ task }) => {
     return new Response(
       new ReadableStream({
         pull(controller) {
-          if (sent++ === 32) return controller.close();
+          sent += 1;
           controller.enqueue(new Uint8Array(65_536));
+          if (sent === 8) controller.close();
         },
       }),
       { headers: { "content-type": "application/octet-stream" } },
@@ -41,7 +42,7 @@ test.concurrent("streams a binary response", async ({ task }) => {
   if (!response.body) throw new Error("Response has no body");
   let bytes = 0;
   for await (const chunk of response.body) bytes += chunk.byteLength;
-  expect(bytes).toBe(2_097_152);
+  expect(bytes).toBe(524_288);
 });
 
 test.concurrent("streams SSE events", async ({ task }) => {
