@@ -2,29 +2,6 @@ import { CapnwebTunnelServer } from "./server";
 
 interface Env {
   TUNNEL: DurableObjectNamespace;
-  TUNNEL_USERNAME?: string;
-  TUNNEL_PASSWORD?: string;
-}
-
-function tunnelName(request: Request): string | undefined {
-  const url = new URL(request.url);
-  const wildcardName = url.hostname.match(/^([^.]+)\.tunnels\./)?.[1];
-  if (wildcardName) return decodeURIComponent(wildcardName);
-
-  const pathName = url.pathname.split("/").filter(Boolean)[0];
-  return pathName ? decodeURIComponent(pathName) : undefined;
-}
-
-function tunnelObject(request: Request, env: Env): DurableObjectStub | undefined {
-  const name = tunnelName(request);
-  return name ? env.TUNNEL.get(env.TUNNEL.idFromName(name)) : undefined;
-}
-
-function authorized(request: Request, env: Env): boolean {
-  if (!env.TUNNEL_USERNAME && !env.TUNNEL_PASSWORD) return true;
-  if (!env.TUNNEL_USERNAME || !env.TUNNEL_PASSWORD) return false;
-  return request.headers.get("authorization") ===
-    `Basic ${btoa(`${env.TUNNEL_USERNAME}:${env.TUNNEL_PASSWORD}`)}`;
 }
 
 export class TunnelDurableObject implements DurableObject {
@@ -37,9 +14,19 @@ export class TunnelDurableObject implements DurableObject {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    if (!authorized(request, env)) {
-      return Promise.resolve(new Response("Unauthorized\n", { status: 401 }));
-    }
-    return tunnelObject(request, env)?.fetch(request) ?? Promise.resolve(new Response("Not found\n", { status: 404 }));
+    const route = tunnelRoute(request);
+    if (!route) return Promise.resolve(new Response("Missing tunnel name\n", { status: 404 }));
+    return env.TUNNEL.get(env.TUNNEL.idFromName(route.name)).fetch(route.request);
   },
 } satisfies ExportedHandler<Env>;
+
+function tunnelRoute(request: Request): { name: string; request: Request } | undefined {
+  const url = new URL(request.url);
+  const subdomainName = url.hostname.match(/^([^.]+)\.tunnels\./)?.[1];
+  if (subdomainName) return { name: decodeURIComponent(subdomainName), request };
+
+  const [name, ...rest] = url.pathname.split("/").filter(Boolean);
+  if (!name) return undefined;
+  url.pathname = `/${rest.join("/")}`;
+  return { name: decodeURIComponent(name), request: new Request(url, request) };
+}

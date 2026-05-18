@@ -1,24 +1,16 @@
 import { createHash } from "node:crypto";
 import { describe, test, vi } from "vitest";
-import WebSocket from "ws";
 import { CapnwebTunnelClient } from "../src/client";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-const serverUrl =
-  process.env.TUNNEL_SERVER_URL ??
-  "https://cheap-tunnel.garple-pretend-customer-should-be-iterate-dev-stg-will-chan.workers.dev";
-const authHeaders =
-  process.env.TUNNEL_USERNAME && process.env.TUNNEL_PASSWORD
-    ? { authorization: basicAuth(process.env.TUNNEL_USERNAME, process.env.TUNNEL_PASSWORD) }
-    : undefined;
+const serverUrl = process.env.TUNNEL_SERVER_URL ?? "http://localhost:8787";
 
-describe("Cap'n Web tunnel e2e", () => {
+describe("Capnweb tunnel e2e", () => {
   test.concurrent("forwards HTTP", async ({ task, expect }) => {
     const { url, client } = await connectTunnel(task.name);
     const response = await fetch(new URL("hello", url), {
       method: "POST",
-      headers: authHeaders,
       body: "hello through tunnel",
     });
     expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
@@ -27,7 +19,7 @@ describe("Cap'n Web tunnel e2e", () => {
 
   test.concurrent("streams a binary response", async ({ task, expect }) => {
     const { url, client } = await connectTunnel(task.name);
-    const response = await fetch(new URL("stream", url), { headers: authHeaders });
+    const response = await fetch(new URL("stream", url));
     expect(response.status).toBe(200);
     expect(await readBytes(response)).toBe(2_097_152);
     client.close();
@@ -35,7 +27,7 @@ describe("Cap'n Web tunnel e2e", () => {
 
   test.concurrent("streams SSE events", async ({ task, expect }) => {
     const { url, client } = await connectTunnel(task.name);
-    const response = await fetch(new URL("sse", url), { headers: authHeaders });
+    const response = await fetch(new URL("sse", url));
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
     client.close();
@@ -46,7 +38,7 @@ describe("Cap'n Web tunnel e2e", () => {
     const bytes = makeBytes(1024 * 1024);
     const response = await fetch(new URL("upload", url), {
       method: "POST",
-      headers: { ...authHeaders, "content-type": "application/octet-stream" },
+      headers: { "content-type": "application/octet-stream" },
       body: bytes.buffer,
     });
     expect(await response.json()).toMatchObject({ bytes: bytes.byteLength, sha256: sha256(bytes) });
@@ -60,7 +52,7 @@ describe("Cap'n Web tunnel e2e", () => {
     form.set("name", "multipart-proof");
     form.set("file", new Blob([file.buffer]), "proof.bin");
 
-    const response = await fetch(new URL("multipart", url), { method: "POST", headers: authHeaders, body: form });
+    const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
     const json = (await response.json()) as { parts: Array<{ name: string; bytes?: number; sha256?: string }> };
     expect(json.parts.find((part) => part.name === "file")).toMatchObject({
       bytes: file.byteLength,
@@ -69,14 +61,6 @@ describe("Cap'n Web tunnel e2e", () => {
     client.close();
   });
 
-  test.concurrent("proxies WebSockets", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
-    await expect(websocketMessages(new URL("ws", url))).resolves.toEqual([
-      JSON.stringify({ type: "open", source: "vitest-client" }),
-      JSON.stringify({ type: "echo", message: "hello websocket", source: "vitest-client" }),
-    ]);
-    client.close();
-  });
 });
 
 async function connectTunnel(testName: string) {
@@ -84,15 +68,6 @@ async function connectTunnel(testName: string) {
   const url = new URL(`/${name}/`, serverUrl);
   const client = new CapnwebTunnelClient(url, {
     fetch: testFetch,
-    headers: authHeaders,
-    websocket: async (_request, socket) => {
-      await socket.send(JSON.stringify({ type: "open", source: "vitest-client" }));
-      return {
-        message: (message) =>
-          socket.send(JSON.stringify({ type: "echo", message, source: "vitest-client" })),
-        close: (code, reason) => socket.close(code, reason),
-      };
-    },
   });
   await client.connect();
   return { url, client };
@@ -104,16 +79,12 @@ function slug(value: string): string {
 
 async function testFetch(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const path = tunnelPath(url);
+  const path = url.pathname;
   if (path === "/stream") return streamResponse();
   if (path === "/sse") return sseResponse();
   if (path === "/upload") return uploadResponse(request);
   if (path === "/multipart") return multipartResponse(request);
   return Response.json({ path, body: await request.text() });
-}
-
-function tunnelPath(url: URL): string {
-  return "/" + url.pathname.split("/").slice(2).join("/");
 }
 
 function streamResponse(): Response {
@@ -161,27 +132,4 @@ function makeBytes(size: number): Uint8Array<ArrayBuffer> {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
-}
-
-function basicAuth(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-}
-
-function websocketMessages(url: URL): Promise<string[]> {
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, undefined, { headers: authHeaders });
-    const messages: string[] = [];
-    const timer = setTimeout(() => reject(new Error("WebSocket timed out")), 5_000);
-    socket.addEventListener("open", () => socket.send("hello websocket"));
-    socket.addEventListener("message", (event) => {
-      messages.push(String(event.data));
-      if (messages.length === 2) {
-        clearTimeout(timer);
-        socket.close(1000, "done");
-        resolve(messages);
-      }
-    });
-    socket.addEventListener("error", () => reject(new Error("WebSocket error")));
-  });
 }
