@@ -1,7 +1,7 @@
-export class DurableObject<CaptunEnv = unknown> {
-  protected env: CaptunEnv;
+export class DurableObject<Env = unknown> {
+  protected env: Env;
 
-  constructor(_ctx: DurableObjectState, env: CaptunEnv) {
+  constructor(_ctx: unknown, env: Env) {
     this.env = env;
   }
 }

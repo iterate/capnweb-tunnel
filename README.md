@@ -14,7 +14,7 @@ curl https://captun.<your-account>.workers.dev/demo/
 Or use it directly from code:
 
 ```ts
-import { createCaptunTunnel } from "captun";
+import { createCaptunTunnel } from "captun/client";
 
 using tunnel = await createCaptunTunnel({
   url: "https://captun.<your-account>.workers.dev/demo/__connect",
@@ -22,7 +22,7 @@ using tunnel = await createCaptunTunnel({
 });
 ```
 
-The core implementation is about 100 lines of TypeScript around [Cap'n Web](https://github.com/cloudflare/capnweb). Ask your AI agent to copy [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), [src/types.ts](./src/types.ts), and [src/worker.ts](./src/worker.ts) into your codebase and adapt them.
+The core implementation is about 100 lines of TypeScript around [Cap'n Web](https://github.com/cloudflare/capnweb). Ask your AI agent to copy [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts) into your codebase and adapt them.
 
 ## 1. CLI Usage
 
@@ -63,7 +63,7 @@ pnpm exec wrangler deploy --var CAPTUN_SHARDS:256
 The client side is just a disposable connection:
 
 ```ts
-import { createCaptunTunnel } from "captun";
+import { createCaptunTunnel } from "captun/client";
 
 using tunnel = await createCaptunTunnel({
   url: "https://captun.example.workers.dev/my-test/__connect",
@@ -80,7 +80,7 @@ using tunnel = await createCaptunTunnel({
 On the server side, authorize your connect route, accept it as a tunnel, then hand normal requests to `tunnel.fetch(request)`:
 
 ```ts
-import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun";
+import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun/server";
 
 export class MyDurableObject {
   private tunnel?: CaptunServerTunnel;
@@ -97,7 +97,9 @@ export class MyDurableObject {
       return response;
     }
     if (url.pathname.startsWith("/egress/")) {
-      return this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 });
+      return (
+        this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 })
+      );
     }
     return new Response("Not found", { status: 404 });
   }
@@ -131,17 +133,17 @@ See [examples/weather-reporter](./examples/weather-reporter) for a small workspa
 
 On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. Rechecking provider startup on the same day showed ngrok was much faster than the earlier sample: one ngrok ad-hoc tunnel reached 451ms, and 10 concurrent ngrok tunnels reached 658ms p50. Cloudflared quick tunnels still took about 8.5-9s when successful because the `trycloudflare.com` hostname was printed several seconds before DNS/public routing was ready.
 
-| Ad-hoc tunnel | First fetch |
-| --- | ---: |
-| Captun | 188ms |
-| ngrok | 451ms |
-| cloudflared quick tunnel | 8.51s |
+| Ad-hoc tunnel            | First fetch |
+| ------------------------ | ----------: |
+| Captun                   |       188ms |
+| ngrok                    |       451ms |
+| cloudflared quick tunnel |       8.51s |
 
-| 10 concurrent ad-hoc tunnels | Successful | p50 | p90 | p99 |
-| --- | ---: | ---: | ---: | ---: |
-| Captun | 10/10 | 172ms | 186ms | 189ms |
-| ngrok | 10/10 | 658ms | 695ms | 985ms |
-| cloudflared quick tunnel | 2/10 | 8.89s | 9.00s | 9.00s |
+| 10 concurrent ad-hoc tunnels | Successful |   p50 |   p90 |   p99 |
+| ---------------------------- | ---------: | ----: | ----: | ----: |
+| Captun                       |      10/10 | 172ms | 186ms | 189ms |
+| ngrok                        |      10/10 | 658ms | 695ms | 985ms |
+| cloudflared quick tunnel     |       2/10 | 8.89s | 9.00s | 9.00s |
 
 One shard is the default because it spins up fastest. More shards trade extra cold starts for more total throughput: 100 concurrent 2MiB streams through one shard took 26.34s p50, while 150 concurrent 2MiB streams spread over 256 warmed shards took 9.76s p50.
 

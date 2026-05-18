@@ -32,12 +32,17 @@ type Result = {
   measurements: Measurement[];
 };
 
-const counts = (process.env.COUNTS ?? "1,10,25,50,100").split(",").map((value) => Number(value.trim()));
+const counts = (process.env.COUNTS ?? "1,10,25,50,100")
+  .split(",")
+  .map((value) => Number(value.trim()));
 const serverUrl = process.env.CAPTUN_SERVER_URL ?? "https://captun.example.workers.dev";
 const out = process.env.OUT ?? "docs/performance/captun-streams.json";
 const bytes = Number(process.env.BYTES ?? 2 * 1024 * 1024);
 const chunkBytes = Number(process.env.CHUNK_BYTES ?? 64 * 1024);
-const modes = (process.env.MODES ?? "stream").split(",").map((value) => value.trim()).filter(Boolean);
+const modes = (process.env.MODES ?? "stream")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 const readMode = process.env.READ_MODE ?? "stream";
 const timeoutMs = Number(process.env.TIMEOUT_MS ?? 60_000);
 const namePrefix = process.env.NAME_PREFIX ?? `stream-${randomBytes(4).toString("hex")}`;
@@ -53,14 +58,18 @@ const connectConcurrency = Number(process.env.CONNECT_CONCURRENCY ?? 0);
 // the bottleneck.
 if (warmupCount > 0) {
   console.log(`warming ${warmupCount} tunnels`);
-  await runPool(warmupCount, Math.min(warmupCount, Math.max(connectConcurrency, 25)), async (index) => {
-    const session = await createCaptunTunnel({
-      url: new URL("__connect", tunnelUrl(`${namePrefix}-warm-${index}`)),
-      headers: captunHeaders(),
-      fetch: () => testResponse("stream"),
-    });
-    session[Symbol.dispose]();
-  });
+  await runPool(
+    warmupCount,
+    Math.min(warmupCount, Math.max(connectConcurrency, 25)),
+    async (index) => {
+      const session = await createCaptunTunnel({
+        url: new URL("__connect", tunnelUrl(`${namePrefix}-warm-${index}`)),
+        headers: captunHeaders(),
+        fetch: () => testResponse("stream"),
+      });
+      session[Symbol.dispose]();
+    },
+  );
 }
 
 const results: Result[] = [];
@@ -74,7 +83,10 @@ for (const count of counts) {
 }
 
 await mkdir("docs/performance", { recursive: true });
-await writeFile(out, `${JSON.stringify({ serverUrl, bytes, chunkBytes, modes, readMode, timeoutMs, results }, null, 2)}\n`);
+await writeFile(
+  out,
+  `${JSON.stringify({ serverUrl, bytes, chunkBytes, modes, readMode, timeoutMs, results }, null, 2)}\n`,
+);
 console.log(`wrote ${out}`);
 
 async function benchmark(count: number, mode: string): Promise<Result> {
@@ -83,7 +95,9 @@ async function benchmark(count: number, mode: string): Promise<Result> {
   // many already-established tunnels can stream concurrently.
   const concurrency = connectConcurrency > 0 ? connectConcurrency : count;
   const measurements = await runPool(count, concurrency, (index) => measure(index, mode));
-  const values = measurements.flatMap((measurement) => measurement.ok && measurement.totalMs ? [measurement.totalMs] : []);
+  const values = measurements.flatMap((measurement) =>
+    measurement.ok && measurement.totalMs ? [measurement.totalMs] : [],
+  );
   values.sort((a, b) => a - b);
   return {
     count,
@@ -97,14 +111,16 @@ async function benchmark(count: number, mode: string): Promise<Result> {
 }
 
 async function runPool<T>(count: number, concurrency: number, task: (index: number) => Promise<T>) {
-  const results: T[] = new Array(count);
+  const results: T[] = Array.from({ length: count });
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(count, concurrency) }, async () => {
-    while (next < count) {
-      const index = next++;
-      results[index] = await task(index);
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(count, concurrency) }, async () => {
+      while (next < count) {
+        const index = next++;
+        results[index] = await task(index);
+      }
+    }),
+  );
   return results;
 }
 
@@ -145,14 +161,21 @@ async function measure(index: number, mode: string): Promise<Measurement> {
       bytes: received,
     };
   } catch (error) {
-    return { index, ok: false, mode, error: error instanceof Error ? error.message : String(error) };
+    return {
+      index,
+      ok: false,
+      mode,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     tunnel?.[Symbol.dispose]();
   }
 }
 
 function captunHeaders() {
-  return process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined;
+  return process.env.CAPTUN_SECRET
+    ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
+    : undefined;
 }
 
 function testResponse(mode: string) {
@@ -171,16 +194,19 @@ function testResponse(mode: string) {
 
 function streamResponse() {
   let sent = 0;
-  return new Response(new ReadableStream({
-    pull(controller) {
-      if (sent >= bytes) return controller.close();
-      const size = Math.min(chunkBytes, bytes - sent);
-      sent += size;
-      controller.enqueue(new Uint8Array(size));
+  return new Response(
+    new ReadableStream({
+      pull(controller) {
+        if (sent >= bytes) return controller.close();
+        const size = Math.min(chunkBytes, bytes - sent);
+        sent += size;
+        controller.enqueue(new Uint8Array(size));
+      },
+    }),
+    {
+      headers: { "content-type": "application/octet-stream" },
     },
-  }), {
-    headers: { "content-type": "application/octet-stream" },
-  });
+  );
 }
 
 async function readBytes(response: Response) {

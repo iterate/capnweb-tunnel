@@ -4,13 +4,25 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "types": ["node", "@cloudflare/workers-types"],
+    "lib": ["ESNext"],
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
     "declaration": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "paths": {
+      "captun": ["./src/index.ts"],
+      "captun/client": ["./src/client.ts"],
+      "captun/server": ["./src/server.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+  "include": [
+    "worker-configuration.d.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "examples/weather-reporter/src/**/*.ts",
+    "examples/weather-reporter/test/**/*.ts",
+    "vite.config.ts"
+  ]
 }

@@ -6,28 +6,21 @@ export interface Fetcher {
 }
 
 /** Options for opening a local process to public Captun tunnel connection. */
-export interface CreateCaptunTunnelOptions extends Fetcher {
+export interface CaptunClientCreateTunnelOptions extends Fetcher {
   /** Exact WebSocket-capable connect URL, including the app's connect route. */
   url: string | URL;
   /** Headers sent on the WebSocket upgrade request, for auth or routing metadata. */
-  headers?: HeadersInit;
+  headers?: Record<string, string>;
 }
 
+/** Client-side fetcher exposed to the server over the WebSocket RPC session. */
+export interface CaptunClientRemoteFetcher extends Fetcher, RpcTarget {}
+
 /** Options for accepting a client WebSocket as a server-side tunnel. */
-export interface AcceptCaptunTunnelOptions {
+export interface CaptunServerAcceptTunnelOptions {
   /** Called when the underlying RPC connection breaks. */
   onDisconnect?: () => void;
 }
 
 /** Server-side handle for forwarding HTTP requests through an accepted tunnel. */
 export interface CaptunServerTunnel extends Fetcher, Disposable {}
-
-/** Client-side Cap'n Web main object exposed to the server after connecting.
- *
- * Cap'n Web passes `RpcTarget` instances by reference. The client gives this
- * object to `newWebSocketRpcSession()`, and the server receives a stub for it
- * when accepting the same WebSocket.
- *
- * Docs: https://github.com/cloudflare/capnweb#rpctarget */
-export interface CaptunClientCapability extends RpcTarget, Fetcher {}
-

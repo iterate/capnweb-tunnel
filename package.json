@@ -2,54 +2,59 @@
   "name": "captun",
   "version": "0.0.0",
   "private": false,
-  "type": "module",
-  "packageManager": "pnpm@10.11.1",
+  "description": "A tiny Cap'n Web tunnel for forwarding public Worker requests to a local fetcher.",
   "repository": {
     "type": "git",
     "url": "https://github.com/iterate/captun.git"
   },
   "bin": {
-    "captun": "./dist/cli.js"
+    "captun": "./dist/cli.mjs"
   },
   "files": [
     "dist",
     "README.md",
     "wrangler.toml"
   ],
-  "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
-  },
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.mts",
+      "import": "./dist/client.mjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.mts",
+      "import": "./dist/server.mjs"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.lib.json",
-    "typecheck": "tsc --noEmit && pnpm --filter @captun/weather-reporter typecheck",
+    "build": "vp pack",
+    "check": "vp check",
+    "check:fix": "vp check --fix",
+    "typecheck": "tsc -p tsconfig.lib.json && tsc -p tsconfig.json && pnpm --filter @captun/weather-reporter typecheck",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "pnpm run test:root && pnpm --filter @captun/weather-reporter test",
-    "test:root": "vitest run test/*.test.ts",
-    "test:unit": "vitest run test/worker.test.ts",
-    "cli": "node src/cli.ts"
+    "test": "vp test",
+    "test:unit": "vp test test/worker.test.ts",
+    "cli": "node src/cli.ts",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run check && pnpm run test",
+    "publish:dry-run": "pnpm publish --dry-run --no-git-checks"
   },
   "dependencies": {
-    "capnweb": "^0.8.0",
-    "ws": "^8.20.1"
+    "capnweb": "^0.8.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.8.0",
-    "@types/ws": "^8.18.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6",
+    "vite-plus": "^0.1.21",
     "wrangler": "^4.92.0"
-  }
+  },
+  "packageManager": "pnpm@10.11.1"
 }

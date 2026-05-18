@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, test, vi } from "vitest";
+import { describe, test, vi } from "vite-plus/test";
 import { createCaptunTunnel } from "../src/client";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -52,7 +52,10 @@ describeE2e("Captun e2e", () => {
         headers: { "content-type": "application/octet-stream" },
         body: bytes.buffer,
       });
-      expect(await response.json()).toMatchObject({ bytes: bytes.byteLength, sha256: sha256(bytes) });
+      expect(await response.json()).toMatchObject({
+        bytes: bytes.byteLength,
+        sha256: sha256(bytes),
+      });
     } finally {
       tunnel[Symbol.dispose]();
     }
@@ -72,7 +75,6 @@ describeE2e("Captun e2e", () => {
       tunnel[Symbol.dispose]();
     }
   });
-
 });
 
 async function connectTunnel(testName: string) {
@@ -80,7 +82,9 @@ async function connectTunnel(testName: string) {
   const url = tunnelUrl(name);
   const tunnel = await createCaptunTunnel({
     url: new URL("__connect", url),
-    headers: process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined,
+    headers: process.env.CAPTUN_SECRET
+      ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
+      : undefined,
     fetch: testFetch,
   });
   return { url, tunnel };
@@ -107,7 +111,10 @@ function tunnelUrl(name: string) {
 }
 
 function slug(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function hasMultipartFilePart(value: unknown, bytes: number, hash: string) {
@@ -116,9 +123,11 @@ function hasMultipartFilePart(value: unknown, bytes: number, hash: string) {
   if (!Array.isArray(parts)) return false;
   return parts.some((part) => {
     if (typeof part !== "object" || part === null) return false;
-    return Reflect.get(part, "name") === "file"
-      && Reflect.get(part, "bytes") === bytes
-      && Reflect.get(part, "sha256") === hash;
+    return (
+      Reflect.get(part, "name") === "file" &&
+      Reflect.get(part, "bytes") === bytes &&
+      Reflect.get(part, "sha256") === hash
+    );
   });
 }
 
@@ -134,18 +143,24 @@ async function testFetch(request: Request) {
 
 function streamResponse() {
   let sent = 0;
-  return new Response(new ReadableStream({
-    pull(controller) {
-      if (sent++ === 32) return controller.close();
-      controller.enqueue(new Uint8Array(65_536));
-    },
-  }), { headers: { "content-type": "application/octet-stream" } });
+  return new Response(
+    new ReadableStream({
+      pull(controller) {
+        if (sent++ === 32) return controller.close();
+        controller.enqueue(new Uint8Array(65_536));
+      },
+    }),
+    { headers: { "content-type": "application/octet-stream" } },
+  );
 }
 
 function sseResponse() {
-  return new Response(Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`).join(""), {
-    headers: { "content-type": "text/event-stream; charset=utf-8" },
-  });
+  return new Response(
+    Array.from({ length: 5 }, (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`).join(""),
+    {
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    },
+  );
 }
 
 async function uploadResponse(request: Request) {
@@ -156,9 +171,14 @@ async function uploadResponse(request: Request) {
 async function multipartResponse(request: Request) {
   const form = await request.formData();
   const parts = [];
-  for (const [name, value] of form.entries()) {
+  for (const [name, value] of form.entries() as Iterable<[string, string | Blob]>) {
     if (typeof value === "string") parts.push({ name, value });
-    else parts.push({ name, bytes: value.size, sha256: sha256(new Uint8Array(await value.arrayBuffer())) });
+    else
+      parts.push({
+        name,
+        bytes: value.size,
+        sha256: sha256(new Uint8Array(await value.arrayBuffer())),
+      });
   }
   return Response.json({ parts });
 }

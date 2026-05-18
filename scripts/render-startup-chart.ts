@@ -14,7 +14,9 @@ const input = process.env.INPUT ?? "docs/performance/captun-startup.json";
 const output = process.env.OUTPUT ?? "docs/performance/startup.svg";
 
 const data = JSON.parse(await readFile(input, "utf8")) as { results: Result[] };
-const rows = data.results.filter((row) => row.provider === "captun" && row.p50 && row.p90 && row.p99);
+const rows = data.results.filter(
+  (row) => row.provider === "captun" && row.p50 && row.p90 && row.p99,
+);
 const width = 920;
 const height = 520;
 const margin = { top: 42, right: 116, bottom: 72, left: 86 };
@@ -56,32 +58,46 @@ function grid() {
   return `
   <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" stroke="#111827"/>
   <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#111827"/>
-  ${xTicks.map((tick) => `<g>
+  ${xTicks
+    .map(
+      (tick) => `<g>
     <line x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${margin.top + plotHeight}" stroke="#e5e7eb"/>
     <text x="${x(tick)}" y="${margin.top + plotHeight + 24}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#4b5563">${tick}</text>
-  </g>`).join("\n")}
-  ${yTicks.map((tick) => `<g>
+  </g>`,
+    )
+    .join("\n")}
+  ${yTicks
+    .map(
+      (tick) => `<g>
     <line x1="${margin.left}" y1="${y(tick)}" x2="${margin.left + plotWidth}" y2="${y(tick)}" stroke="#e5e7eb"/>
     <text x="${margin.left - 10}" y="${y(tick) + 4}" text-anchor="end" font-family="system-ui, sans-serif" font-size="12" fill="#4b5563">${formatTick(tick)}</text>
-  </g>`).join("\n")}
+  </g>`,
+    )
+    .join("\n")}
   `;
 }
 
 function line(item: (typeof series)[number]) {
-  const d = rows.map((row, index) => `${index === 0 ? "M" : "L"} ${x(row.count)} ${y(row[item.key] ?? 0)}`).join(" ");
+  const d = rows
+    .map((row, index) => `${index === 0 ? "M" : "L"} ${x(row.count)} ${y(row[item.key] ?? 0)}`)
+    .join(" ");
   return `<path d="${d}" fill="none" stroke="${item.color}" stroke-width="3"/>`;
 }
 
 function points(row: Result) {
-  const failure = row.failures ? `<text x="${x(row.count)}" y="${y(row.p99 ?? 0) - 12}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#991b1b">${row.successes}/${row.count} ok</text>` : "";
+  const failure = row.failures
+    ? `<text x="${x(row.count)}" y="${y(row.p99 ?? 0) - 12}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#991b1b">${row.successes}/${row.count} ok</text>`
+    : "";
   return `${series.map((item) => `<circle cx="${x(row.count)}" cy="${y(row[item.key] ?? 0)}" r="4" fill="${item.color}"/>`).join("\n")}${failure}`;
 }
 
 function legend() {
-  return series.map((item, index) => {
-    const y = margin.top + index * 24;
-    return `<g><line x1="${width - margin.right + 20}" y1="${y}" x2="${width - margin.right + 46}" y2="${y}" stroke="${item.color}" stroke-width="3"/><text x="${width - margin.right + 54}" y="${y + 4}" font-family="system-ui, sans-serif" font-size="13" fill="#111827">${item.label}</text></g>`;
-  }).join("\n");
+  return series
+    .map((item, index) => {
+      const y = margin.top + index * 24;
+      return `<g><line x1="${width - margin.right + 20}" y1="${y}" x2="${width - margin.right + 46}" y2="${y}" stroke="${item.color}" stroke-width="3"/><text x="${width - margin.right + 54}" y="${y + 4}" font-family="system-ui, sans-serif" font-size="13" fill="#111827">${item.label}</text></g>`;
+    })
+    .join("\n");
 }
 
 function x(value: number) {

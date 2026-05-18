@@ -32,10 +32,16 @@ type Result = {
   measurements: Measurement[];
 };
 
-const providers = (process.env.PROVIDERS ?? "captun").split(",").map((value) => value.trim() as Provider);
-const counts = (process.env.COUNTS ?? "1,10,100,500,1000,2000").split(",").map((value) => Number(value.trim()));
+const providers = (process.env.PROVIDERS ?? "captun")
+  .split(",")
+  .map((value) => value.trim() as Provider);
+const counts = (process.env.COUNTS ?? "1,10,100,500,1000,2000")
+  .split(",")
+  .map((value) => Number(value.trim()));
 const captunUrl = process.env.CAPTUN_SERVER_URL ?? "https://{name}.tunnels.example.com";
-const out = process.env.OUT ?? `docs/performance/startup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+const out =
+  process.env.OUT ??
+  `docs/performance/startup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
 const timeoutMs = Number(process.env.TIMEOUT_MS ?? 60_000);
 
 const origin = createServer((request, response) => {
@@ -61,7 +67,10 @@ try {
   }
 
   await mkdir("docs/performance", { recursive: true });
-  await writeFile(out, `${JSON.stringify({ originUrl, captunUrl, timeoutMs, results }, null, 2)}\n`);
+  await writeFile(
+    out,
+    `${JSON.stringify({ originUrl, captunUrl, timeoutMs, results }, null, 2)}\n`,
+  );
   console.log(`wrote ${out}`);
 } finally {
   origin.close();
@@ -71,7 +80,9 @@ async function benchmark(provider: Provider, count: number, originUrl: string): 
   const measurements = await Promise.all(
     Array.from({ length: count }, (_, index) => measure(provider, index, originUrl)),
   );
-  const values = measurements.flatMap((measurement) => measurement.ok && measurement.ms ? [measurement.ms] : []);
+  const values = measurements.flatMap((measurement) =>
+    measurement.ok && measurement.ms ? [measurement.ms] : [],
+  );
   values.sort((a, b) => a - b);
   return {
     provider,
@@ -102,7 +113,9 @@ async function measureCaptun(index: number, originUrl: string): Promise<Measurem
   try {
     tunnel = await createCaptunTunnel({
       url: new URL("__connect", url),
-      headers: process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined,
+      headers: process.env.CAPTUN_SECRET
+        ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
+        : undefined,
       fetch: (request) => {
         const incoming = new URL(request.url);
         return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
@@ -115,14 +128,21 @@ async function measureCaptun(index: number, originUrl: string): Promise<Measurem
   }
 }
 
-async function measureProcess(provider: Exclude<Provider, "captun">, index: number, originUrl: string): Promise<Measurement> {
+async function measureProcess(
+  provider: Exclude<Provider, "captun">,
+  index: number,
+  originUrl: string,
+): Promise<Measurement> {
   const started = performance.now();
   const child = spawnProcess(provider, originUrl);
   let output = "";
 
   try {
     const url = await new Promise<URL>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${provider} did not print a public URL`)), timeoutMs);
+      const timer = setTimeout(
+        () => reject(new Error(`${provider} did not print a public URL`)),
+        timeoutMs,
+      );
       const read = (chunk: Buffer) => {
         output += chunk.toString();
         const parsed = provider === "ngrok" ? parseNgrokUrl(output) : parseCloudflaredUrl(output);
@@ -156,9 +176,13 @@ async function measureProcess(provider: Exclude<Provider, "captun">, index: numb
 
 function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string) {
   if (provider === "cloudflared") {
-    return spawn("cloudflared", ["tunnel", "--url", originUrl, "--no-autoupdate", "--metrics", "localhost:0"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    return spawn(
+      "cloudflared",
+      ["tunnel", "--url", originUrl, "--no-autoupdate", "--metrics", "localhost:0"],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
   }
   return spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -209,7 +233,8 @@ function parseNgrokUrl(output: string) {
   for (const line of output.split("\n")) {
     try {
       const parsed = JSON.parse(line) as { msg?: string; url?: string };
-      if (parsed.msg === "started tunnel" && parsed.url?.startsWith("https://")) return new URL(parsed.url);
+      if (parsed.msg === "started tunnel" && parsed.url?.startsWith("https://"))
+        return new URL(parsed.url);
     } catch {}
   }
   return undefined;

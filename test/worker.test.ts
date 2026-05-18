@@ -1,13 +1,15 @@
-import { describe, expect, test } from "vitest";
-import { CaptunRouteParts, CaptunShardName } from "../src/worker";
+import { describe, expect, test } from "vite-plus/test";
+import { captunRouteParts, captunShardName } from "../src/worker";
 
-describe("CaptunRouteParts", () => {
-  const cases: Array<[
-    hostname: string,
-    path: string,
-    tunnelName: string | undefined,
-    forwardedPath: string | undefined,
-  ]> = [
+describe("captunRouteParts", () => {
+  const cases: Array<
+    [
+      hostname: string,
+      path: string,
+      tunnelName: string | undefined,
+      forwardedPath: string | undefined,
+    ]
+  > = [
     ["captun.account.workers.dev", "/my-test/hello", "my-test", "/hello"],
     ["captun.account.workers.dev", "/my-test/__connect", "my-test", "/__connect"],
     ["captun.account.workers.dev", "/__connect", undefined, undefined],
@@ -25,21 +27,20 @@ describe("CaptunRouteParts", () => {
   ];
 
   test.each(cases)("%s%s -> %s %s", (hostname, path, tunnelName, forwardedPath) => {
-    expect(CaptunRouteParts(hostname, path)).toEqual(
+    expect(captunRouteParts(hostname, path)).toEqual(
       tunnelName ? { name: tunnelName, path: forwardedPath } : undefined,
     );
   });
 });
 
-describe("CaptunShardName", () => {
+describe("captunShardName", () => {
   test("uses one warm shard by default", () => {
-    expect(CaptunShardName("alpha", 1)).toBe("tunnel-shard-0");
-    expect(CaptunShardName("beta", 0)).toBe("tunnel-shard-0");
+    expect(captunShardName("alpha", 1)).toBe("tunnel-shard-0");
+    expect(captunShardName("beta", 0)).toBe("tunnel-shard-0");
   });
 
   test("keeps a tunnel name on a stable shard", () => {
-    expect(CaptunShardName("my-test", 16)).toBe(CaptunShardName("my-test", 16));
-    expect(CaptunShardName("my-test", 16)).toMatch(/^tunnel-shard-(?:[0-9]|1[0-5])$/);
+    expect(captunShardName("my-test", 16)).toBe(captunShardName("my-test", 16));
+    expect(captunShardName("my-test", 16)).toMatch(/^tunnel-shard-(?:[0-9]|1[0-5])$/);
   });
 });
-
