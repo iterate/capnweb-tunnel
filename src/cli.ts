@@ -50,8 +50,8 @@ const router = os.router({
           .int()
           .positive()
           .default(3000)
-          .meta({ positional: true })
-          .describe("Local port to expose"),
+          .describe("Local port to expose")
+          .meta({ positional: true }),
         name: z.string().optional().describe("Tunnel name"),
         serverUrl: z.url().optional().describe("Tunnel Worker base URL"),
         secret: z.string().optional().describe("Tunnel connection secret"),
@@ -71,7 +71,7 @@ const router = os.router({
       const tunnel = tunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;
 
-      const tunnelSession = await createCaptunTunnel({
+      using _tunnelSession = await createCaptunTunnel({
         url: new URL("__connect", tunnel),
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
         fetch: (request) => {
@@ -81,11 +81,7 @@ const router = os.router({
       });
 
       console.log(`tunneling ${tunnel} -> ${origin}`);
-      try {
-        await waitForShutdown();
-      } finally {
-        tunnelSession[Symbol.dispose]();
-      }
+      await waitForShutdown();
     }),
 
   deploy: os

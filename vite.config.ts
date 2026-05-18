@@ -16,6 +16,7 @@ export default defineConfig({
       cli: "src/cli.ts",
     },
     dts: { build: true },
+    target: "es2022",
     deps: {
       neverBundle: ["cloudflare:workers"],
     },

@@ -41,7 +41,7 @@
     "dev": "wrangler dev",
     "test": "vp test",
     "test:unit": "vp test test/worker.test.ts",
-    "cli": "node src/cli.ts",
+    "cli": "tsx src/cli.ts",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",
     "publish:dry-run": "pnpm publish --dry-run --no-git-checks"
@@ -56,6 +56,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.8.0",
+    "tsx": "^4.22.2",
     "typescript": "^6.0.3",
     "vite-plus": "^0.1.21",
     "wrangler": "^4.92.0"
