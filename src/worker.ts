@@ -27,14 +27,15 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       const expectedAuthorization = this.env.CAPTUN_SECRET
         ? `Bearer ${this.env.CAPTUN_SECRET}`
         : undefined;
-      if (
-        expectedAuthorization &&
-        !crypto.subtle.timingSafeEqual(
-          new TextEncoder().encode(routedRequest.headers.get("authorization") ?? ""),
-          new TextEncoder().encode(expectedAuthorization),
-        )
-      ) {
-        return new Response("Unauthorized\n", { status: 401 });
+      if (expectedAuthorization) {
+        const actual = new TextEncoder().encode(routedRequest.headers.get("authorization") ?? "");
+        const expected = new TextEncoder().encode(expectedAuthorization);
+        if (
+          actual.byteLength !== expected.byteLength ||
+          !crypto.subtle.timingSafeEqual(actual, expected)
+        ) {
+          return new Response("Unauthorized\n", { status: 401 });
+        }
       }
 
       this.tunnels.get(route.name)?.[Symbol.dispose]();
