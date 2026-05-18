@@ -4,11 +4,14 @@ import { createCaptunTunnel } from "../../src/client.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-const myWeatherAppUrl = process.env.WEATHER_REPORTER_URL;
-const testE2e = myWeatherAppUrl ? test : test.skip;
+const weatherReporterUrl = process.env.WEATHER_REPORTER_URL;
+if (!weatherReporterUrl) {
+  throw new Error("WEATHER_REPORTER_URL is required to load this e2e test module");
+}
+const myWeatherAppUrl = weatherReporterUrl;
 
 describe("weather reporter e2e", () => {
-  testE2e("returns nicely formatted weather report", async () => {
+  test("returns nicely formatted weather report", async () => {
     using _tunnel = await createCaptunTunnel({
       url: `${myWeatherAppUrl}/__intercept-egress-traffic`,
       fetch(request) {

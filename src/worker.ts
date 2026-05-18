@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "./server.ts";
-import type { CaptunServerTunnel } from "./types.ts";
+import type { CaptunServerTunnel } from "#types";
+import { acceptCaptunTunnel } from "captun/server";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;

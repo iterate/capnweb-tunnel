@@ -1,2 +1,2 @@
-export { createCaptunTunnel } from "./client.ts";
-export { acceptCaptunTunnel, acceptCaptunTunnelFromSocket } from "./server.ts";
+export { createCaptunTunnel } from "captun/client";
+export { acceptCaptunTunnel, acceptCaptunTunnelFromSocket } from "captun/server";

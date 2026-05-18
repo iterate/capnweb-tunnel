@@ -5,11 +5,12 @@ import { createCaptunTunnel } from "../src/client.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-const serverUrl = process.env.CAPTUN_SERVER_URL;
-const testE2e = serverUrl ? test.concurrent : test.skip;
+const captunServerUrl = process.env.CAPTUN_SERVER_URL;
+if (!captunServerUrl) throw new Error("CAPTUN_SERVER_URL is required to load this e2e test module");
+const serverUrl = captunServerUrl;
 
 describe("Captun e2e", () => {
-  testE2e("forwards HTTP", async ({ task }) => {
+  test.concurrent("forwards HTTP", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     using _tunnel = tunnel;
 
@@ -20,7 +21,7 @@ describe("Captun e2e", () => {
     expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
   });
 
-  testE2e("streams a binary response", async ({ task }) => {
+  test.concurrent("streams a binary response", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     using _tunnel = tunnel;
 
@@ -29,7 +30,7 @@ describe("Captun e2e", () => {
     expect(await readBytes(response)).toBe(2_097_152);
   });
 
-  testE2e("streams SSE events", async ({ task }) => {
+  test.concurrent("streams SSE events", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     using _tunnel = tunnel;
 
@@ -38,7 +39,7 @@ describe("Captun e2e", () => {
     expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
   });
 
-  testE2e("uploads a raw file body", async ({ task }) => {
+  test.concurrent("uploads a raw file body", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     using _tunnel = tunnel;
 
@@ -54,7 +55,7 @@ describe("Captun e2e", () => {
     });
   });
 
-  testE2e("uploads multipart form data", async ({ task }) => {
+  test.concurrent("uploads multipart form data", async ({ task }) => {
     const { url, tunnel } = await connectTunnel(task.name);
     using _tunnel = tunnel;
 
@@ -89,7 +90,6 @@ function tunnelName(testName: string) {
 }
 
 function tunnelUrl(name: string) {
-  if (!serverUrl) throw new Error("CAPTUN_SERVER_URL is required to run Captun e2e tests");
   if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
 
   const url = new URL(serverUrl);

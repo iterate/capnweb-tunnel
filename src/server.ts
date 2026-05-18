@@ -3,8 +3,8 @@ import type {
   CaptunClientRemoteFetcher,
   CaptunServerAcceptTunnelOptions,
   CaptunServerTunnel,
-} from "./types.ts";
-export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.ts";
+} from "#types";
+export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "#types";
 
 /** Creates a Worker WebSocket upgrade response and matching tunnel handle. */
 export function acceptCaptunTunnel(options: CaptunServerAcceptTunnelOptions = {}) {

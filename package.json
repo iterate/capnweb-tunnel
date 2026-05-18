@@ -32,6 +32,12 @@
       "import": "./src/server.ts"
     }
   },
+  "imports": {
+    "#types": {
+      "types": "./src/types.ts",
+      "default": "./src/types.ts"
+    }
+  },
   "publishConfig": {
     "bin": {
       "captun": "./dist/cli.js"
@@ -49,10 +55,16 @@
         "types": "./dist/server.d.ts",
         "import": "./dist/server.js"
       }
+    },
+    "imports": {
+      "#types": {
+        "types": "./dist/types.d.ts",
+        "default": "./dist/types.js"
+      }
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.lib.json && node scripts/rewrite-dts-imports.mjs && chmod +x dist/cli.js",
+    "build": "rm -rf dist && tsc -p tsconfig.lib.json",
     "check": "pnpm run typecheck",
     "typecheck": "tsc -p tsconfig.json && pnpm --filter @captun/weather-reporter typecheck",
     "deploy": "wrangler deploy",

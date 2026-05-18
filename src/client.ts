@@ -1,5 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "./types.ts";
+import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "#types";
 
 /** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
