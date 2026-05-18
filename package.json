@@ -12,6 +12,9 @@
   },
   "files": [
     "dist",
+    "src/worker.ts",
+    "src/server.ts",
+    "src/types.ts",
     "README.md",
     "wrangler.toml"
   ],
@@ -42,6 +45,7 @@
     "test": "vp test",
     "test:unit": "vp test test/worker.test.ts",
     "cli": "node src/cli.ts",
+    "smoke": "./scripts/smoke-test.sh",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",
     "publish:dry-run": "pnpm publish --dry-run --no-git-checks"
@@ -51,14 +55,14 @@
     "@orpc/server": "^1.14.3",
     "capnweb": "^0.8.0",
     "trpc-cli": "^0.14.1",
+    "wrangler": "^4.92.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.8.0",
     "typescript": "^6.0.3",
-    "vite-plus": "^0.1.21",
-    "wrangler": "^4.92.0"
+    "vite-plus": "^0.1.21"
   },
   "packageManager": "pnpm@10.11.1"
 }

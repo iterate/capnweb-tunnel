@@ -20,6 +20,9 @@ importers:
       trpc-cli:
         specifier: ^0.14.1
         version: 0.14.1(@orpc/server@1.14.3(ws@8.20.1))(zod@4.4.3)
+      wrangler:
+        specifier: ^4.92.0
+        version: 4.92.0(@cloudflare/workers-types@4.20260518.1)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -36,9 +39,6 @@ importers:
       vite-plus:
         specifier: ^0.1.21
         version: 0.1.21(@types/node@25.8.0)(esbuild@0.27.3)(typescript@6.0.3)(vite@8.0.13(@types/node@25.8.0)(esbuild@0.27.3))
-      wrangler:
-        specifier: ^4.92.0
-        version: 4.92.0(@cloudflare/workers-types@4.20260518.1)
 
   examples/weather-reporter:
     dependencies:
