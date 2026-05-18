@@ -24,6 +24,14 @@ using tunnel = await CaptunClient.connect({
 
 The core implementation is about 100 lines of TypeScript around [Cap'n Web](https://github.com/cloudflare/capnweb). Ask your AI agent to copy [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), [src/types.ts](./src/types.ts), and [src/worker.ts](./src/worker.ts) into your codebase and adapt them.
 
+## Use Cases
+
+Captun is useful anywhere you want a public URL to reach a `fetch()` function you control, especially when tunnel startup time matters:
+
+- E2E tests against deployed servers, where the deployed server needs to reach a mock server on your CI runner or dev machine.
+- Local previews, webhook callbacks, and temporary demos without running a managed tunnel service.
+- Fetch-shaped extension, agent, or plugin endpoints that need to be callable from a server.
+
 ## 1. CLI Usage
 
 Deploy the Worker first:
