@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { CaptunClient } from "./client.ts";
+import { createCaptunTunnel } from "./client.ts";
 
 const words = [
   ["apple", "amber", "bright", "cedar", "copper", "daisy", "ember", "forest", "ginger", "harbor", "indigo", "jolly", "kiwi", "lemon", "maple", "nova", "olive", "pearl", "quartz", "ruby"],
@@ -14,9 +14,9 @@ const port = args.find((arg, index) => !arg.startsWith("--") && args[index - 1] 
 const base = new URL(process.env.CAPTUN_SERVER_URL ?? "http://localhost:8787");
 base.pathname = base.hostname.match(/^[^.]+\.tunnels\./) ? "/" : `/${name}/`;
 
-using tunnel = await CaptunClient.connect({
-  serverUrl: base,
-  secret,
+using tunnel = await createCaptunTunnel({
+  url: new URL("__connect", base),
+  headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
   fetch: (request) => {
     const url = new URL(request.url);
     return fetch(new URL(url.pathname + url.search, `http://localhost:${port}`), request);

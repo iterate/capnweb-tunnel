@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, test, vi } from "vitest";
-import { CaptunClient } from "../src/client";
+import { createCaptunTunnel } from "../src/client";
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -78,9 +78,9 @@ describeE2e("Captun e2e", () => {
 async function connectTunnel(testName: string) {
   const name = tunnelName(testName);
   const url = tunnelUrl(name);
-  const tunnel = await CaptunClient.connect({
-    serverUrl: url,
-    secret: process.env.CAPTUN_SECRET,
+  const tunnel = await createCaptunTunnel({
+    url: new URL("__connect", url),
+    headers: process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined,
     fetch: testFetch,
   });
   return { url, tunnel };

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { CaptunClient } from "../src/client.ts";
+import { createCaptunTunnel } from "../src/client.ts";
 
 // Stress the expensive path: many named tunnels, each returning a large streamed
 // binary response through Captun. This measures aggregate tunnel throughput,
@@ -54,9 +54,9 @@ const connectConcurrency = Number(process.env.CONNECT_CONCURRENCY ?? 0);
 if (warmupCount > 0) {
   console.log(`warming ${warmupCount} tunnels`);
   await runPool(warmupCount, Math.min(warmupCount, Math.max(connectConcurrency, 25)), async (index) => {
-    const session = await CaptunClient.connect({
-      serverUrl: tunnelUrl(`${namePrefix}-warm-${index}`),
-      secret: process.env.CAPTUN_SECRET,
+    const session = await createCaptunTunnel({
+      url: new URL("__connect", tunnelUrl(`${namePrefix}-warm-${index}`)),
+      headers: captunHeaders(),
       fetch: () => testResponse("stream"),
     });
     session[Symbol.dispose]();
@@ -117,9 +117,9 @@ async function measure(index: number, mode: string): Promise<Measurement> {
   const eventLoopStarted = performance.eventLoopUtilization();
   let tunnel: Disposable | undefined;
   try {
-    tunnel = await CaptunClient.connect({
-      serverUrl: url,
-      secret: process.env.CAPTUN_SECRET,
+    tunnel = await createCaptunTunnel({
+      url: new URL("__connect", url),
+      headers: captunHeaders(),
       fetch: () => testResponse(mode),
     });
     const connectedAt = performance.now();
@@ -149,6 +149,10 @@ async function measure(index: number, mode: string): Promise<Measurement> {
   } finally {
     tunnel?.[Symbol.dispose]();
   }
+}
+
+function captunHeaders() {
+  return process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined;
 }
 
 function testResponse(mode: string) {

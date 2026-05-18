@@ -14,23 +14,15 @@ curl https://captun.<your-account>.workers.dev/demo/
 Or use it directly from code:
 
 ```ts
-import { CaptunClient } from "captun";
+import { createCaptunTunnel } from "captun";
 
-using tunnel = await CaptunClient.connect({
-  serverUrl: "https://captun.<your-account>.workers.dev/demo",
+using tunnel = await createCaptunTunnel({
+  url: "https://captun.<your-account>.workers.dev/demo/__connect",
   fetch: (request) => fetch(request),
 });
 ```
 
 The core implementation is about 100 lines of TypeScript around [Cap'n Web](https://github.com/cloudflare/capnweb). Ask your AI agent to copy [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), [src/types.ts](./src/types.ts), and [src/worker.ts](./src/worker.ts) into your codebase and adapt them.
-
-## Use Cases
-
-Captun is useful anywhere you want a public URL to reach a `fetch()` function you control, especially when tunnel startup time matters:
-
-- E2E tests against deployed servers, where the deployed server needs to reach a mock server on your CI runner or dev machine.
-- Local previews, webhook callbacks, and temporary demos without running a managed tunnel service.
-- Fetch-shaped extension, agent, or plugin endpoints that need to be callable from a server.
 
 ## 1. CLI Usage
 
@@ -71,11 +63,13 @@ pnpm exec wrangler deploy --var CAPTUN_SHARDS:256
 The client side is just a disposable connection:
 
 ```ts
-import { CaptunClient } from "captun";
+import { createCaptunTunnel } from "captun";
 
-using tunnel = await CaptunClient.connect({
-  serverUrl: "https://captun.example.workers.dev/my-test",
-  secret: process.env.CAPTUN_SECRET,
+using tunnel = await createCaptunTunnel({
+  url: "https://captun.example.workers.dev/my-test/__connect",
+  headers: process.env.CAPTUN_SECRET
+    ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
+    : undefined,
   fetch: async (request) => {
     const url = new URL(request.url);
     return fetch(`http://localhost:3000${url.pathname}${url.search}`, request);
@@ -83,18 +77,27 @@ using tunnel = await CaptunClient.connect({
 });
 ```
 
-On the server side, drop `CaptunServer` into a Durable Object and hand matching requests to `server.fetch(request)`:
+On the server side, authorize your connect route, accept it as a tunnel, then hand normal requests to `tunnel.fetch(request)`:
 
 ```ts
-import { CaptunServer } from "captun";
+import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun";
 
 export class MyDurableObject {
-  private readonly captun = new CaptunServer();
+  private tunnel?: CaptunServerTunnel;
 
   fetch(request: Request) {
     const url = new URL(request.url);
+    if (url.pathname === "/egress/__connect") {
+      const { response, tunnel } = acceptCaptunTunnel({
+        onDisconnect: () => {
+          if (this.tunnel === tunnel) this.tunnel = undefined;
+        },
+      });
+      this.tunnel = tunnel;
+      return response;
+    }
     if (url.pathname.startsWith("/egress/")) {
-      return this.captun.fetch(request);
+      return this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 });
     }
     return new Response("Not found", { status: 404 });
   }
@@ -105,7 +108,7 @@ export class MyDurableObject {
 
 We just pass `fetch()` through `fetch()`. No, really.
 
-With Cap'n Web, the Node client opens a WebSocket RPC session to the Worker and calls `useFetcher(fetcher)`, passing a capability whose only interesting method is `fetch(request)`. From then on, the Worker can forward public HTTP requests to that function and return the resulting `Response`.
+With Cap'n Web, the Node client opens a WebSocket RPC session to the Worker and exposes its local fetcher as the session's main capability. The Worker's tunnel handle is a stub for that capability, whose only interesting method is `fetch(request)`. From then on, the Worker can forward public HTTP requests to that function and return the resulting `Response`.
 
 All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE, and uploads are already web standards; this is the web-standards way this should work.
 
@@ -115,8 +118,7 @@ sequenceDiagram
   participant Server as Cloudflare Worker / CaptunServerShard
   participant Client as Node client
 
-  Client->>Server: WebSocket RPC connect to /demo/__connect
-  Client->>Server: useFetcher(fetcher)
+  Client->>Server: WebSocket RPC connect to /demo/__connect with fetcher as main capability
   HTTP->>Server: GET /demo/report
   Server->>Client: fetch(request)
   Client-->>Server: Response

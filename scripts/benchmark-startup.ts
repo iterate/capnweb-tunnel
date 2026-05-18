@@ -4,7 +4,7 @@ import { resolve4 } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
-import { CaptunClient } from "../src/client.ts";
+import { createCaptunTunnel } from "../src/client.ts";
 
 // Measures time from "start creating a tunnel" to the first successful public
 // HTTP fetch through that tunnel. It can compare this project with cloudflared
@@ -100,9 +100,9 @@ async function measureCaptun(index: number, originUrl: string): Promise<Measurem
   const started = performance.now();
   let tunnel: Disposable | undefined;
   try {
-    tunnel = await CaptunClient.connect({
-      serverUrl: url,
-      secret: process.env.CAPTUN_SECRET,
+    tunnel = await createCaptunTunnel({
+      url: new URL("__connect", url),
+      headers: process.env.CAPTUN_SECRET ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` } : undefined,
       fetch: (request) => {
         const incoming = new URL(request.url);
         return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);

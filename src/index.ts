@@ -1,3 +1,9 @@
-export { CaptunClient } from "./client.ts";
-export { CaptunServer } from "./server.ts";
-export type { CaptunClientCapability, CaptunFetcher, CaptunServerCapability } from "./types.ts";
+export { createCaptunTunnel } from "./client.ts";
+export { acceptCaptunTunnel } from "./server.ts";
+export type {
+  AcceptCaptunTunnelOptions,
+  CaptunClientCapability,
+  CaptunServerTunnel,
+  CreateCaptunTunnelOptions,
+  Fetcher,
+} from "./types.ts";

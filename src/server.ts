@@ -1,61 +1,42 @@
-import { newWorkersRpcResponse, RpcTarget, type RpcStub } from "capnweb";
-import type { CaptunClientCapability, CaptunServerCapability } from "./types";
+import { newWebSocketRpcSession } from "capnweb";
+import type { AcceptCaptunTunnelOptions, CaptunClientCapability, CaptunServerTunnel } from "./types";
 
-/** Drop into a Durable Object and call `server.fetch(request)`.
+/** Creates a Worker WebSocket upgrade response and matching tunnel handle.
  *
- * The client connects to `/__connect` and calls `useFetcher(fetcher)`.
- * Every other request is forwarded through that client-provided fetcher.
+ * Routing, auth, and deciding which requests are connect requests are deliberately
+ * outside this helper. The Worker owns that policy; this helper only turns an
+ * already-authorized WebSocket request into a server-side `CaptunServerTunnel`.
  *
  * Captun: https://github.com/cloudflare/capnweb
  * Worker WebSockets: https://developers.cloudflare.com/workers/runtime-apis/websockets/ */
-export class CaptunServer {
-  #fetcher?: RpcStub<CaptunClientCapability>;
-  #secret?: string;
-  #onDisconnect?: () => void;
+export function acceptCaptunTunnel(options: AcceptCaptunTunnelOptions = {}): { response: Response; tunnel: CaptunServerTunnel } {
+  const pair = new WebSocketPair();
+  const clientSocket = pair[0];
+  const serverSocket = pair[1];
 
-  constructor(options: { secret?: string; onDisconnect?: () => void } = {}) {
-    this.#secret = options.secret;
-    this.#onDisconnect = options.onDisconnect;
-  }
+  serverSocket.accept();
+  // This is the other side of `createCaptunTunnel()`: the client passed a
+  // `CaptunClientCapability` into `newWebSocketRpcSession()`, and accepting the
+  // same WebSocket returns a stub for that remote client object here.
+  //
+  // The Durable Object keeps that stub and calls `fetch()` on it later for
+  // unrelated public HTTP requests.
+  //
+  // `newWorkersRpcResponse()` also creates a Worker WebSocket upgrade response,
+  // but it only returns the response. Here we need both the response and the
+  // remote client stub, so we do the Worker WebSocketPair wiring directly.
+  //
+  // Docs: https://github.com/cloudflare/capnweb#websocket-client
+  const clientMainObjectStub = newWebSocketRpcSession<CaptunClientCapability>(serverSocket);
+  clientMainObjectStub.onRpcBroken(() => options.onDisconnect?.());
 
-  async fetch(request: Request) {
-    const url = new URL(request.url);
-    if (url.pathname === "/__connect") {
-      if (this.#secret && url.searchParams.get("secret") !== this.#secret) {
-        return new Response("Unauthorized\n", { status: 401 });
-      }
-      // Keep the RPC surface narrow; RpcTarget exposes all prototype methods.
-      return newWorkersRpcResponse(request, new CaptunServerImplementation(this));
-    }
-    if (!this.#fetcher) return new Response("No tunnel client connected\n", { status: 503 });
-    return this.#fetcher.fetch(request);
-  }
+  const tunnel: CaptunServerTunnel = {
+    fetch: (request) => clientMainObjectStub.fetch(request),
+    [Symbol.dispose]: () => clientMainObjectStub[Symbol.dispose](),
+  };
 
-  useFetcher(fetcher: RpcStub<CaptunClientCapability>) {
-    this.#fetcher?.[Symbol.dispose]();
-    // Keep our own stub alive, and clear it when the RPC connection breaks:
-    // https://github.com/cloudflare/capnweb#duplicating-stubs
-    // https://github.com/cloudflare/capnweb#listening-for-disconnect
-    const activeFetcher = fetcher.dup();
-    this.#fetcher = activeFetcher;
-    activeFetcher.onRpcBroken(() => {
-      if (this.#fetcher === activeFetcher) {
-        this.#fetcher = undefined;
-        this.#onDisconnect?.();
-      }
-    });
-  }
-}
-
-class CaptunServerImplementation extends RpcTarget implements CaptunServerCapability {
-  readonly server: CaptunServer;
-
-  constructor(server: CaptunServer) {
-    super();
-    this.server = server;
-  }
-
-  useFetcher(fetcher: RpcStub<CaptunClientCapability>) {
-    this.server.useFetcher(fetcher);
-  }
+  return {
+    tunnel,
+    response: new Response(null, { status: 101, webSocket: clientSocket }),
+  };
 }

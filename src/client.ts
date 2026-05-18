@@ -1,43 +1,52 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import type { CaptunClientCapability, CaptunServerCapability, CaptunFetcher } from "./types";
+import WebSocket from "ws";
+import type { CaptunClientCapability, CreateCaptunTunnelOptions } from "./types";
 
-/** Connects a public Worker URL to a local fetch implementation.
+/** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
- * Captun gives us one WebSocket RPC session. The client immediately calls
- * `useFetcher(fetcher)`, passing an RPC target the Worker can call later.
+ * Captun gives us one WebSocket RPC session. The client exposes a local
+ * `CaptunClientCapability` as the session's main object, and the Worker gets a
+ * remote stub for that same object when it accepts the WebSocket.
  *
- * https://github.com/cloudflare/capnweb
+ * Cap'n Web WebSocket sessions:
+ * https://github.com/cloudflare/capnweb#websocket-client
  */
-export class CaptunClient {
-  private constructor() {}
-
-  static async connect(options: { serverUrl: string | URL; fetch: CaptunFetcher; secret?: string }): Promise<Disposable> {
-    const connectUrl = new URL(options.serverUrl);
-    connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
-    if (!connectUrl.pathname.endsWith("/__connect")) {
-      connectUrl.pathname = `${connectUrl.pathname.replace(/\/$/, "")}/__connect`;
-    }
-    if (options.secret) connectUrl.searchParams.set("secret", options.secret);
-
-    const fetcher = new CaptunClientImplementation(options.fetch);
-    const server = newWebSocketRpcSession<CaptunServerCapability>(connectUrl.toString());
-    // This is where we pass our local fetch function to the server.
-    await server.useFetcher(fetcher);
-    return {
-      [Symbol.dispose]: () => {
-        server[Symbol.dispose]();
-      },
-    };
-  }
+export async function createCaptunTunnel(options: CreateCaptunTunnelOptions): Promise<Disposable> {
+  const connectUrl = webSocketUrl(options.url);
+  const clientMainObject = new LocalCaptunClientMainObject(options.fetch);
+  const socket = await connectWebSocket(connectUrl, options.headers);
+  // `clientMainObject` is the object the server will receive as its remote
+  // main-object stub. The server does not expose its own useful main object, so
+  // we keep the returned stub only as the disposable session handle.
+  const session = newWebSocketRpcSession(socket, clientMainObject);
+  return {
+    [Symbol.dispose]: () => {
+      session[Symbol.dispose]();
+    },
+  };
 }
 
-/**
- * This RpcTarget is passed to the tunnel server.
- */
-class CaptunClientImplementation extends RpcTarget implements CaptunClientCapability {
-  private _fetch: CaptunFetcher;
+function webSocketUrl(serverUrl: string | URL) {
+  const connectUrl = new URL(serverUrl);
+  connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
+  return connectUrl;
+}
 
-  constructor(fetch: CaptunFetcher) {
+function connectWebSocket(url: URL, headers: HeadersInit | undefined): Promise<globalThis.WebSocket> {
+  // The standard WebSocket constructor cannot send custom request headers.
+  // `ws` has the runtime shape Cap'n Web needs, but not the DOM WebSocket type.
+  const socket = new WebSocket(url, headers ? { headers: Object.fromEntries(new Headers(headers)) } : undefined);
+  return new Promise((resolve, reject) => {
+    socket.once("open", () => resolve(socket as unknown as globalThis.WebSocket));
+    socket.once("error", reject);
+  });
+}
+
+/** Local object that becomes the server's remote main-object stub. */
+class LocalCaptunClientMainObject extends RpcTarget implements CaptunClientCapability {
+  private _fetch: CaptunClientCapability["fetch"];
+
+  constructor(fetch: CaptunClientCapability["fetch"]) {
     super();
     this._fetch = fetch;
   }

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest";
-import { CaptunServer } from "../src/server";
 import { CaptunRouteParts, CaptunShardName } from "../src/worker";
 
 describe("CaptunRouteParts", () => {
@@ -44,16 +43,3 @@ describe("CaptunShardName", () => {
   });
 });
 
-describe("CaptunServer", () => {
-  test("returns 503 before a client connects", async () => {
-    const response = await new CaptunServer().fetch(new Request("https://example.com/hello"));
-    expect(response.status).toBe(503);
-  });
-
-  test("rejects connect requests with the wrong secret", async () => {
-    const response = await new CaptunServer({ secret: "secret" }).fetch(
-      new Request("https://example.com/__connect?secret=wrong"),
-    );
-    expect(response.status).toBe(401);
-  });
-});

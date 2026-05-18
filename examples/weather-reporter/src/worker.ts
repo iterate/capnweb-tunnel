@@ -1,13 +1,13 @@
-import { CaptunServer, type CaptunFetcher } from "captun";
+import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun";
 
 type WeatherReporterOptions = {
-  internetFetch?: CaptunFetcher;
+  internetFetch?: CaptunServerTunnel["fetch"];
 };
 
 export function createWeatherReporter(options: WeatherReporterOptions = {}) {
-  let egressTunnel: CaptunServer | undefined;
+  let egressTunnel: CaptunServerTunnel | undefined;
 
-  const internetFetch: CaptunFetcher = (request) => {
+  const internetFetch: CaptunServerTunnel["fetch"] = (request) => {
     if (options.internetFetch) return options.internetFetch(request);
     if (egressTunnel) return egressTunnel.fetch(request);
     return fetch(request);
@@ -25,8 +25,14 @@ export function createWeatherReporter(options: WeatherReporterOptions = {}) {
       }
 
       if (url.pathname === "/__intercept-egress-traffic") {
-        egressTunnel = new CaptunServer();
-        return egressTunnel.fetch(request);
+        egressTunnel?.[Symbol.dispose]();
+        const { response, tunnel } = acceptCaptunTunnel({
+          onDisconnect: () => {
+            if (egressTunnel === tunnel) egressTunnel = undefined;
+          },
+        });
+        egressTunnel = tunnel;
+        return response;
       }
 
       return new Response("Not found\n", { status: 404 });

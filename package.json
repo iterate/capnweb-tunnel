@@ -9,11 +9,9 @@
     "url": "https://github.com/iterate/captun.git"
   },
   "bin": {
-    "captun": "./src/cli.ts"
+    "captun": "./dist/cli.js"
   },
-  "types": "./src/index.ts",
   "files": [
-    "src",
     "dist",
     "README.md",
     "wrangler.toml"
@@ -28,8 +26,8 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
@@ -43,11 +41,13 @@
     "cli": "node src/cli.ts"
   },
   "dependencies": {
-    "capnweb": "^0.8.0"
+    "capnweb": "^0.8.0",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.8.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6",
     "wrangler": "^4.92.0"

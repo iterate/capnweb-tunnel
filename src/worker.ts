@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { CaptunServer } from "./server";
+import { acceptCaptunTunnel } from "./server";
+import type { CaptunServerTunnel } from "./types";
 
 interface CaptunEnv {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
@@ -16,22 +17,35 @@ interface CaptunEnv {
  * aggregate throughput for lots of concurrent large responses.
  */
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
-  private readonly tunnels = new Map<string, CaptunServer>();
+  private readonly tunnels = new Map<string, CaptunServerTunnel>();
 
   fetch(request: Request) {
     const route = CaptunRouteParts("localhost", new URL(request.url).pathname);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
 
-    let tunnel = this.tunnels.get(route.name);
-    if (!tunnel) {
-      tunnel = new CaptunServer({
-        secret: this.env.CAPTUN_SECRET,
-        onDisconnect: () => this.tunnels.delete(route.name),
+    const routedRequest = rewritePath(request, route.path);
+    if (route.path === "/__connect") {
+      if (!connectHeadersMatch(routedRequest.headers, this.env)) {
+        return new Response("Unauthorized\n", { status: 401 });
+      }
+
+      this.tunnels.get(route.name)?.[Symbol.dispose]();
+      // Accepting the WebSocket gives us the 101 response for this connect
+      // request, plus a tunnel handle backed by the client's main-object stub.
+      const { response, tunnel } = acceptCaptunTunnel({
+        onDisconnect: () => {
+          if (this.tunnels.get(route.name) === tunnel) {
+            this.tunnels.delete(route.name);
+          }
+        },
       });
       this.tunnels.set(route.name, tunnel);
+      return response;
     }
 
-    return tunnel.fetch(rewritePath(request, route.path));
+    const tunnel = this.tunnels.get(route.name);
+    if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
+    return tunnel.fetch(routedRequest);
   }
 }
 
@@ -111,4 +125,19 @@ function rewritePath(request: Request, pathname: string) {
   if (url.pathname === pathname) return request;
   url.pathname = pathname;
   return new Request(url, request);
+}
+
+function connectHeadersMatch(headers: Headers, env: CaptunEnv) {
+  if (!env.CAPTUN_SECRET) return true;
+  return constantTimeEqual(headers.get("authorization") ?? "", `Bearer ${env.CAPTUN_SECRET}`);
+}
+
+function constantTimeEqual(left: string, right: string) {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  let diff = leftBytes.length ^ rightBytes.length;
+  for (let index = 0; index < Math.max(leftBytes.length, rightBytes.length); index++) {
+    diff |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return diff === 0;
 }
