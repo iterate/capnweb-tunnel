@@ -7,14 +7,14 @@ incoming HTTP requests.
 
 Deploy it:
 
-```sh
+```bash
 npm install
 npx wrangler deploy
 ```
 
 Expose a local server through a folder tunnel:
 
-```sh
+```bash
 python3 -m http.server 3000
 
 TUNNEL_SERVER_URL=https://capnweb-tunnel.<your-account>.workers.dev \
@@ -23,7 +23,7 @@ npm run cli -- --name my-test 3000
 
 Then call it from any HTTP client:
 
-```sh
+```bash
 curl https://capnweb-tunnel.<your-account>.workers.dev/my-test/
 ```
 
@@ -39,7 +39,7 @@ const client = new CapnwebTunnelClient("https://example.workers.dev/my-test", {
 await client.connect();
 ```
 
-It is about 100 lines of code, built on
+The core client/server/types implementation is about 100 lines of code, built on
 [Capnweb](https://github.com/cloudflare/capnweb). Ask your AI agent to copy it
 into your project and adapt it.
 
@@ -111,14 +111,14 @@ https://capnweb-tunnel.<your-account>.workers.dev/my-test
 
 Deploy the Worker:
 
-```sh
+```bash
 npm install
 npx wrangler deploy
 ```
 
 Run the client:
 
-```sh
+```bash
 TUNNEL_SERVER_URL=https://capnweb-tunnel.<your-account>.workers.dev \
 npm run cli -- --name my-test 3000
 ```
@@ -134,55 +134,35 @@ server sees `/anything`.
 
 ## Custom Hostnames
 
-You can put the Worker on your own hostname and keep the same folder-based
-tunnel URLs:
-
-```sh
-npx wrangler deploy --route tunnels.example.com/*
-```
-
-Then use `https://tunnels.example.com/my-test`.
-
-You can also use wildcard subdomains for named tunnels:
+Some proxy targets behave better with naked hostnames than with path prefixes.
+In that case, use the hostname to pick the tunnel:
 
 ```text
 https://my-test.tunnels.example.com
 ```
 
-deploy with a wildcard Worker route:
+Deploy with a wildcard Worker route:
 
-```sh
+```bash
 npx wrangler deploy \
-  --route tunnels.example.com/* \
   --route "*.tunnels.example.com/*"
 ```
 
-With that route, the Worker takes the tunnel name from the hostname instead of
-the first path segment. The same tunnel can then be reached as
-`https://my-test.tunnels.example.com/anything`, and the client can connect to
-`https://my-test.tunnels.example.com`.
+Option 1: use a subdomain of your existing domain, like
+`*.tunnels.example.com`. This needs a proxied wildcard DNS record and an edge
+certificate for the nested wildcard, usually via Cloudflare Advanced Certificate
+Manager / Total TLS.
 
-```sh
-TUNNEL_SERVER_URL=https://my-test.tunnels.example.com npm run cli -- 3000
-```
+Option 2: buy a dedicated domain like `my-tunnels.com` for around $10/year and
+use `*.my-tunnels.com`. That wildcard is only one level deep, so it fits
+Cloudflare's normal Universal SSL setup and avoids the advanced certificate
+work.
 
-You also need a proxied wildcard DNS record for `*.tunnels.example.com` and a
-Cloudflare edge certificate covering `*.tunnels.example.com`.
-Universal SSL on a normal full-zone setup covers `example.com` and
-`*.example.com`; it does not cover nested wildcards like
-`*.tunnels.example.com`. Use Advanced Certificate Manager / Total TLS, or order
-an advanced certificate for `*.tunnels.example.com`.
-
-If you do not want Advanced Certificate Manager, use `https://tunnels.example.com`
-instead of `https://name.tunnels.example.com`, or route directly from
-`*.example.com/*` if you are happy to reserve the whole first-level wildcard for
-tunnels.
-
-Cloudflare docs:
-
-- Universal SSL: https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/
-- Universal SSL limitations: https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/
-- Worker routes: https://developers.cloudflare.com/workers/configuration/routing/routes/
+See Cloudflare's docs on
+[Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/),
+[Universal SSL limitations](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/),
+and [Worker routes](https://developers.cloudflare.com/workers/configuration/routing/routes/)
+for the underlying platform rules.
 
 ## Durable Object Integration
 
@@ -225,39 +205,46 @@ The shared interface is deliberately tiny:
 ```ts
 import type { RpcTarget } from "capnweb";
 
-export interface CapnwebTunnelFetcher extends RpcTarget {
-  fetch(request: Request): Response | Promise<Response>;
+export type Fetcher = (request: Request) => Response | Promise<Response>;
+
+export interface CapnwebTunnelClientCapability extends RpcTarget {
+  fetch: Fetcher;
 }
 
-export interface CapnwebTunnelServerApi extends RpcTarget {
-  useFetcher(fetcher: CapnwebTunnelFetcher): string | Promise<string>;
+export interface CapnwebTunnelServerCapability extends RpcTarget {
+  useFetcher(fetcher: CapnwebTunnelClientCapability): void | Promise<void>;
 }
 ```
 
 ## CLI
 
-```sh
+```bash
 TUNNEL_SERVER_URL=https://example.workers.dev npm run cli -- --name my-test 3000
 ```
 
 ## Test
 
-```sh
+```bash
 npm install
 npm run typecheck
 ```
 
 In one terminal:
 
-```sh
+```bash
 npm run dev
 ```
 
 In another terminal:
 
-```sh
+```bash
 npm test
 ```
 
 `TUNNEL_SERVER_URL` defaults to `http://localhost:8787`. Set it to a deployed
-Worker URL to test against Cloudflare.
+Worker URL to test against Cloudflare. For wildcard subdomains, use `{name}` as
+a placeholder so each concurrent test gets its own hostname:
+
+```bash
+TUNNEL_SERVER_URL=https://{name}.tunnels.example.com npm test
+```

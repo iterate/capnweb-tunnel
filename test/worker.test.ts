@@ -14,6 +14,8 @@ describe("tunnelRouteParts", () => {
     ["capnweb-tunnel.account.workers.dev", "/", undefined, undefined],
     ["localhost", "/my-test/hello", "my-test", "/hello"],
     ["my-tunnels.com", "/my-test/hello", "my-test", "/hello"],
+    ["tunnels.example.com", "/my-test/hello", "my-test", "/hello"],
+    ["tunnels.example.com", "/my-test/__connect", "my-test", "/__connect"],
     ["my-test.tunnels.example.com", "/hello", "my-test", "/hello"],
     ["my-test.my-tunnels.com", "/hello", "my-test", "/hello"],
     ["my-test.my-tunnels.com", "/__connect", "my-test", "/__connect"],

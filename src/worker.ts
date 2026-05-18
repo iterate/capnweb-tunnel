@@ -59,5 +59,6 @@ function usesFolderRouting(hostname: string) {
   return hostname === "localhost"
     || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
     || hostname.endsWith(".workers.dev")
+    || hostname.startsWith("tunnels.")
     || hostname.split(".").length < 3;
 }

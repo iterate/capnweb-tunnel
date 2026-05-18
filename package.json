@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "vitest run test/e2e.test.ts",
+    "test": "vitest run test/*.test.ts",
     "test:unit": "vitest run test/worker.test.ts",
     "cli": "node --experimental-strip-types src/cli.ts"
   },

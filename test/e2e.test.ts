@@ -60,13 +60,32 @@ describe("Capnweb tunnel e2e", () => {
 });
 
 async function connectTunnel(testName: string) {
-  const name = slug(`${testName}-${process.pid}-${Date.now()}-${Math.random()}`);
-  const url = new URL(`/${name}/`, serverUrl);
+  const name = tunnelName(testName);
+  const url = tunnelUrl(name);
   const client = new CapnwebTunnelClient(url, {
     fetch: testFetch,
   });
   await client.connect();
   return { url, client };
+}
+
+function tunnelName(testName: string) {
+  const seed = `${testName}-${process.pid}-${Date.now()}-${Math.random()}`;
+  const prefix = slug(testName).slice(0, 32).replace(/-$/, "") || "test";
+  const hash = createHash("sha256").update(seed).digest("hex").slice(0, 12);
+  return `${prefix}-${hash}`;
+}
+
+function tunnelUrl(name: string) {
+  if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
+
+  const url = new URL(serverUrl);
+  if (url.hostname.match(/^[^.]+\.tunnels\./)) {
+    url.pathname = "/";
+  } else {
+    url.pathname = `/${name}/`;
+  }
+  return url;
 }
 
 function slug(value: string) {
