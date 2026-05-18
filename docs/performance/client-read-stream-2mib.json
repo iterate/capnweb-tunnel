@@ -1,0 +1,83 @@
+{
+  "serverUrl": "https://capnweb-tunnel-sharded-bench.templestein.workers.dev",
+  "bytes": 2097152,
+  "chunkBytes": 65536,
+  "modes": [
+    "stream",
+    "bytes",
+    "text"
+  ],
+  "readMode": "stream",
+  "timeoutMs": 60000,
+  "results": [
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 529.8485410000001,
+      "p90": 529.8485410000001,
+      "p99": 529.8485410000001,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "stream",
+          "connectMs": 113.98833299999998,
+          "responseMs": 91.235083,
+          "readMs": 324.625125,
+          "fetchMs": 415.86020800000006,
+          "totalMs": 529.8485410000001,
+          "clientCpuMs": 148.622,
+          "clientEventLoopUtilization": 0.15759053013480093,
+          "bytes": 2097152
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 490.823042,
+      "p90": 490.823042,
+      "p99": 490.823042,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "bytes",
+          "connectMs": 100.47054200000002,
+          "responseMs": 70.20962500000007,
+          "readMs": 320.1428749999999,
+          "fetchMs": 390.35249999999996,
+          "totalMs": 490.823042,
+          "clientCpuMs": 69.113,
+          "clientEventLoopUtilization": 0.1321054749669343,
+          "bytes": 2097152
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 361.2423749999998,
+      "p90": 361.2423749999998,
+      "p99": 361.2423749999998,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "text",
+          "connectMs": 86.62587499999995,
+          "responseMs": 61.064959000000044,
+          "readMs": 213.55154099999982,
+          "fetchMs": 274.61649999999986,
+          "totalMs": 361.2423749999998,
+          "clientCpuMs": 46.681,
+          "clientEventLoopUtilization": 0.08926133121788114,
+          "bytes": 2097152
+        }
+      ]
+    }
+  ]
+}

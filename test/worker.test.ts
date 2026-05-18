@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { CapnwebTunnelServer } from "../src/server";
-import { tunnelRouteParts } from "../src/worker";
+import { tunnelRouteParts, tunnelShardName } from "../src/worker";
 
 describe("tunnelRouteParts", () => {
   const cases: Array<[
@@ -29,6 +29,18 @@ describe("tunnelRouteParts", () => {
     expect(tunnelRouteParts(hostname, path)).toEqual(
       tunnelName ? { name: tunnelName, path: forwardedPath } : undefined,
     );
+  });
+});
+
+describe("tunnelShardName", () => {
+  test("uses one warm shard by default", () => {
+    expect(tunnelShardName("alpha", 1)).toBe("tunnel-shard-0");
+    expect(tunnelShardName("beta", 0)).toBe("tunnel-shard-0");
+  });
+
+  test("keeps a tunnel name on a stable shard", () => {
+    expect(tunnelShardName("my-test", 16)).toBe(tunnelShardName("my-test", 16));
+    expect(tunnelShardName("my-test", 16)).toMatch(/^tunnel-shard-(?:[0-9]|1[0-5])$/);
   });
 });
 

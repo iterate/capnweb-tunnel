@@ -8,7 +8,7 @@ const serverUrl = requiredEnv("TUNNEL_SERVER_URL");
 
 describe("Capnweb tunnel e2e", () => {
   test.concurrent("forwards HTTP", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
+    const { url, tunnel } = await connectTunnel(task.name);
     try {
       const response = await fetch(new URL("hello", url), {
         method: "POST",
@@ -16,34 +16,34 @@ describe("Capnweb tunnel e2e", () => {
       });
       expect(await response.json()).toMatchObject({ path: "/hello", body: "hello through tunnel" });
     } finally {
-      client.close();
+      tunnel[Symbol.dispose]();
     }
   });
 
   test.concurrent("streams a binary response", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
+    const { url, tunnel } = await connectTunnel(task.name);
     try {
       const response = await fetch(new URL("stream", url));
       expect(response.status).toBe(200);
       expect(await readBytes(response)).toBe(2_097_152);
     } finally {
-      client.close();
+      tunnel[Symbol.dispose]();
     }
   });
 
   test.concurrent("streams SSE events", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
+    const { url, tunnel } = await connectTunnel(task.name);
     try {
       const response = await fetch(new URL("sse", url));
       expect(response.headers.get("content-type")).toContain("text/event-stream");
       expect((await response.text()).match(/^event: tunnel$/gm)).toHaveLength(5);
     } finally {
-      client.close();
+      tunnel[Symbol.dispose]();
     }
   });
 
   test.concurrent("uploads a raw file body", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
+    const { url, tunnel } = await connectTunnel(task.name);
     try {
       const bytes = makeBytes(1024 * 1024);
       const response = await fetch(new URL("upload", url), {
@@ -53,12 +53,12 @@ describe("Capnweb tunnel e2e", () => {
       });
       expect(await response.json()).toMatchObject({ bytes: bytes.byteLength, sha256: sha256(bytes) });
     } finally {
-      client.close();
+      tunnel[Symbol.dispose]();
     }
   });
 
   test.concurrent("uploads multipart form data", async ({ task, expect }) => {
-    const { url, client } = await connectTunnel(task.name);
+    const { url, tunnel } = await connectTunnel(task.name);
     try {
       const file = makeBytes(256 * 1024);
       const form = new FormData();
@@ -68,7 +68,7 @@ describe("Capnweb tunnel e2e", () => {
       const response = await fetch(new URL("multipart", url), { method: "POST", body: form });
       expect(hasMultipartFilePart(await response.json(), file.byteLength, sha256(file))).toBe(true);
     } finally {
-      client.close();
+      tunnel[Symbol.dispose]();
     }
   });
 
@@ -77,12 +77,12 @@ describe("Capnweb tunnel e2e", () => {
 async function connectTunnel(testName: string) {
   const name = tunnelName(testName);
   const url = tunnelUrl(name);
-  const client = new CapnwebTunnelClient(url, {
+  const tunnel = await CapnwebTunnelClient.connect({
+    serverUrl: url,
     secret: process.env.TUNNEL_SECRET,
     fetch: testFetch,
   });
-  await client.connect();
-  return { url, client };
+  return { url, tunnel };
 }
 
 function tunnelName(testName: string) {

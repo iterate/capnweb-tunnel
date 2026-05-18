@@ -1,0 +1,11 @@
+name = "capnweb-tunnel-bench-capnweb"
+main = "minimal-capnweb-worker.ts"
+compatibility_date = "2026-05-15"
+
+[[durable_objects.bindings]]
+name = "TEST"
+class_name = "TestDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TestDurableObject"]

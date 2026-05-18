@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "rootDir": "src",
     "outDir": "dist",
     "target": "ESNext",
     "module": "ESNext",
@@ -8,10 +9,10 @@
     "types": ["node", "@cloudflare/workers-types"],
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true,
     "declaration": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src"],
   "exclude": ["src/new-cli.ts"]
 }

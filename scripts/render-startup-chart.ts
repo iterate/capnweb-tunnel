@@ -50,8 +50,9 @@ function svg() {
 }
 
 function grid() {
-  const xTicks = [1, 10, 100, 500, 1000, 2000];
-  const yTicks = [0, 10_000, 20_000, 30_000, 40_000];
+  const xTicks = [1, 10, 100, 500, 1000, 2000].filter((tick) => tick <= maxX);
+  const yStep = Math.max(100, Math.ceil(maxY / 4 / 100) * 100);
+  const yTicks = Array.from({ length: 5 }, (_, index) => index * yStep);
   return `
   <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" stroke="#111827"/>
   <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#111827"/>
@@ -61,7 +62,7 @@ function grid() {
   </g>`).join("\n")}
   ${yTicks.map((tick) => `<g>
     <line x1="${margin.left}" y1="${y(tick)}" x2="${margin.left + plotWidth}" y2="${y(tick)}" stroke="#e5e7eb"/>
-    <text x="${margin.left - 10}" y="${y(tick) + 4}" text-anchor="end" font-family="system-ui, sans-serif" font-size="12" fill="#4b5563">${tick / 1000}s</text>
+    <text x="${margin.left - 10}" y="${y(tick) + 4}" text-anchor="end" font-family="system-ui, sans-serif" font-size="12" fill="#4b5563">${formatTick(tick)}</text>
   </g>`).join("\n")}
   `;
 }
@@ -89,4 +90,8 @@ function x(value: number) {
 
 function y(value: number) {
   return margin.top + plotHeight - (value / maxY) * plotHeight;
+}
+
+function formatTick(value: number) {
+  return value >= 1000 ? `${value / 1000}s` : `${value}ms`;
 }

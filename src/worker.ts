@@ -4,13 +4,26 @@ import { CapnwebTunnelServer } from "./server";
 interface Env {
   TUNNEL: DurableObjectNamespace<TunnelDurableObject>;
   TUNNEL_SECRET?: string;
+  TUNNEL_SHARDS?: string;
 }
 
 export class TunnelDurableObject extends DurableObject<Env> {
-  private readonly tunnel = new CapnwebTunnelServer({ secret: this.env.TUNNEL_SECRET });
+  private readonly tunnels = new Map<string, CapnwebTunnelServer>();
 
   fetch(request: Request) {
-    return this.tunnel.fetch(request);
+    const route = tunnelRouteParts("localhost", new URL(request.url).pathname);
+    if (!route) return new Response("Missing tunnel name\n", { status: 404 });
+
+    let tunnel = this.tunnels.get(route.name);
+    if (!tunnel) {
+      tunnel = new CapnwebTunnelServer({
+        secret: this.env.TUNNEL_SECRET,
+        onDisconnect: () => this.tunnels.delete(route.name),
+      });
+      this.tunnels.set(route.name, tunnel);
+    }
+
+    return tunnel.fetch(rewritePath(request, route.path));
   }
 }
 
@@ -18,7 +31,8 @@ export default {
   fetch(request: Request, env: Env) {
     const route = tunnelRoute(request);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
-    return env.TUNNEL.get(env.TUNNEL.idFromName(route.name)).fetch(route.request);
+    const shard = tunnelShardName(route.tunnelName, Number(env.TUNNEL_SHARDS ?? 1));
+    return env.TUNNEL.getByName(shard).fetch(route.request);
   },
 } satisfies ExportedHandler<Env>;
 
@@ -34,10 +48,9 @@ function tunnelRoute(request: Request) {
   const url = new URL(request.url);
   const route = tunnelRouteParts(url.hostname, url.pathname);
   if (!route) return undefined;
-  if (route.path === url.pathname) return { name: route.name, request };
 
-  url.pathname = route.path;
-  return { name: route.name, request: new Request(url, request) };
+  url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
+  return { tunnelName: route.name, request: new Request(url, request) };
 }
 
 /** Extracts the tunnel name and forwarded path from just the hostname and path.
@@ -58,6 +71,16 @@ export function tunnelRouteParts(hostname: string, pathname: string) {
   return decodedName ? { name: decodedName, path: `/${rest.join("/")}` } : undefined;
 }
 
+export function tunnelShardName(tunnelName: string, shardCount: number) {
+  if (!Number.isFinite(shardCount) || shardCount <= 1) return "tunnel-shard-0";
+  let hash = 2166136261;
+  for (let index = 0; index < tunnelName.length; index++) {
+    hash ^= tunnelName.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `tunnel-shard-${(hash >>> 0) % Math.floor(shardCount)}`;
+}
+
 /** Chooses folder routing for vanilla Worker hosts and apex/local dev hosts. */
 function usesFolderRouting(hostname: string) {
   return hostname === "localhost"
@@ -73,4 +96,11 @@ function safeDecodeURIComponent(value: string) {
   } catch {
     return undefined;
   }
+}
+
+function rewritePath(request: Request, pathname: string) {
+  const url = new URL(request.url);
+  if (url.pathname === pathname) return request;
+  url.pathname = pathname;
+  return new Request(url, request);
 }

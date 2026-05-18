@@ -4,6 +4,9 @@ import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
 import { CapnwebTunnelClient } from "../src/client.ts";
 
+// Measures one Capnweb tunnel in phases: connect/useFetcher, first server ->
+// client callback, local origin fetch, and total first public fetch time.
+
 type Measurement = {
   index: number;
   connectMs: number;
@@ -52,19 +55,20 @@ async function measure(index: number, originUrl: string): Promise<Measurement> {
   let originDoneAt = 0;
 
   const started = performance.now();
-  const client = new CapnwebTunnelClient(url, {
-    secret: process.env.TUNNEL_SECRET,
-    fetch: async (request) => {
-      callbackAt = performance.now();
-      const incoming = new URL(request.url);
-      const response = await fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
-      originDoneAt = performance.now();
-      return response;
-    },
-  });
+  let tunnel: Disposable | undefined;
 
   try {
-    await client.connect();
+    tunnel = await CapnwebTunnelClient.connect({
+      serverUrl: url,
+      secret: process.env.TUNNEL_SECRET,
+      fetch: async (request) => {
+        callbackAt = performance.now();
+        const incoming = new URL(request.url);
+        const response = await fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
+        originDoneAt = performance.now();
+        return response;
+      },
+    });
     const connectedAt = performance.now();
     const response = await fetch(url);
     if (!response.ok || !(await response.text()).startsWith("ok")) {
@@ -80,7 +84,7 @@ async function measure(index: number, originUrl: string): Promise<Measurement> {
       totalMs: fetchedAt - started,
     };
   } finally {
-    client.close();
+    tunnel?.[Symbol.dispose]();
   }
 }
 

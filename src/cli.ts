@@ -9,7 +9,8 @@ const baseUrl = process.env.TUNNEL_SERVER_URL ?? "http://localhost:8787";
 const tunnel = tunnelUrl(baseUrl, name);
 const origin = `http://localhost:${port}`;
 
-const client = new CapnwebTunnelClient(tunnel, {
+const tunnelSession = await CapnwebTunnelClient.connect({
+  serverUrl: tunnel,
   secret,
   fetch: (request) => {
     const url = new URL(request.url);
@@ -18,8 +19,11 @@ const client = new CapnwebTunnelClient(tunnel, {
 });
 
 console.log(`tunneling ${tunnel} -> ${origin}`);
-await client.connect();
-await new Promise(() => {});
+try {
+  await new Promise(() => {});
+} finally {
+  tunnelSession[Symbol.dispose]();
+}
 
 function tunnelUrl(baseUrl: string, name: string) {
   const url = new URL(baseUrl);

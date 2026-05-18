@@ -1,0 +1,83 @@
+{
+  "serverUrl": "https://capnweb-tunnel-sharded-bench.templestein.workers.dev",
+  "bytes": 2097152,
+  "chunkBytes": 65536,
+  "modes": [
+    "stream",
+    "bytes",
+    "text"
+  ],
+  "readMode": "buffer",
+  "timeoutMs": 60000,
+  "results": [
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 604.789,
+      "p90": 604.789,
+      "p99": 604.789,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "stream",
+          "connectMs": 115.90208299999999,
+          "responseMs": 89.92387499999998,
+          "readMs": 398.963042,
+          "fetchMs": 488.8869169999999,
+          "totalMs": 604.789,
+          "clientCpuMs": 147.422,
+          "clientEventLoopUtilization": 0.12767636552732253,
+          "bytes": 2097152
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 547.8949590000001,
+      "p90": 547.8949590000001,
+      "p99": 547.8949590000001,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "bytes",
+          "connectMs": 88.405709,
+          "responseMs": 66.59141599999998,
+          "readMs": 392.8978340000001,
+          "fetchMs": 459.4892500000001,
+          "totalMs": 547.8949590000001,
+          "clientCpuMs": 79.548,
+          "clientEventLoopUtilization": 0.11036607051719412,
+          "bytes": 2097152
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "successes": 1,
+      "failures": 0,
+      "p50": 425.92525,
+      "p90": 425.92525,
+      "p99": 425.92525,
+      "measurements": [
+        {
+          "index": 0,
+          "ok": true,
+          "mode": "text",
+          "connectMs": 119.91766700000016,
+          "responseMs": 80.4091249999999,
+          "readMs": 225.59845799999994,
+          "fetchMs": 306.00758299999984,
+          "totalMs": 425.92525,
+          "clientCpuMs": 66.377,
+          "clientEventLoopUtilization": 0.10510212039769896,
+          "bytes": 2097152
+        }
+      ]
+    }
+  ]
+}

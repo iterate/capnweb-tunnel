@@ -6,6 +6,11 @@ import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
 import { CapnwebTunnelClient } from "../src/client.ts";
 
+// Measures time from "start creating a tunnel" to the first successful public
+// HTTP fetch through that tunnel. It can compare this project with cloudflared
+// quick tunnels and ngrok, but only Capnweb is intended for high-concurrency
+// runs here.
+
 type Provider = "capnweb" | "cloudflared" | "ngrok";
 
 type Measurement = {
@@ -93,19 +98,20 @@ async function measureCapnweb(index: number, originUrl: string): Promise<Measure
   const name = `bench-${randomBytes(8).toString("hex")}`;
   const url = tunnelUrl(capnwebUrl, name);
   const started = performance.now();
-  const client = new CapnwebTunnelClient(url, {
-    secret: process.env.TUNNEL_SECRET,
-    fetch: (request) => {
-      const incoming = new URL(request.url);
-      return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
-    },
-  });
+  let tunnel: Disposable | undefined;
   try {
-    await client.connect();
+    tunnel = await CapnwebTunnelClient.connect({
+      serverUrl: url,
+      secret: process.env.TUNNEL_SECRET,
+      fetch: (request) => {
+        const incoming = new URL(request.url);
+        return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
+      },
+    });
     await waitForFetch(url, started);
     return { index, ok: true, ms: performance.now() - started, url: url.toString() };
   } finally {
-    client.close();
+    tunnel?.[Symbol.dispose]();
   }
 }
 

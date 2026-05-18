@@ -1,18 +1,33 @@
 {
   "name": "capnweb-tunnel",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
+  "packageManager": "pnpm@10.11.1",
+  "bin": {
+    "capnweb-tunnel": "dist/cli.js"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
+    "build": "rm -rf dist && tsc --project tsconfig.lib.json",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "test": "vitest run test/*.test.ts",
     "test:unit": "vitest run test/worker.test.ts",
-    "benchmark:startup": "node --experimental-strip-types scripts/benchmark-startup.ts",
-    "benchmark:capnweb-breakdown": "node --experimental-strip-types scripts/benchmark-capnweb-breakdown.ts",
-    "benchmark:chart": "node --experimental-strip-types scripts/render-startup-chart.ts",
-    "cli": "node --experimental-strip-types src/cli.ts"
+    "cli": "node src/cli.ts"
   },
   "dependencies": {
     "capnweb": "^0.8.0"

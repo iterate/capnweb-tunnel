@@ -1,5 +1,5 @@
 import { newWorkersRpcResponse, RpcTarget, type RpcStub } from "capnweb";
-import type { CapnwebTunnelClientCapability } from "./types";
+import type { CapnwebTunnelClientCapability, CapnwebTunnelServerCapability } from "./types";
 
 /** Drop into a Durable Object and call `server.fetch(request)`.
  *
@@ -11,9 +11,11 @@ import type { CapnwebTunnelClientCapability } from "./types";
 export class CapnwebTunnelServer {
   #fetcher?: RpcStub<CapnwebTunnelClientCapability>;
   #secret?: string;
+  #onDisconnect?: () => void;
 
-  constructor(options: { secret?: string } = {}) {
+  constructor(options: { secret?: string; onDisconnect?: () => void } = {}) {
     this.#secret = options.secret;
+    this.#onDisconnect = options.onDisconnect;
   }
 
   async fetch(request: Request) {
@@ -22,13 +24,8 @@ export class CapnwebTunnelServer {
       if (this.#secret && url.searchParams.get("secret") !== this.#secret) {
         return new Response("Unauthorized\n", { status: 401 });
       }
-      const server = this;
       // Keep the RPC surface narrow; RpcTarget exposes all prototype methods.
-      return newWorkersRpcResponse(request, new (class extends RpcTarget {
-        useFetcher(fetcher: RpcStub<CapnwebTunnelClientCapability>) {
-          server.useFetcher(fetcher);
-        }
-      })());
+      return newWorkersRpcResponse(request, new CapnwebTunnelServerImplementation(this));
     }
     if (!this.#fetcher) return new Response("No tunnel client connected\n", { status: 503 });
     return this.#fetcher.fetch(request);
@@ -39,9 +36,26 @@ export class CapnwebTunnelServer {
     // Keep our own stub alive, and clear it when the RPC connection breaks:
     // https://github.com/cloudflare/capnweb#duplicating-stubs
     // https://github.com/cloudflare/capnweb#listening-for-disconnect
-    this.#fetcher = fetcher.dup();
-    this.#fetcher.onRpcBroken(() => {
-      this.#fetcher = undefined;
+    const activeFetcher = fetcher.dup();
+    this.#fetcher = activeFetcher;
+    activeFetcher.onRpcBroken(() => {
+      if (this.#fetcher === activeFetcher) {
+        this.#fetcher = undefined;
+        this.#onDisconnect?.();
+      }
     });
+  }
+}
+
+class CapnwebTunnelServerImplementation extends RpcTarget implements CapnwebTunnelServerCapability {
+  readonly server: CapnwebTunnelServer;
+
+  constructor(server: CapnwebTunnelServer) {
+    super();
+    this.server = server;
+  }
+
+  useFetcher(fetcher: RpcStub<CapnwebTunnelClientCapability>) {
+    this.server.useFetcher(fetcher);
   }
 }

@@ -1,0 +1,1880 @@
+{
+  "samples": 30,
+  "rawBase": "https://capnweb-tunnel-bench-raw.templestein.workers.dev",
+  "capnwebBase": "https://capnweb-tunnel-bench-capnweb.templestein.workers.dev",
+  "appBase": "https://capnweb-tunnel-sharded-bench.templestein.workers.dev",
+  "summary": [
+    {
+      "kind": "edge-http",
+      "min": 16.013458999999955,
+      "p50": 20.16820800000005,
+      "p90": 24.023374999999987,
+      "max": 82.414625
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "min": 271.886125,
+      "p50": 346.0027919999993,
+      "p90": 389.51487499999985,
+      "max": 750.3253750000003
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "min": 301.5907499999994,
+      "p50": 379.9041669999988,
+      "p90": 432.74012500000026,
+      "max": 634.8692080000001
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "min": 58.04083299999911,
+      "p50": 67.4408749999966,
+      "p90": 88.34900000000198,
+      "max": 251.05554199999824
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "min": 334.44508399999904,
+      "p50": 399.60770899999625,
+      "p90": 453.2379589999982,
+      "max": 725.3252920000014
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "min": 75.3961249999993,
+      "p50": 85.83299999999872,
+      "p90": 107.02816700000403,
+      "max": 310.29733300000225
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "min": 58.98883300000307,
+      "p50": 68.171875,
+      "p90": 77.67004199999792,
+      "max": 92.47466700000223
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "min": 61.121875000004366,
+      "p50": 69.07574999999633,
+      "p90": 86.50991699999577,
+      "max": 198.33612500000163
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "min": 73.0480000000025,
+      "p50": 86.00533400000131,
+      "p90": 97.29304199999751,
+      "max": 131.7940000000017
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "min": 70.73491700000159,
+      "p50": 85.59866599999805,
+      "p90": 107.31750000000466,
+      "max": 126.23895800000173
+    }
+  ],
+  "measurements": [
+    {
+      "kind": "edge-http",
+      "index": 0,
+      "ms": 82.414625,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 1,
+      "ms": 57.57891599999999,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 2,
+      "ms": 17.41187499999998,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 3,
+      "ms": 17.30083300000001,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 4,
+      "ms": 18.497082999999975,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 5,
+      "ms": 17.25075000000001,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 6,
+      "ms": 19.07379099999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 7,
+      "ms": 16.013458999999955,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 8,
+      "ms": 18.488666000000023,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 9,
+      "ms": 17.995000000000005,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 10,
+      "ms": 21.89358299999998,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 11,
+      "ms": 17.532832999999982,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 12,
+      "ms": 21.858542,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 13,
+      "ms": 16.675374999999974,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 14,
+      "ms": 20.385749999999973,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 15,
+      "ms": 20.17729099999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 16,
+      "ms": 22.11500000000001,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 17,
+      "ms": 22.807166999999993,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 18,
+      "ms": 20.301417000000015,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 19,
+      "ms": 20.066625000000045,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 20,
+      "ms": 20.21741700000007,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 21,
+      "ms": 21.915208000000007,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 22,
+      "ms": 19.753499999999917,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 23,
+      "ms": 18.141332999999918,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 24,
+      "ms": 17.975749999999948,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 25,
+      "ms": 21.482541999999967,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 26,
+      "ms": 21.25237500000003,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 27,
+      "ms": 24.177459,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 28,
+      "ms": 24.023374999999987,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "edge-http",
+      "index": 29,
+      "ms": 20.16820800000005,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/edge"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 0,
+      "ms": 336.78316699999993,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-c2c5eeb17af1653a"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 1,
+      "ms": 271.886125,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-ccd17832221682a0"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 2,
+      "ms": 339.93054199999983,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-91949bdfa6a4cbbc"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 3,
+      "ms": 357.79608400000006,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-9138aa7790f18476"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 4,
+      "ms": 284.940916,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-ca47bc097bf6a9f1"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 5,
+      "ms": 374.35308299999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-b9497b3ff7771eb9"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 6,
+      "ms": 368.9305830000003,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-b59285e07bc23456"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 7,
+      "ms": 281.8795419999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-fbccd47b6e5c0e4f"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 8,
+      "ms": 362.30462499999976,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-108f41e3775f748c"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 9,
+      "ms": 351.76312499999995,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-fbb176628e1c5840"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 10,
+      "ms": 334.77975000000015,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-61937302954f1cd7"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 11,
+      "ms": 372.5421670000005,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-33dd4a01ef114ec6"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 12,
+      "ms": 326.8401249999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-0e6d8d9c700800c4"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 13,
+      "ms": 367.1617919999999,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-55b45fe34fdeb910"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 14,
+      "ms": 301.91508299999987,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-6230d045dcff0eaf"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 15,
+      "ms": 304.6180830000003,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-bc0f335080385051"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 16,
+      "ms": 328.10350000000017,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-545c440076b6352a"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 17,
+      "ms": 317.1499590000003,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-443263419c4bcd92"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 18,
+      "ms": 333.9857499999998,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-2d91022546ce9db5"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 19,
+      "ms": 402.4383749999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-f20c70278e88ec06"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 20,
+      "ms": 363.1288749999994,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-3d35a5996c9bb7f2"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 21,
+      "ms": 389.51487499999985,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-e723c9d9cc74d37d"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 22,
+      "ms": 355.6916249999995,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-9fa0a94cf5c0d043"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 23,
+      "ms": 289.98520800000006,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-cd1820bdd78ae00b"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 24,
+      "ms": 750.3253750000003,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-2a25f06fc59c0055"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 25,
+      "ms": 348.57166700000016,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-b7d727e6d21ed1d6"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 26,
+      "ms": 376.19795800000065,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-c10b27a07ef87a35"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 27,
+      "ms": 346.0027919999993,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-2f2395db62189969"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 28,
+      "ms": 323.4383749999997,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-190897dd1c3d6735"
+    },
+    {
+      "kind": "raw-do-http-fresh",
+      "index": 29,
+      "ms": 412.7262919999994,
+      "url": "https://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-087148a5e76b0cb6"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 0,
+      "ms": 301.5907499999994,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-862b3adef4ec3697"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 1,
+      "ms": 398.7288750000007,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-d23d791490f9bd2b"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 2,
+      "ms": 364.2173750000002,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-5231aead849560cb"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 3,
+      "ms": 345.31604100000004,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-7f777ba8788cd068"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 4,
+      "ms": 397.037875,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-7c5c93417fdb3068"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 5,
+      "ms": 348.005000000001,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-5d5a61a650b04563"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 6,
+      "ms": 389.2177909999991,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-08ea1bb0ade4607a"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 7,
+      "ms": 396.47520799999984,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-64488d9b515b7c37"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 8,
+      "ms": 383.86870799999997,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-442d5ba7a791bb05"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 9,
+      "ms": 369.11429099999987,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-b6a6909822834e03"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 10,
+      "ms": 358.3704999999991,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-460464af3f212f7c"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 11,
+      "ms": 436.71429100000023,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-741fc2b52e951ee5"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 12,
+      "ms": 332.53812500000095,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-f6cbc312531015e7"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 13,
+      "ms": 379.9041669999988,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-9212646f42a03398"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 14,
+      "ms": 319.5810840000013,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-d0b7dc4e9f6e810e"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 15,
+      "ms": 405.83587500000067,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-0441791f4208435a"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 16,
+      "ms": 432.74012500000026,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-daa37f2de41eada6"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 17,
+      "ms": 436.2530420000003,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-ac8ae949dd47c9dd"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 18,
+      "ms": 342.47316599999976,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-e262e476972e7c04"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 19,
+      "ms": 385.1383330000026,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-c496949a9e219e1a"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 20,
+      "ms": 334.6659579999978,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-378d5f0a990b1527"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 21,
+      "ms": 342.73962499999834,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-74df89f99d6ee8fc"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 22,
+      "ms": 634.8692080000001,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-ec7b0da1169a1b47"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 23,
+      "ms": 353.5541659999981,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-b1a6fdeb153b019c"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 24,
+      "ms": 400.60341699999844,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-8e9d331f0c5ca51d"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 25,
+      "ms": 381.82574999999997,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-c8302416325dc466"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 26,
+      "ms": 366.2790419999983,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-00689abe5520f343"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 27,
+      "ms": 383.63774999999805,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-729f5fbe04556eec"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 28,
+      "ms": 365.6129579999979,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-42487b36817189df"
+    },
+    {
+      "kind": "raw-do-ws-fresh",
+      "index": 29,
+      "ms": 400.3921249999985,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/bench-aa031a8a319ca8bc"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 0,
+      "ms": 251.05554199999824,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 1,
+      "ms": 76.39879099999962,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 2,
+      "ms": 59.71579099999872,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 3,
+      "ms": 68.91854199999943,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 4,
+      "ms": 69.28958299999795,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 5,
+      "ms": 80.17666699999972,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 6,
+      "ms": 73.04520899999989,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 7,
+      "ms": 67.4408749999966,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 8,
+      "ms": 76.98004099999889,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 9,
+      "ms": 69.53354099999706,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 10,
+      "ms": 84.09804099999747,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 11,
+      "ms": 67.32587500000227,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 12,
+      "ms": 66.00174999999945,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 13,
+      "ms": 68.69150000000081,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 14,
+      "ms": 63.77612500000032,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 15,
+      "ms": 74.35695799999667,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 16,
+      "ms": 60.74200000000201,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 17,
+      "ms": 88.34900000000198,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 18,
+      "ms": 58.04083299999911,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 19,
+      "ms": 64.91812500000015,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 20,
+      "ms": 64.87637499999983,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 21,
+      "ms": 63.3703749999986,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 22,
+      "ms": 143.67420800000036,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 23,
+      "ms": 64.82504100000006,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 24,
+      "ms": 63.788666999997076,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 25,
+      "ms": 81.46979199999987,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 26,
+      "ms": 65.2153330000001,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 27,
+      "ms": 61.64020800000071,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 28,
+      "ms": 98.52562500000204,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "raw-do-ws-warm",
+      "index": 29,
+      "ms": 66.02745900000082,
+      "url": "wss://capnweb-tunnel-bench-raw.templestein.workers.dev/warm"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 0,
+      "ms": 416.5250419999975,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-b8d0b05ff6443c81/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 1,
+      "ms": 392.8121659999997,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-9d55be3e51960854/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 2,
+      "ms": 398.1683340000018,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-e2f89747ba6c0fcb/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 3,
+      "ms": 367.1693750000013,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-5935354f08d0e650/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 4,
+      "ms": 368.262917,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-8ab6de2c25124d20/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 5,
+      "ms": 428.1182919999992,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-4e75b856dfe3f7f8/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 6,
+      "ms": 366.3009170000005,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-cda468fdcb4ea0a4/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 7,
+      "ms": 347.7790419999983,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-c64d5ae5d4562abc/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 8,
+      "ms": 424.6472079999985,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-5efe03c2f8344446/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 9,
+      "ms": 365.3422920000012,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-d4bf84b2b044b876/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 10,
+      "ms": 461.57154100000116,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-725cb10b40c0d6e8/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 11,
+      "ms": 454.8610000000008,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-e03f4a1396209b85/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 12,
+      "ms": 410.45720900000015,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-146524ebfbf81e43/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 13,
+      "ms": 725.3252920000014,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-11322fa1c22f39f7/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 14,
+      "ms": 398.5957920000001,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-1828acd0a64ed875/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 15,
+      "ms": 415.65879100000166,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-da4d1c401e85df36/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 16,
+      "ms": 416.90208300000086,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-ca89841e4cc06ff4/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 17,
+      "ms": 349.0898330000018,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-8193c5b89d863c74/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 18,
+      "ms": 398.3012499999968,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-c45a29ae7b86ad15/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 19,
+      "ms": 403.1134579999998,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-1b788873db0effa2/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 20,
+      "ms": 453.2379589999982,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-1d312cd309380bbc/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 21,
+      "ms": 334.44508399999904,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-6186f0b91573117f/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 22,
+      "ms": 416.09587500000634,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-d70c5a26670a01b5/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 23,
+      "ms": 411.1663750000007,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-3ec5a787c5df741d/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 24,
+      "ms": 394.919249999999,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-1bb422ba105a7d39/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 25,
+      "ms": 409.51408300000185,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-e6ef6ec24c17da84/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 26,
+      "ms": 399.60770899999625,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-f380050bf2298987/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 27,
+      "ms": 440.4705000000031,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-02c1c8ade7c84665/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 28,
+      "ms": 393.9567919999972,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-5220739ee0708dd4/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-fresh",
+      "index": 29,
+      "ms": 347.0124999999971,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/bench-44ebe58c6170650f/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 0,
+      "ms": 310.29733300000225,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 1,
+      "ms": 76.18145799999911,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 2,
+      "ms": 85.2479170000006,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 3,
+      "ms": 89.53262499999983,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 4,
+      "ms": 107.98679199999606,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 5,
+      "ms": 80.299417000002,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 6,
+      "ms": 82.87129100000311,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 7,
+      "ms": 84.95437499999389,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 8,
+      "ms": 86.85008299999754,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 9,
+      "ms": 88.40633300000627,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 10,
+      "ms": 94.4315409999981,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 11,
+      "ms": 89.86200000000099,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 12,
+      "ms": 82.02345799999603,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 13,
+      "ms": 76.76479200000176,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 14,
+      "ms": 78.21862500000134,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 15,
+      "ms": 81.52633299999434,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 16,
+      "ms": 107.02816700000403,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 17,
+      "ms": 86.07966699999815,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 18,
+      "ms": 76.99229200000264,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 19,
+      "ms": 83.9609169999967,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 20,
+      "ms": 85.83299999999872,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 21,
+      "ms": 91.17162500000268,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 22,
+      "ms": 87.86641599999712,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 23,
+      "ms": 75.52966699999524,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 24,
+      "ms": 93.42733399999997,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 25,
+      "ms": 89.30945899999642,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 26,
+      "ms": 118.94787499999802,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 27,
+      "ms": 103.73670799999672,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 28,
+      "ms": 84.04037499999686,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "minimal-capnweb-useFetcher-warm",
+      "index": 29,
+      "ms": 75.3961249999993,
+      "url": "wss://capnweb-tunnel-bench-capnweb.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 0,
+      "ms": 80.30716599999869,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-01868b25541208ef/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 1,
+      "ms": 66.53570899999613,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-59dca163999318e9/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 2,
+      "ms": 68.27429099999426,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-556dc947a58f196f/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 3,
+      "ms": 67.56879199999821,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-4efceb6b998800ab/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 4,
+      "ms": 92.47466700000223,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-0c2275902326d394/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 5,
+      "ms": 65.09550000000309,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-b23656640c95ab13/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 6,
+      "ms": 77.67004199999792,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-43b581bf33d588f2/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 7,
+      "ms": 62.74720800000068,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-4db56b880c4848dc/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 8,
+      "ms": 76.02520899999945,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-19f4c1d9e986c94c/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 9,
+      "ms": 74.55216700000165,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-6dd09e81b603ae31/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 10,
+      "ms": 63.84620800000266,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-ce712bf6e6a848bf/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 11,
+      "ms": 68.27904200000194,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-8a36cbbf67c2d72b/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 12,
+      "ms": 65.72137500000099,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-fb891c361f6f52c9/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 13,
+      "ms": 62.777333000005456,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-d3979bcb0c83b206/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 14,
+      "ms": 65.71641700000328,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-9624f58907b8b474/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 15,
+      "ms": 63.80774999999994,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-4bde3d55b22aa4e5/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 16,
+      "ms": 68.171875,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-04a1f4afaf49b623/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 17,
+      "ms": 68.28745899999922,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-dc016beb373b4142/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 18,
+      "ms": 65.1304999999993,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-26487aa5600ebfca/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 19,
+      "ms": 72.11541700000089,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-cdad26e3b880a32b/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 20,
+      "ms": 62.941415999994206,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-33645a09d841907e/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 21,
+      "ms": 58.98883300000307,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-0daf55b8c8454d06/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 22,
+      "ms": 60.95220800000243,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-ae0fd92717220c05/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 23,
+      "ms": 73.2232079999958,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-fb427de68208622f/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 24,
+      "ms": 63.60679099999834,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-1dd0ac7da363cbc2/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 25,
+      "ms": 71.71904199999699,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-bfde711ac710a04f/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 26,
+      "ms": 71.83820900000137,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-3197e9f5ffd98b7f/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 27,
+      "ms": 73.99041700000089,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-ddd0753eb988ad13/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 28,
+      "ms": 83.92562499999622,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-ff5910e83086f0be/__connect"
+    },
+    {
+      "kind": "app-raw-ws-fresh",
+      "index": 29,
+      "ms": 69.2298329999976,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-cfd94ab2e6f3974a/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 0,
+      "ms": 83.70504199999414,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 1,
+      "ms": 67.58070899999439,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 2,
+      "ms": 74.08399999999529,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 3,
+      "ms": 76.95437500000116,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 4,
+      "ms": 83.04079199999978,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 5,
+      "ms": 102.83720899999753,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 6,
+      "ms": 68.43100000000413,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 7,
+      "ms": 65.15112499999668,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 8,
+      "ms": 79.60233399999561,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 9,
+      "ms": 72.70066699999734,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 10,
+      "ms": 69.23308399999951,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 11,
+      "ms": 86.50991699999577,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 12,
+      "ms": 67.71837499999674,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 13,
+      "ms": 68.23820799999521,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 14,
+      "ms": 89.58987499999785,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 15,
+      "ms": 198.33612500000163,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 16,
+      "ms": 64.46987499999523,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 17,
+      "ms": 67.8083340000012,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 18,
+      "ms": 65.03620799999771,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 19,
+      "ms": 75.29183300000295,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 20,
+      "ms": 64.54724999999598,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 21,
+      "ms": 78.77466699999786,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 22,
+      "ms": 66.96137499999895,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 23,
+      "ms": 62.674708999998984,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 24,
+      "ms": 66.05183299999771,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 25,
+      "ms": 69.07574999999633,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 26,
+      "ms": 61.121875000004366,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 27,
+      "ms": 70.403790999997,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 28,
+      "ms": 65.39887499999895,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-raw-ws-warm",
+      "index": 29,
+      "ms": 82.75591700000223,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 0,
+      "ms": 95.13091700000223,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-4e9bf7ff88be7789/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 1,
+      "ms": 89.29029099999752,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-486aac1b71df6271/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 2,
+      "ms": 95.72812500000146,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-b5157f0ebbbfb20b/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 3,
+      "ms": 76.35179100000096,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-0128dee2829fb97b/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 4,
+      "ms": 100.66770800000086,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-d80002b68f21e4a8/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 5,
+      "ms": 93.54441700000461,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-a75c608d10de010f/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 6,
+      "ms": 80.45587499999965,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-fa0dc2e099623e79/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 7,
+      "ms": 95.26733300000342,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-b182b2895f2e101c/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 8,
+      "ms": 85.94408299999486,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-3b79cb88c63725d7/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 9,
+      "ms": 86.00533400000131,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-e34f043da7cbd4ad/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 10,
+      "ms": 83.6217919999981,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-75a70bb3f14107d6/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 11,
+      "ms": 90.16874999999709,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-9625fb78a5a31e9b/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 12,
+      "ms": 86.4251660000009,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-afe5e38c3b7b7435/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 13,
+      "ms": 87.31254199999967,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-d3569ca5ef9fb8d7/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 14,
+      "ms": 76.34462500000518,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-1de144c206b51f14/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 15,
+      "ms": 84.89991599999485,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-13e71281014393fc/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 16,
+      "ms": 81.075582999998,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-a1c98e37ef2b2f56/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 17,
+      "ms": 73.0480000000025,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-f3ab346e6119f23e/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 18,
+      "ms": 98.22016599999915,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-9baedb3e86bd06a9/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 19,
+      "ms": 86.17124999999942,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-a2b089537719c1e0/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 20,
+      "ms": 84.27866600000561,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-ff1f2d152c095a8d/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 21,
+      "ms": 91.98329199999716,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-7929d14384d74504/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 22,
+      "ms": 73.83016599999974,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-4f3a5b0be87e9d38/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 23,
+      "ms": 85.72929199999635,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-559c0ade8f1b51fb/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 24,
+      "ms": 97.05779199999961,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-f1499373095417a7/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 25,
+      "ms": 84.35179100000096,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-301c7081e4ec6e1a/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 26,
+      "ms": 77.54054200000246,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-b1db7c04abcf55ee/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 27,
+      "ms": 97.29304199999751,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-34668413e67509e0/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 28,
+      "ms": 131.7940000000017,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-64290aaba8be721b/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-fresh",
+      "index": 29,
+      "ms": 81.86679100000038,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/bench-91c2a169520a2d07/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 0,
+      "ms": 82.51337500000227,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 1,
+      "ms": 78.62991699999839,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 2,
+      "ms": 88.43912499999715,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 3,
+      "ms": 93.15112500000396,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 4,
+      "ms": 88.31408399999782,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 5,
+      "ms": 83.17525000000023,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 6,
+      "ms": 70.73491700000159,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 7,
+      "ms": 104.96708299999591,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 8,
+      "ms": 113.7497499999954,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 9,
+      "ms": 94.77649999999994,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 10,
+      "ms": 81.25050000000192,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 11,
+      "ms": 79.61120800000208,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 12,
+      "ms": 77.90412500000093,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 13,
+      "ms": 77.01520799999707,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 14,
+      "ms": 82.98745799999597,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 15,
+      "ms": 82.71949999999924,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 16,
+      "ms": 84.82424999999785,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 17,
+      "ms": 87.87375000000611,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 18,
+      "ms": 126.23895800000173,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 19,
+      "ms": 99.94708399999945,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 20,
+      "ms": 100.57533399999375,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 21,
+      "ms": 74.10866700000042,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 22,
+      "ms": 81.1629580000008,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 23,
+      "ms": 109.93600000000151,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 24,
+      "ms": 91.09937499999796,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 25,
+      "ms": 85.59866599999805,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 26,
+      "ms": 86.18387500000244,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 27,
+      "ms": 96.34012500000244,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 28,
+      "ms": 71.04020799999853,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    },
+    {
+      "kind": "app-capnweb-useFetcher-warm",
+      "index": 29,
+      "ms": 107.31750000000466,
+      "url": "wss://capnweb-tunnel-sharded-bench.templestein.workers.dev/warm/__connect"
+    }
+  ]
+}

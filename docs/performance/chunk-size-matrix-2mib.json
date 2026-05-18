@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-05-18T12:52:28.854Z",
+  "bytes": 2097152,
+  "rows": [
+    {
+      "chunkBytes": 16384,
+      "chunks": 128,
+      "totalMs": 524,
+      "connectMs": 126,
+      "responseMs": 92,
+      "readMs": 306,
+      "clientCpuMs": 146,
+      "clientEventLoopUtilization": 0.15
+    },
+    {
+      "chunkBytes": 65536,
+      "chunks": 32,
+      "totalMs": 441,
+      "connectMs": 110,
+      "responseMs": 92,
+      "readMs": 239,
+      "clientCpuMs": 125,
+      "clientEventLoopUtilization": 0.13
+    },
+    {
+      "chunkBytes": 262144,
+      "chunks": 8,
+      "totalMs": 513,
+      "connectMs": 115,
+      "responseMs": 101,
+      "readMs": 297,
+      "clientCpuMs": 125,
+      "clientEventLoopUtilization": 0.15
+    },
+    {
+      "chunkBytes": 1048576,
+      "chunks": 2,
+      "totalMs": 506,
+      "connectMs": 110,
+      "responseMs": 94,
+      "readMs": 301,
+      "clientCpuMs": 118,
+      "clientEventLoopUtilization": 0.12
+    },
+    {
+      "chunkBytes": 2097152,
+      "chunks": 1,
+      "totalMs": 604,
+      "connectMs": 118,
+      "responseMs": 116,
+      "readMs": 370,
+      "clientCpuMs": 121,
+      "clientEventLoopUtilization": 0.11
+    }
+  ]
+}
