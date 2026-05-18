@@ -7,6 +7,15 @@ tunnel is used from the same Worker request context.
 
 ## Run Locally
 
+From the repository root, install and build once:
+
+```sh
+pnpm install
+pnpm run build
+```
+
+Then run the example from this directory:
+
 ```sh
 pnpm exec wrangler dev
 ```

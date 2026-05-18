@@ -22,7 +22,7 @@ using tunnel = await createCaptunTunnel({
 });
 ```
 
-The core implementation is about 100 lines of TypeScript around [Cap'n Web](https://github.com/cloudflare/capnweb). Ask your AI agent to copy [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts) into your codebase and adapt them.
+The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).
 
 ## 1. CLI Usage
 
@@ -48,9 +48,11 @@ pnpm exec wrangler secret put CAPTUN_SECRET
 CAPTUN_SECRET=secret CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev pnpm run cli -- --name demo 3000
 ```
 
+The repo script runs the source CLI. The packaged command is `captun`, so installed consumers can run the same tunnel with `CAPTUN_SERVER_URL=... captun --name demo 3000`.
+
 Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
 
-Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com` for around $10/year is often the simplest option. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
+Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com` for around $10/year is often the simplest option. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
 
 By default, all tunnel names live in one warm `CaptunServerShard` Durable Object. That minimizes cold-start latency. Set `CAPTUN_SHARDS` only when you need more aggregate throughput for many concurrent large responses:
 
@@ -106,6 +108,8 @@ export class MyDurableObject {
 }
 ```
 
+You can import the public API from `captun`, or use subpath imports from `captun/client` and `captun/server`. The server package also exports `acceptCaptunTunnelFromSocket(socket)` for Workers that already performed the WebSocket upgrade.
+
 ### How Does It Work?
 
 We just pass `fetch()` through `fetch()`. No, really.
@@ -127,9 +131,21 @@ sequenceDiagram
   Server-->>HTTP: Response
 ```
 
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun` and has its own Vitest e2e tests.
+See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own `vite-plus` e2e tests.
 
-## 3. Performance
+## 3. Development
+
+The Worker needs the `CaptunServerShard` Durable Object binding and migration from [wrangler.toml](./wrangler.toml). For local development:
+
+```bash
+pnpm install
+pnpm run build
+pnpm run dev
+```
+
+Run tests with `pnpm test`. The unit tests run without external services; the root e2e suite also runs when `CAPTUN_SERVER_URL` is set, with optional `CAPTUN_SECRET`.
+
+## 4. Performance
 
 On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. Rechecking provider startup on the same day showed ngrok was much faster than the earlier sample: one ngrok ad-hoc tunnel reached 451ms, and 10 concurrent ngrok tunnels reached 658ms p50. Cloudflared quick tunnels still took about 8.5-9s when successful because the `trycloudflare.com` hostname was printed several seconds before DNS/public routing was ready.
 
@@ -153,10 +169,12 @@ The scripts used for these numbers are [scripts/benchmark-startup.ts](./scripts/
 
 For test and development traffic, this should usually cost effectively nothing on Cloudflare: the [Workers Free plan](https://developers.cloudflare.com/workers/platform/pricing/) includes daily Worker requests, and Durable Objects have their own included free usage. Check pricing before serious volume, because connected Durable Objects cannot hibernate while the WebSocket is open.
 
-## 4. Caveats
+## 5. Caveats
 
 Captun is intentionally small. It is a reference implementation you can copy into a Worker or Durable Object, not a managed tunnel product.
 
 It is fast but less durable than Cloudflare Tunnel. There is no redundant connection in another data center, and a connected Durable Object can still be restarted, so an in-flight request can fail.
 
 Large binary streams are slower than small requests because a `Response` body crosses the Cap'n Web WebSocket/RPC session rather than getting spliced as a native HTTP socket. For webhook callbacks, mocked internet egress, local previews, and e2e tests, that tradeoff is usually fine.
+
+Connecting a second client with the same tunnel name replaces the previous connection. Malformed percent-encoding in a folder tunnel name is rejected as a missing tunnel name.

@@ -1,5 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher, Fetcher } from "./types";
+import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "./types";
 
 /** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
@@ -10,9 +10,11 @@ import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher, Fetche
  * Cap'n Web WebSocket sessions:
  * https://github.com/cloudflare/capnweb#websocket-client
  */
-export async function createCaptunTunnel(options: CaptunClientCreateTunnelOptions): Promise<Disposable> {
+export async function createCaptunTunnel(
+  options: CaptunClientCreateTunnelOptions,
+): Promise<Disposable> {
   const socket = createWebSocket(options);
-  const session = newWebSocketRpcSession(socket, new LocalFetcher(options.fetch));
+  const session = newWebSocketRpcSession(socket, new LocalFetcher(options));
   await waitUntilOpen(socket);
 
   return {
@@ -21,12 +23,12 @@ export async function createCaptunTunnel(options: CaptunClientCreateTunnelOption
 }
 
 class LocalFetcher extends RpcTarget implements CaptunClientRemoteFetcher {
-  constructor(private readonly fetcher: Fetcher["fetch"]) {
+  constructor(private readonly options: CaptunClientCreateTunnelOptions) {
     super();
   }
 
   fetch(request: Request) {
-    return this.fetcher(request);
+    return this.options.fetch(request);
   }
 }
 
@@ -52,15 +54,27 @@ async function waitUntilOpen(socket: WebSocket) {
     throw new Error("WebSocket closed before opening");
   }
 
+  const listeners = new AbortController();
   await new Promise<void>((resolve, reject) => {
-    socket.onopen = () => resolve();
-    socket.onerror = () => reject(new Error("WebSocket connection failed"));
-    socket.onclose = (event: CloseEvent) => {
-      reject(new Error(`WebSocket closed before opening: ${event.code} ${event.reason}`));
+    const settle = (callback: () => void) => {
+      listeners.abort();
+      callback();
     };
-  }).finally(() => {
-    socket.onopen = null;
-    socket.onerror = null;
-    socket.onclose = null;
+    socket.addEventListener("open", () => settle(resolve), { signal: listeners.signal });
+    socket.addEventListener(
+      "error",
+      () => settle(() => reject(new Error("WebSocket connection failed"))),
+      {
+        signal: listeners.signal,
+      },
+    );
+    socket.addEventListener(
+      "close",
+      (event) => {
+        listeners.abort();
+        reject(new Error(`WebSocket closed before opening: ${event.code} ${event.reason}`));
+      },
+      { signal: listeners.signal },
+    );
   });
 }
