@@ -98,9 +98,7 @@ export class MyDurableObject {
       return response;
     }
     if (url.pathname.startsWith("/egress/")) {
-      return (
-        this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 })
-      );
+      return this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 });
     }
     return new Response("Not found", { status: 404 });
   }
