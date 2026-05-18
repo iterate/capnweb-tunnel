@@ -1,8 +1,47 @@
 # capnweb-tunnel
 
-`capnweb-tunnel` is a tiny reverse tunnel built on
-[Capnweb](https://github.com/cloudflare/capnweb). It gives you a much faster
-but slightly less durable alternative to Cloudflare Tunnels.
+`capnweb-tunnel` is a tiny reference implementation of a self-hosted ngrok or
+Cloudflare Tunnel alternative. It runs the public server on Cloudflare Workers
+and lets a local Node process provide the `fetch()` implementation that handles
+incoming HTTP requests.
+
+Deploy it:
+
+```sh
+npm install
+npx wrangler deploy
+```
+
+Expose a local server through a folder tunnel:
+
+```sh
+python3 -m http.server 3000
+
+TUNNEL_SERVER_URL=https://capnweb-tunnel.<your-account>.workers.dev \
+npm run cli -- --name my-test 3000
+```
+
+Then call it from any HTTP client:
+
+```sh
+curl https://capnweb-tunnel.<your-account>.workers.dev/my-test/
+```
+
+Or use the client directly:
+
+```ts
+import { CapnwebTunnelClient } from "./src/client";
+
+const client = new CapnwebTunnelClient("https://example.workers.dev/my-test", {
+  fetch: (request) => fetch(request),
+});
+
+await client.connect();
+```
+
+It is about 100 lines of code, built on
+[Capnweb](https://github.com/cloudflare/capnweb). Ask your AI agent to copy it
+into your project and adapt it.
 
 We use it in end-to-end tests for deployed Cloudflare Workers: public internet
 egress is sent back to the Vitest test runner, where responses are replayed from
@@ -11,9 +50,6 @@ fully mocked internet.
 
 But you can use it for whatever you like. Use it instead of ngrok or Cloudflare
 Tunnels when you want a small, fast tunnel that lives in your codebase.
-
-It is about 100 lines of code. Ask your AI agent to copy it into your project
-and adapt it.
 
 ## Files
 
