@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { expect, test, vi } from "vitest";
 
 import { createCaptunTunnel } from "../src/client.js";
+import { publicTunnelUrl } from "../src/tunnel-addressing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -203,15 +204,7 @@ function tunnelName(testName: string) {
 }
 
 function tunnelUrl(serverUrl: string, name: string) {
-  if (serverUrl.includes("{name}")) return serverUrl.replaceAll("{name}", name).replace(/\/$/, "");
-
-  const url = new URL(serverUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) {
-    url.pathname = "/";
-  } else {
-    url.pathname = `/${name}`;
-  }
-  return url.toString().replace(/\/$/, "");
+  return publicTunnelUrl(serverUrl, name);
 }
 
 function makeBytes(size: number) {

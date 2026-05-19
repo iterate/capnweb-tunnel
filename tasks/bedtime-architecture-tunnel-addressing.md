@@ -1,17 +1,17 @@
 ---
-status: in-progress
+status: implementation-done
 size: medium
 kind: bedtime-architecture
 ---
 
-Summary: Architecture pass selected **Named Tunnel Addressing** as the highest-impact deepening opportunity. Current routing/addressing behavior is split across Worker routing, CLI tunnel URL construction, and tests; tonight's selector URL follow-up exposed real drift. This task will concentrate that behavior behind one small module interface.
+Summary: Core implementation is done and verified. Named tunnel addressing now lives behind a shared module used by the CLI, Worker routing, and E2E helpers; the remaining work is to push replacement compare branches for the open bedtime PR queue and link them from the architecture PR.
 
-- [ ] Add a named tunnel addressing module for folder/subdomain classification and public tunnel/connect URL construction.
-- [ ] Move CLI tunnel URL construction to the addressing module instead of keeping private URL helpers in `src/bin.ts`.
-- [ ] Keep Worker route parsing behavior unchanged while making the shared classification explicit.
-- [ ] Add focused unit coverage for public URL and connect URL construction, including folder, path-prefixed folder, `{name}` template, and subdomain-style hosts.
+- [x] Add a named tunnel addressing module for folder/subdomain classification and public tunnel/connect URL construction. _Implemented in `src/tunnel-addressing.ts`._
+- [x] Move CLI tunnel URL construction to the addressing module instead of keeping private URL helpers in `src/bin.ts`. _`captun tunnel` now calls `publicTunnelUrl()` and `tunnelConnectUrl()`._
+- [x] Keep Worker route parsing behavior unchanged while making the shared classification explicit. _`captunRouteParts()` now imports `usesFolderRouting()` from the addressing module._
+- [x] Add focused unit coverage for public URL and connect URL construction, including folder, path-prefixed folder, `{name}` template, and subdomain-style hosts. _Added named tunnel addressing cases in `test/worker.test.ts`._
 - [ ] Update the PR body with replacement compare branches for the open bedtime PR queue.
-- [ ] Verify with typecheck and tests.
+- [x] Verify with typecheck and tests. _Ran `pnpm run typecheck` and `pnpm test` in the architecture worktree._
 
 ## Architecture Decision
 
@@ -25,6 +25,6 @@ Why this one:
 
 ## Assumptions
 
-- This PR should not change runtime behavior by itself; it should move behavior behind a deeper module.
+- This PR should avoid product-facing churn, but the shared classifier should align CLI URL construction with Worker subdomain routing. That intentionally fixes the concrete custom-subdomain connect URL case that previously drifted from Worker routing.
 - The new module can be source-level internal for now, exported only as needed inside the package.
 - Broader deploy planning and Durable Object lifecycle seams are valid later candidates, but less directly connected to tonight's queue.

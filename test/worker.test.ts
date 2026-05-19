@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/client.js";
+import { publicTunnelUrl, serverUrlFromRoute, tunnelConnectUrl } from "../src/tunnel-addressing.js";
 import { captunRouteParts, captunShardName } from "../src/worker-routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
@@ -41,6 +42,37 @@ test("Captun Worker uses one warm shard by default", () => {
 test("Captun Worker keeps a tunnel name on a stable shard", () => {
   expect(captunShardName("my-test", 16)).toBe(captunShardName("my-test", 16));
   expect(captunShardName("my-test", 16)).toMatch(/^tunnel-shard-(?:[0-9]|1[0-5])$/);
+});
+
+test("Captun named tunnel addressing builds public and connect URLs", () => {
+  expect(publicTunnelUrl("https://captun.account.workers.dev", "my-test")).toBe(
+    "https://captun.account.workers.dev/my-test",
+  );
+  expect(publicTunnelUrl("https://captun.account.workers.dev/prefix", "my test")).toBe(
+    "https://captun.account.workers.dev/prefix/my%20test",
+  );
+  expect(publicTunnelUrl("https://{name}.tunnels.example.com", "my-test")).toBe(
+    "https://my-test.tunnels.example.com",
+  );
+  expect(publicTunnelUrl("https://my-test.tunnels.example.com", "ignored")).toBe(
+    "https://my-test.tunnels.example.com",
+  );
+  expect(publicTunnelUrl("https://my-test.my-tunnels.com", "ignored")).toBe(
+    "https://my-test.my-tunnels.com",
+  );
+  expect(tunnelConnectUrl("https://captun.account.workers.dev", "my-test")).toBe(
+    "https://captun.account.workers.dev/my-test/__captun-connect",
+  );
+});
+
+test("Captun named tunnel addressing infers server URLs from route patterns", () => {
+  expect(serverUrlFromRoute("*.tunnels.example.com/*")).toBe(
+    "https://{name}.tunnels.example.com",
+  );
+  expect(serverUrlFromRoute("https://*.my-tunnels.com/path/*")).toBe(
+    "https://{name}.my-tunnels.com/path",
+  );
+  expect(serverUrlFromRoute("captun.example.com/*")).toBe("https://captun.example.com");
 });
 
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {

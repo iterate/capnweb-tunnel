@@ -12,6 +12,7 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { createCaptunTunnel } from "./client.js";
 import { CommandNotFoundError, ExecError, exec } from "./exec.js";
+import { publicTunnelUrl, serverUrlFromRoute, tunnelConnectUrl } from "./tunnel-addressing.js";
 
 type Config = {
   serverUrl: string;
@@ -59,11 +60,11 @@ const router = os.router({
 
       const secret = input.secret || config?.secret;
       const name = input.name || randomName();
-      const tunnel = tunnelUrl(serverUrl, name);
+      const tunnel = publicTunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;
 
       using _tunnelSession = await createCaptunTunnel({
-        url: `${tunnel}/__captun-connect`,
+        url: tunnelConnectUrl(serverUrl, name),
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
         fetch: (request) => {
           const url = new URL(request.url);
@@ -227,34 +228,8 @@ async function writeConfig(config: Config) {
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
 
-function tunnelUrl(baseUrl: string, name: string) {
-  if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
-
-  const url = new URL(baseUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) {
-    url.pathname = "/";
-  } else {
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
-  }
-  return removeTrailingSlash(url.toString());
-}
-
-function serverUrlFromRoute(route: string) {
-  const withoutProtocol = route.replace(/^https?:\/\//, "");
-  const [hostPart, ...pathParts] = withoutProtocol.split("/");
-  const host = hostPart?.startsWith("*.") ? `{name}.${hostPart.slice(2)}` : hostPart;
-  if (!host) throw new Error(`Cannot infer server URL from route: ${route}`);
-
-  const path = pathParts.join("/").replace(/\*.*$/, "").replace(/\/$/, "");
-  return `https://${host}${path ? `/${path}` : ""}`;
-}
-
 function serverUrlFromWranglerOutput(output: string) {
   return output.match(/https:\/\/[^\s]+\.workers\.dev[^\s]*/)?.[0];
-}
-
-function removeTrailingSlash(url: string) {
-  return url.replace(/\/$/, "");
 }
 
 function waitForShutdown() {

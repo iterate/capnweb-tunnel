@@ -1,3 +1,5 @@
+import { usesFolderRouting } from "./tunnel-addressing.js";
+
 /** Extracts the tunnel name and forwarded path from just the hostname and path. */
 export function captunRouteParts(hostname: string, pathname: string) {
   if (!usesFolderRouting(hostname)) {
@@ -21,17 +23,6 @@ export function captunShardName(tunnelName: string, shardCount: number) {
     hash = Math.imul(hash, 16777619);
   }
   return `tunnel-shard-${(hash >>> 0) % Math.floor(shardCount)}`;
-}
-
-/** Chooses folder routing for Worker preview hosts, apex domains, and local dev. */
-function usesFolderRouting(hostname: string) {
-  return (
-    hostname === "localhost" ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
-    hostname.endsWith(".workers.dev") ||
-    hostname.startsWith("tunnels.") ||
-    hostname.split(".").length < 3
-  );
 }
 
 /** Decodes a route segment, returning undefined for malformed percent escapes. */
