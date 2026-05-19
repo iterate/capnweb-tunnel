@@ -37,7 +37,6 @@ const router = os.router({
     .input(
       z.object({
         port: z
-          .coerce
           .number()
           .int()
           .positive()
