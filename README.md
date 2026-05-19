@@ -122,7 +122,7 @@ export default {
 
 The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). `captun/server` contains the Cloudflare `WebSocketPair` helper and the standard `acceptCaptunTunnelFromSocket(socket)` core. Runtime-specific subpaths adapt that core to the server upgrade shape:
 
-- `captun/bun`: `createCaptunBunWebSocketHandler()` for `Bun.serve({ websocket })`.
+- `captun/bun`: `createCaptunBunTunnelHandler()` for `Bun.serve({ fetch, websocket })`.
 - `captun/deno`: `acceptCaptunDenoTunnel(socket)` for `Deno.upgradeWebSocket(request)`.
 - `captun/node`: `acceptCaptunNodeTunnel(socket)` for `ws`/Node HTTP upgrade handlers.
 

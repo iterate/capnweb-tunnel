@@ -1,15 +1,10 @@
-import type { CaptunServerTunnel } from "captun/server";
+type EgressFetch = typeof fetch;
 
 export class WeatherReporter {
-  private egressTunnel: CaptunServerTunnel | undefined;
+  private readonly egressFetch: EgressFetch;
 
-  replaceEgressTunnel(tunnel: CaptunServerTunnel) {
-    this.egressTunnel?.[Symbol.dispose]();
-    this.egressTunnel = tunnel;
-  }
-
-  clearEgressTunnel(tunnel: CaptunServerTunnel) {
-    if (this.egressTunnel === tunnel) this.egressTunnel = undefined;
+  constructor(egressFetch: EgressFetch) {
+    this.egressFetch = egressFetch;
   }
 
   async fetch(request: Request) {
@@ -27,12 +22,5 @@ export class WeatherReporter {
     }
 
     return new Response("Not found\n", { status: 404 });
-  }
-
-  private get egressFetch(): typeof fetch {
-    if (this.egressTunnel) {
-      return async (input, init) => this.egressTunnel!.fetch(new Request(input, init));
-    }
-    return fetch;
   }
 }

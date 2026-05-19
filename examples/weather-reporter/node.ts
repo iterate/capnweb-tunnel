@@ -9,7 +9,11 @@ import {
 import { WebSocketServer } from "ws";
 import { WeatherReporter } from "./app.js";
 
-const app = new WeatherReporter();
+let egressTunnel: CaptunServerTunnel | undefined;
+const app = new WeatherReporter(async (input, init) => {
+  if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
+  return fetch(input, init);
+});
 const port = Number(process.env.PORT);
 const webSockets = new WebSocketServer({ noServer: true });
 
@@ -36,14 +40,13 @@ server.on("upgrade", (request, socket, head) => {
   }
 
   webSockets.handleUpgrade(request, socket, head, (webSocket) => {
-    let acceptedTunnel: CaptunServerTunnel | undefined;
     const tunnel = acceptCaptunNodeTunnel(webSocket as unknown as CaptunNodeWebSocket, {
       onDisconnect: () => {
-        if (acceptedTunnel) app.clearEgressTunnel(acceptedTunnel);
+        if (egressTunnel === tunnel) egressTunnel = undefined;
       },
     });
-    acceptedTunnel = tunnel;
-    app.replaceEgressTunnel(tunnel);
+    egressTunnel?.[Symbol.dispose]();
+    egressTunnel = tunnel;
   });
 });
 

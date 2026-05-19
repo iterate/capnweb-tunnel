@@ -12,7 +12,11 @@ declare const Deno: {
   exit(code?: number): never;
 };
 
-const app = new WeatherReporter();
+let egressTunnel: CaptunServerTunnel | undefined;
+const app = new WeatherReporter(async (input, init) => {
+  if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
+  return fetch(input, init);
+});
 
 const server = Deno.serve(
   { hostname: "127.0.0.1", port: Number(Deno.env.get("PORT")) },
@@ -27,15 +31,14 @@ const server = Deno.serve(
       }
 
       const { socket, response } = Deno.upgradeWebSocket(request);
-      let acceptedTunnel: CaptunServerTunnel | undefined;
       socket.addEventListener("open", () => {
         const tunnel = acceptCaptunDenoTunnel(socket, {
           onDisconnect: () => {
-            if (acceptedTunnel) app.clearEgressTunnel(acceptedTunnel);
+            if (egressTunnel === tunnel) egressTunnel = undefined;
           },
         });
-        acceptedTunnel = tunnel;
-        app.replaceEgressTunnel(tunnel);
+        egressTunnel?.[Symbol.dispose]();
+        egressTunnel = tunnel;
       });
       return response;
     }
