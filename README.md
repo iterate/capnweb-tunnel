@@ -16,12 +16,12 @@ Then tunnel to it:
 npx captun 3000
 ```
 
-<!-- # https://captun.my-account.workers.dev/funny-banana-wall 
+<!-- # https://captun.my-account.workers.dev/funny-banana-wall
 
 # [if you want tunnels like https://funny-banana-wall.tunnels.yourdomain.com instead - click here]
 
 
-# mydomain.com and www.mydomain.com and something.mydomain.com 
+# mydomain.com and www.mydomain.com and something.mydomain.com
 # then you _could_ say *.mydomain.com goes to tunnels - and that could include <tunnel-name>__tunnels.mydomain.com -->
 
 The deploy command will use `wrangler` under the hood to deploy an opinionated captun-tunneler-worker to your cloudflare account, and will store the server url in an XDG config file, and uses it when you tunnel to it.
@@ -42,24 +42,24 @@ You can use the worker you just deployed to create a tunnel from code for receiv
 ```ts
 import { createCaptunTunnel } from "captun/client";
 
-const url = "https://captun.account.workers.dev/my-cool-tunnel"
+const url = "https://captun.account.workers.dev/my-cool-tunnel";
 
 const tunnel = await createCaptunTunnel({
   url: `${url}/__captun-connect`, // creates a tunnel named "my-tunnel". choose any slug-safe string here
   fetch: async (request) => {
-    const url = new URL(request.url)
-    if (url.pathname.endsWith('/webhook')) {
-      console.log('Received a webhook:', await request.json())
-      return Response.json({ ok: true })
+    const url = new URL(request.url);
+    if (url.pathname.endsWith("/webhook")) {
+      console.log("Received a webhook:", await request.json());
+      return Response.json({ ok: true });
     }
 
-    return new Response('not found', { status: 404 })
+    return new Response("not found", { status: 404 });
   },
 });
 
-console.log(`Listening to webhooks on ${url}/webhook`)
+console.log(`Listening to webhooks on ${url}/webhook`);
 
-await new Promise(() => {}) // stay alive until killed
+await new Promise(() => {}); // stay alive until killed
 ```
 
 That's all you need! No local ports, just a fetch function.
@@ -87,7 +87,9 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
       const city = url.searchParams.get("city");
       const response = await this.egressFetch(`https://wttr.in/${city}?format=j1`);
       const weather = await response.json<{ current_condition: [{ temp_C: string }] }>();
-      return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
+      return new Response(
+        `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+      );
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
@@ -162,16 +164,16 @@ You can import the public API from `captun`, or use subpath imports from `captun
 
 On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. Rechecking provider startup on the same day showed ngrok was much faster than the earlier sample: one ngrok ad-hoc tunnel reached 451ms, and 10 concurrent ngrok tunnels reached 658ms p50. Cloudflared quick tunnels still took about 8.5-9s when successful because the `trycloudflare.com` hostname was printed several seconds before DNS/public routing was ready.
 
-| Ad-hoc tunnel            | First fetch |
-| ------------------------ | ----------: |
-| captun                   |       188ms |
-| ngrok                    | 451ms (+140%) |
+| Ad-hoc tunnel            |     First fetch |
+| ------------------------ | --------------: |
+| captun                   |           188ms |
+| ngrok                    |   451ms (+140%) |
 | cloudflared quick tunnel | 8.51s (+4,427%) |
 
-| 10 concurrent ad-hoc tunnels | Successful |   p50 |   p90 |   p99 |
-| ---------------------------- | ---------: | ----: | ----: | ----: |
-| captun                       |      10/10 | 172ms | 186ms | 189ms |
-| ngrok                        |      10/10 | 658ms (+283%) | 695ms (+274%) | 985ms (+421%) |
+| 10 concurrent ad-hoc tunnels | Successful |             p50 |             p90 |             p99 |
+| ---------------------------- | ---------: | --------------: | --------------: | --------------: |
+| captun                       |      10/10 |           172ms |           186ms |           189ms |
+| ngrok                        |      10/10 |   658ms (+283%) |   695ms (+274%) |   985ms (+421%) |
 | cloudflared quick tunnel     |       2/10 | 8.89s (+5,069%) | 9.00s (+4,739%) | 9.00s (+4,662%) |
 
 One shard is the default because it spins up fastest. More shards trade extra cold starts for more total throughput: 100 concurrent 2MiB streams through one shard took 26.34s p50, while 150 concurrent 2MiB streams spread over 256 warmed shards took 9.76s p50.
