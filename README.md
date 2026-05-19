@@ -138,6 +138,8 @@ npx captun 3000 --name my-very-serious-tunnel-name
 
 By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my-tunnel", and becomes a corresponding HTTP request with pathname `/foo/bar` when it reaches your client.
 
+Folder-routed hosts also have a browser convenience route for apps that use root-relative assets or links. Visit `/__captun/t/my-tunnel` on the Worker host to set the active tunnel cookie and redirect back to `/`; after that, browser requests for `/`, `/assets/app.js`, and similar root paths go through `my-tunnel`. Direct `/my-tunnel/...` URLs still work for curl, tests, and sharing exact paths. The CLI prints this browser root URL when the configured server URL supports folder routing.
+
 ### Custom hostnames
 
 Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com`. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`.

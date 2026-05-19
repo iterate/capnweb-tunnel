@@ -10,6 +10,7 @@ import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
 import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
+import { tunnelBrowserRootUrl } from "./cli-routing.js";
 import { createCaptunTunnel } from "./client.js";
 import { CommandNotFoundError, ExecError, exec } from "./exec.js";
 import { publicTunnelUrl, serverUrlFromRoute, tunnelConnectUrl } from "./tunnel-addressing.js";
@@ -73,6 +74,10 @@ const router = os.router({
       });
 
       console.log(`tunneling ${tunnel} -> ${origin}`);
+      const browserRootUrl = tunnelBrowserRootUrl(serverUrl, name);
+      if (browserRootUrl) {
+        console.log(`browser root ${browserRootUrl} -> ${origin}`);
+      }
       await waitForShutdown();
     }),
 
