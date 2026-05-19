@@ -19,3 +19,4 @@ Summary: Done. The CLI now prints the browser-root selector URL for folder-route
 ## Implementation Notes
 
 - 2026-05-19: Kept this as a display/docs affordance only. Routing semantics stay in PR #6.
+- 2026-05-19: Review follow-up moved selector URL inference into `src/cli-routing.ts`, shared the Worker folder-routing classifier, and added helper coverage for workers.dev, apex/path, tunnels.*, wildcard template, and concrete custom-subdomain URLs.

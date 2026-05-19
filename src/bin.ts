@@ -10,6 +10,7 @@ import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
 import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
+import { tunnelBrowserRootUrl } from "./cli-routing.js";
 import { createCaptunTunnel } from "./client.js";
 import { CommandNotFoundError, ExecError, exec } from "./exec.js";
 
@@ -240,17 +241,6 @@ function tunnelUrl(baseUrl: string, name: string) {
   } else {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
   }
-  return removeTrailingSlash(url.toString());
-}
-
-function tunnelBrowserRootUrl(baseUrl: string, name: string) {
-  if (baseUrl.includes("{name}")) return undefined;
-
-  const url = new URL(baseUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) return undefined;
-  url.pathname = `${url.pathname.replace(/\/$/, "")}/__captun/t/${encodeURIComponent(name)}`;
-  url.search = "";
-  url.hash = "";
   return removeTrailingSlash(url.toString());
 }
 

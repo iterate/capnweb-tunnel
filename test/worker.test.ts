@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { tunnelBrowserRootUrl } from "../src/cli-routing.js";
 import { createCaptunTunnel } from "../src/client.js";
 import {
   CAPTUN_ACTIVE_TUNNEL_COOKIE,
@@ -128,6 +129,20 @@ test("Captun active tunnel cookie is host-scoped and secure only for HTTPS", () 
   expect(httpCookie).not.toContain("Secure");
 
   expect(captunActiveTunnelSetCookie("demo", "https:")).toContain("Secure");
+});
+
+test("Captun CLI browser root URL helper mirrors folder routing", () => {
+  expect(tunnelBrowserRootUrl("https://captun.account.workers.dev", "demo")).toBe(
+    "https://captun.account.workers.dev/__captun/t/demo",
+  );
+  expect(tunnelBrowserRootUrl("https://my-tunnels.com/base", "demo app")).toBe(
+    "https://my-tunnels.com/base/__captun/t/demo%20app",
+  );
+  expect(tunnelBrowserRootUrl("https://tunnels.example.com", "demo")).toBe(
+    "https://tunnels.example.com/__captun/t/demo",
+  );
+  expect(tunnelBrowserRootUrl("https://{name}.my-tunnels.com", "demo")).toBeUndefined();
+  expect(tunnelBrowserRootUrl("https://demo.my-tunnels.com", "demo")).toBeUndefined();
 });
 
 test("Captun routing cookie stripping keeps origin cookies intact", () => {
