@@ -1,4 +1,4 @@
-import { acceptCaptunTunnelFromSocket } from "./server.js";
+import { acceptCaptunTunnelFromSocket } from "./server-core.js";
 import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
 export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";

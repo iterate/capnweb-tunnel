@@ -1,25 +1,14 @@
 import {
   createCaptunBunTunnelHandler,
-  type CaptunBunServer,
-  type CaptunBunWebSocketHandler,
   type CaptunServerTunnel,
 } from "captun/bun";
 
-declare const Bun: {
-  serve(options: {
-    hostname: string;
-    port: number;
-    fetch(
-      request: Request,
-      server: CaptunBunServer,
-    ): Response | Promise<Response | undefined> | undefined;
-    websocket: CaptunBunWebSocketHandler;
-  }): { stop(force?: boolean): void };
-};
-
 let egressTunnel: CaptunServerTunnel | undefined;
-const egressFetch: typeof fetch = async (input, init) => {
-  if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
+const egressFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+  if (egressTunnel) {
+    const request = input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
+    return egressTunnel.fetch(request);
+  }
   return fetch(input, init);
 };
 const captun = createCaptunBunTunnelHandler();
