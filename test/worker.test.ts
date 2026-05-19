@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/client.ts";
-import { createCaptunWorkerFixture } from "./fixtures/captun-worker.ts";
+import { createCaptunWorkerFixture } from "./miniflare.ts";
 
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {
-  await using fixture = await createCaptunWorkerFixture();
+  await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
     url: new URL("/demo/__connect", fixture.origin),
     fetch: async (request) => {
@@ -27,7 +27,7 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
 });
 
 test("Captun Worker returns 503 when a named tunnel has no connected client", async () => {
-  await using fixture = await createCaptunWorkerFixture();
+  await using fixture = await createCaptunWorkerFixture({});
 
   const response = await fetch(new URL("/missing/hello", fixture.origin));
 
@@ -36,7 +36,7 @@ test("Captun Worker returns 503 when a named tunnel has no connected client", as
 });
 
 test("Captun Worker routes subdomain tunnel requests", async () => {
-  await using fixture = await createCaptunWorkerFixture();
+  await using fixture = await createCaptunWorkerFixture({});
 
   const response = await fixture.worker.fetch("http://demo.tunnels.example.com/hello");
 
@@ -45,7 +45,7 @@ test("Captun Worker routes subdomain tunnel requests", async () => {
 });
 
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
-  await using fixture = await createCaptunWorkerFixture();
+  await using fixture = await createCaptunWorkerFixture({});
 
   const response = await fetch(new URL("/__connect", fixture.origin));
 
@@ -54,7 +54,7 @@ test("Captun Worker rejects missing tunnel names before Durable Object dispatch"
 });
 
 test("Captun Worker rejects malformed folder tunnel names", async () => {
-  await using fixture = await createCaptunWorkerFixture();
+  await using fixture = await createCaptunWorkerFixture({});
 
   const response = await fetch(new URL("/bad%/hello", fixture.origin));
 

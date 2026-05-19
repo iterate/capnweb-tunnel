@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -12,6 +11,7 @@ import { os } from "@orpc/server";
 import { createCli } from "trpc-cli";
 import { z } from "zod/v4";
 import { createCaptunTunnel } from "./client.ts";
+import { CommandNotFoundError, ExecError, exec } from "./exec.ts";
 
 type Config = {
   serverUrl: string;
@@ -146,37 +146,19 @@ async function deployWorker(input: { route?: string; secret: string }) {
 
 async function runWrangler(args: string[]) {
   const wrangler = wranglerCommand(args);
-  const child = spawn(wrangler.command, wrangler.args, {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  let output = "";
-  child.stdout.on("data", (chunk: Buffer) => {
-    output += chunk;
-    process.stdout.write(chunk);
-  });
-  child.stderr.on("data", (chunk: Buffer) => {
-    output += chunk;
-    process.stderr.write(chunk);
-  });
-
-  return new Promise<string>((resolvePromise, reject) => {
-    child.on("error", (error) => {
-      if ("code" in error && error.code === "ENOENT") {
-        reject(
-          new Error(
-            "Wrangler is required for `captun deploy`. Install it globally or run `pnpm add -D wrangler` in the project invoking captun.",
-          ),
-        );
-        return;
-      }
-      reject(error);
-    });
-    child.on("close", (code) => {
-      if (code === 0) resolvePromise(output);
-      else reject(new Error(`wrangler deploy failed with exit code ${code ?? "unknown"}`));
-    });
-  });
+  try {
+    return (await exec(wrangler.command, wrangler.args, { cwd: packageRoot })).output;
+  } catch (error) {
+    if (error instanceof CommandNotFoundError) {
+      throw new Error(
+        "Wrangler is required for `captun deploy`. Install it globally or run `pnpm add -D wrangler` in the project invoking captun.",
+      );
+    }
+    if (error instanceof ExecError) {
+      throw new Error(`wrangler deploy failed with exit code ${error.result.exitCode}`);
+    }
+    throw error;
+  }
 }
 
 function wranglerCommand(args: string[]) {

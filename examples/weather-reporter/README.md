@@ -7,11 +7,10 @@ tunnel is used from the same Worker request context.
 
 ## Run Locally
 
-From the repository root, install and build once:
+From the repository root, install once:
 
 ```sh
 pnpm install
-pnpm run build
 ```
 
 Then run the example test from this directory:
@@ -20,7 +19,7 @@ Then run the example test from this directory:
 pnpm test
 ```
 
-The test starts `wrangler dev` automatically when `WEATHER_REPORTER_URL` is not set.
+The test starts a Miniflare Worker automatically when `WEATHER_REPORTER_URL` is not set.
 To point the same test at an already-running local Worker:
 
 ```sh

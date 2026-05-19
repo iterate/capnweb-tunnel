@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { expect, test, vi } from "vitest";
 
 import { createCaptunTunnel } from "../src/client.ts";
-import { createCaptunWorkerFixture } from "./fixtures/captun-worker.ts";
+import { createCaptunWorkerFixture } from "./miniflare.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -181,7 +181,7 @@ async function createServerFixture() {
     };
   }
 
-  const worker = await createCaptunWorkerFixture();
+  const worker = await createCaptunWorkerFixture({});
   return {
     url: worker.origin,
     headers: undefined,
