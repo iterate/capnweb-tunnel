@@ -14,13 +14,14 @@ pnpm install
 pnpm run build
 ```
 
-Then run the example from this directory:
+Then run the example test from this directory:
 
 ```sh
-pnpm exec wrangler dev
+pnpm test
 ```
 
-In another terminal:
+The test starts `wrangler dev` automatically when `WEATHER_REPORTER_URL` is not set.
+To point the same test at an already-running local Worker:
 
 ```sh
 WEATHER_REPORTER_URL=http://127.0.0.1:8787 pnpm test
@@ -40,4 +41,4 @@ doppler run -- pnpm exec wrangler deploy
 WEATHER_REPORTER_URL=https://weather-reporter.garple-pretend-customer-should-be-iterate-dev-stg-will-chan.workers.dev pnpm test
 ```
 
-The test awaits `createCaptunTunnel()` at `WEATHER_REPORTER_URL + "/__intercept-egress-traffic"`, mocks the `wttr.in` response, then calls `/weather/london` and `/weather/new+york` on the deployed Worker.
+The test awaits `createCaptunTunnel()` at the Worker's `/__intercept-egress-traffic` route, mocks the `wttr.in` response, then calls `/weather/london` and `/weather/new+york` on the Worker.

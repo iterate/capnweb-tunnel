@@ -10,6 +10,7 @@
     "captun": "workspace:*"
   },
   "devDependencies": {
+    "tinyexec": "^1.1.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   }
