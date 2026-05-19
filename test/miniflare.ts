@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 
 import * as esbuild from "esbuild";
 import { Miniflare } from "miniflare";
+
 export async function createMiniflareWorkerFixture(options: {
-  entryPoint: string;
+  entryPoint: `${string}.ts`;
   durableObjects: Record<string, { className: string }>;
   bindings: Record<string, string>;
 }) {

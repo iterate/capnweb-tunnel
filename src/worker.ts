@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel } from "./server.js";
 import type { CaptunServerTunnel } from "./types.js";
+import { captunRouteParts, captunShardName } from "./worker-routing.js";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
@@ -80,49 +81,4 @@ function captunRoute(request: Request) {
 
   url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
   return { tunnelName: route.name, request: new Request(url, request) };
-}
-
-/** Extracts the tunnel name and forwarded path from just the hostname and path. */
-function captunRouteParts(hostname: string, pathname: string) {
-  if (!usesFolderRouting(hostname)) {
-    const [name] = hostname.split(".");
-    if (!name) return undefined;
-    const decodedName = safeDecodeURIComponent(name);
-    return decodedName ? { name: decodedName, path: pathname } : undefined;
-  }
-  const [name, ...rest] = pathname.split("/").filter(Boolean);
-  if (!name || name === "__captun-connect") return undefined;
-  const decodedName = safeDecodeURIComponent(name);
-  return decodedName ? { name: decodedName, path: `/${rest.join("/")}` } : undefined;
-}
-
-/** Maps a tunnel name to a stable Durable Object shard name. */
-function captunShardName(tunnelName: string, shardCount: number) {
-  if (!Number.isFinite(shardCount) || shardCount <= 1) return "tunnel-shard-0";
-  let hash = 2166136261;
-  for (let index = 0; index < tunnelName.length; index++) {
-    hash ^= tunnelName.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `tunnel-shard-${(hash >>> 0) % Math.floor(shardCount)}`;
-}
-
-/** Chooses folder routing for Worker preview hosts, apex domains, and local dev. */
-function usesFolderRouting(hostname: string) {
-  return (
-    hostname === "localhost" ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
-    hostname.endsWith(".workers.dev") ||
-    hostname.startsWith("tunnels.") ||
-    hostname.split(".").length < 3
-  );
-}
-
-/** Decodes a route segment, returning undefined for malformed percent escapes. */
-function safeDecodeURIComponent(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return undefined;
-  }
 }

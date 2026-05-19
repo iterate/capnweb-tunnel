@@ -50,14 +50,14 @@ const router = os.router({
     )
     .handler(async ({ input }) => {
       const config = await readConfig();
-      const serverUrl = input.serverUrl || process.env.CAPTUN_SERVER_URL || config?.serverUrl;
+      const serverUrl = input.serverUrl || config?.serverUrl;
       if (!serverUrl) {
         throw new Error(
           `No tunnel server configured. Run "captun deploy" first or pass --server-url.`,
         );
       }
 
-      const secret = input.secret || process.env.CAPTUN_SECRET || config?.secret;
+      const secret = input.secret || config?.secret;
       const name = input.name || randomName();
       const tunnel = tunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;

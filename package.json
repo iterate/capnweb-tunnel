@@ -52,7 +52,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.lib.json",
     "check": "pnpm run typecheck",
-    "typecheck": "tsc -p tsconfig.json && pnpm --filter @captun/weather-reporter typecheck",
+    "typecheck": "tsc -p tsconfig.json && pnpm --recursive --filter '!captun' --if-present run typecheck",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "test": "vitest run",
