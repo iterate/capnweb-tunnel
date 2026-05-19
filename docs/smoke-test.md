@@ -13,7 +13,6 @@ Optional for **remote** deploy/tunnel: `wrangler login` or `CLOUDFLARE_API_TOKEN
 ## Run one step
 
 ```bash
-chmod +x scripts/smoke-test.sh scripts/smoke/*.sh
 ./scripts/smoke-test.sh list
 ./scripts/smoke-test.sh step-0-build
 ```
@@ -40,14 +39,14 @@ All local steps:
 
 ## Remote path (real deploy + tunnel)
 
-### A. workers.dev deploy (interactive — use tmux)
+### A. workers.dev deploy
 
 ```bash
 pnpm run build
-tmux new -s captun-deploy 'npx captun deploy'
+npx captun deploy
 ```
 
-At the **route** prompt, press **Enter** for `*.workers.dev`. Save the printed **Secret** and **Server URL** (`~/.config/captun/config.json` is written automatically).
+The CLI writes `serverUrl` and `secret` to `~/.config/captun/config.json` automatically.
 
 Non-interactive:
 
@@ -60,7 +59,7 @@ Requires `CLOUDFLARE_API_TOKEN` or prior `wrangler login`.
 ### B. Wildcard route deploy
 
 ```bash
-npx captun deploy --route '*.tunnels.yourdomain.com/*' --secret "$SECRET"
+npx captun deploy --route '*.tunnels.yourdomain.com/*' --zone yourdomain.com --secret "$SECRET"
 ```
 
 Config `serverUrl` becomes `https://{name}.tunnels.yourdomain.com`.
@@ -97,10 +96,9 @@ curl -i "https://smoke-test.tunnels.templestein.com/"
 - One script waited on **tmux pane** text; wrangler output often landed in a different window than `capture-pane` read.
 - `deploy` had `.meta({ prompt: true })`, which **forced** prompts even when flags were passed.
 
-Fixes in `src/cli.ts`:
+Fixes in `src/bin.ts`:
 
-- Prompts only when stdin/stdout are a TTY.
-- No forced `prompt: true` on deploy.
+- Deploy has no forced `prompt: true`.
 - `deploy --dry-run` skips upload and config write.
 
 ## templestein.com (personal account)

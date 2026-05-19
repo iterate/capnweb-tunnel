@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -9,17 +8,15 @@ import { fileURLToPath } from "node:url";
 
 import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
-import { createCli } from "trpc-cli";
+import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
-import { createCaptunTunnel } from "./client.ts";
-import type { Fetcher } from "./types.ts";
+import { createCaptunTunnel } from "./client.js";
+import { CommandNotFoundError, ExecError, exec } from "./exec.js";
 
 type Config = {
   serverUrl: string;
   secret?: string;
 };
-
-const DEFAULT_SERVER_URL = "http://localhost:8787";
 
 const adjectives = "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(" ");
 const speeds = "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(" ");
@@ -27,26 +24,25 @@ const things = "tree river stone cloud field bridge spark meadow tower trail gar
 
 const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packageJson = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8")) as {
-  version: string;
-};
+const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+const configPath = resolve(xdgConfigHome || resolve(homedir(), ".config"), "captun", "config.json");
 
 const router = os.router({
   tunnel: os
     .meta({
       default: true,
-      description: "Expose a local HTTP server through your Captun Worker.",
+      description: "Expose a local HTTP server through your Captun tunnel Worker.",
       examples: ["captun 3000", "captun 5173 --name my-app"],
     })
     .input(
       z.object({
-        port: z.coerce
+        port: z
           .number()
           .int()
           .positive()
           .default(3000)
-          .meta({ positional: true })
-          .describe("Local port to expose"),
+          .describe("Local port to expose")
+          .meta({ positional: true }),
         name: z.string().optional().describe("Tunnel name"),
         serverUrl: z.url().optional().describe("Tunnel Worker base URL"),
         secret: z.string().optional().describe("Tunnel connection secret"),
@@ -54,88 +50,97 @@ const router = os.router({
     )
     .handler(async ({ input }) => {
       const config = await readConfig();
-      const serverUrl =
-        input.serverUrl ?? process.env.CAPTUN_SERVER_URL ?? config?.serverUrl ?? DEFAULT_SERVER_URL;
+      const serverUrl = input.serverUrl || config?.serverUrl;
+      if (!serverUrl) {
+        throw new Error(
+          `No tunnel server configured. Run "captun deploy" first or pass --server-url.`,
+        );
+      }
 
-      const secret = input.secret ?? process.env.CAPTUN_SECRET ?? config?.secret;
-      const name = input.name ?? randomName();
+      const secret = input.secret || config?.secret;
+      const name = input.name || randomName();
       const tunnel = tunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;
 
-      const tunnelSession = await createCaptunTunnel({
-        url: new URL("__connect", tunnel),
+      using _tunnelSession = await createCaptunTunnel({
+        url: `${tunnel}/__captun-connect`,
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
-        fetch: ((request) => {
+        fetch: (request) => {
           const url = new URL(request.url);
-          return fetch(new Request(new URL(url.pathname + url.search, origin), request));
-        }) satisfies Fetcher["fetch"],
+          return fetch(new Request(`${origin}${url.pathname}${url.search}`, request));
+        },
       });
 
       console.log(`tunneling ${tunnel} -> ${origin}`);
-      try {
-        await waitForShutdown();
-      } finally {
-        tunnelSession[Symbol.dispose]();
-      }
+      await waitForShutdown();
     }),
 
   deploy: os
     .meta({
-      description: "Deploy the Captun Worker with Wrangler and save local CLI config.",
-      examples: ["captun deploy", "captun deploy --route '*.tunnels.example.com/*'"],
+      description: "Deploy the Captun tunnel Worker with Wrangler and save local CLI config.",
+      prompt: false,
+      examples: [
+        "captun deploy",
+        "captun deploy --route '*.tunnels.example.com/*'",
+        "captun deploy --shards 16",
+      ],
     })
     .input(
       z.object({
         route: z
           .string()
           .optional()
-          .describe("Custom Worker route (leave empty for *.workers.dev), e.g. *.tunnels.example.com/*"),
+          .describe("Optional Worker route, for example *.tunnels.example.com/*"),
         zone: z
           .string()
           .optional()
-          .describe("Cloudflare zone name for the route (e.g. templestein.com)"),
+          .describe("Cloudflare zone name for the route, for example example.com"),
         secret: z
           .string()
-          .default(() => randomSecret())
-          .describe("Secret required by tunnel clients"),
+          .optional()
+          .describe("Secret required by tunnel clients; generated when omitted"),
+        shards: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("Number of Durable Object shards to spread tunnel names across"),
         dryRun: z.boolean().optional().describe("Compile and validate the deploy without uploading"),
       }),
     )
     .handler(async ({ input }) => {
+      const secret = input.secret || randomSecret();
+      const serverUrl = await deployWorker({
+        route: input.route,
+        zone: input.zone,
+        secret,
+        shards: input.shards,
+        dryRun: input.dryRun,
+      });
       if (input.dryRun) {
-        await deployWorker(input);
-        const serverUrl = input.route
-          ? serverUrlFromRoute(input.route)
-          : "https://captun.<your-account>.workers.dev";
-        console.log(`\nDry run complete (no upload, config not written).`);
+        console.log("\nDry run complete (no upload, config not written).");
         console.log(`Expected server URL pattern: ${serverUrl}`);
         return { serverUrl, dryRun: true };
       }
-
-      const serverUrl = await deployWorker(input);
-      const path = captunConfigPath();
-      await writeConfig({ serverUrl, secret: input.secret });
-      console.log(`\nWrote ${path}`);
-      console.log(`Server URL: ${serverUrl}`);
-      console.log(`Secret (save this): ${input.secret}`);
-      return { serverUrl, configPath: path };
+      await writeConfig({ serverUrl, secret });
+      return { serverUrl, configPath };
     }),
 });
 
 const cli = createCli({
   router,
   name: "captun",
-  version: packageJson.version,
+  version: "0.0.0",
   description: "Expose local HTTP servers through a tiny Cloudflare Worker tunnel.",
 });
 
-const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-await cli.run(interactive ? { prompts } : {});
+await cli.run({ prompts, logger: yamlTableConsoleLogger });
 
 async function deployWorker(input: {
   route?: string;
   zone?: string;
   secret: string;
+  shards?: number;
   dryRun?: boolean;
 }) {
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
@@ -144,29 +149,23 @@ async function deployWorker(input: {
     await writeFile(secretsFile, JSON.stringify({ CAPTUN_SECRET: input.secret }), { mode: 0o600 });
 
     let config = resolve(packageRoot, "wrangler.toml");
+    const worker = resolve(packageRoot, "dist/worker.js");
+    const args = ["--cwd", packageRoot, "deploy"];
     if (input.route && input.zone) {
-      const base = await readFile(config, "utf8");
-      const workerEntry = resolve(packageRoot, "src/worker.ts");
+      const baseConfig = await readFile(config, "utf8");
       const deployConfig = resolve(tempDir, "wrangler.toml");
-      const withMain = base.replace(/^main\s*=\s*.+$/m, `main = ${JSON.stringify(workerEntry)}`);
+      const withMain = baseConfig.replace(/^main\s*=\s*.+$/m, `main = ${JSON.stringify(worker)}`);
       await writeFile(
         deployConfig,
         `${withMain.trimEnd()}\n\n[[routes]]\npattern = ${JSON.stringify(input.route)}\nzone_name = ${JSON.stringify(input.zone)}\n`,
       );
       config = deployConfig;
+    } else {
+      args.push(worker);
     }
-
-    const args = [
-      "--cwd",
-      packageRoot,
-      "deploy",
-      "--config",
-      config,
-      "--secrets-file",
-      secretsFile,
-      "--keep-vars",
-    ];
+    args.push("--config", config, "--secrets-file", secretsFile, "--keep-vars");
     if (input.route && !input.zone) args.push("--route", input.route);
+    if (input.shards) args.push("--var", `CAPTUN_SHARDS:${input.shards}`);
     if (input.dryRun) args.push("--dry-run");
 
     const output = await runWrangler(args);
@@ -174,7 +173,9 @@ async function deployWorker(input: {
       return input.route ? serverUrlFromRoute(input.route) : "https://captun.<your-account>.workers.dev";
     }
 
-    const serverUrl = input.route ? serverUrlFromRoute(input.route) : serverUrlFromWranglerOutput(output);
+    const serverUrl = input.route
+      ? serverUrlFromRoute(input.route)
+      : serverUrlFromWranglerOutput(output);
     if (!serverUrl) {
       throw new Error("Wrangler deploy succeeded, but the Worker URL was not found in its output.");
     }
@@ -185,41 +186,36 @@ async function deployWorker(input: {
 }
 
 async function runWrangler(args: string[]) {
-  const wranglerBin = require.resolve("wrangler/bin/wrangler.js");
-  const child = spawn(process.execPath, [wranglerBin, ...args], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  let output = "";
-  child.stdout.on("data", (chunk: Buffer) => {
-    output += chunk;
-    process.stdout.write(chunk);
-  });
-  child.stderr.on("data", (chunk: Buffer) => {
-    output += chunk;
-    process.stderr.write(chunk);
-  });
-
-  return new Promise<string>((resolvePromise, reject) => {
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolvePromise(output);
-      else reject(new Error(`wrangler deploy failed with exit code ${code ?? "unknown"}`));
-    });
-  });
+  const wrangler = wranglerCommand(args);
+  try {
+    return (await exec(wrangler.command, wrangler.args, { cwd: packageRoot })).output;
+  } catch (error) {
+    if (error instanceof CommandNotFoundError) {
+      throw new Error(
+        "Wrangler is required for `captun deploy`. Install it globally or run `pnpm add -D wrangler` in the project invoking captun.",
+      );
+    }
+    if (error instanceof ExecError) {
+      throw new Error(`wrangler deploy failed with exit code ${error.result.exitCode}`);
+    }
+    throw error;
+  }
 }
 
-function captunConfigPath() {
-  const configHome = process.env.XDG_CONFIG_HOME
-    ? resolve(process.env.XDG_CONFIG_HOME, "captun")
-    : resolve(homedir(), ".config", "captun");
-  return resolve(configHome, "config.json");
+function wranglerCommand(args: string[]) {
+  try {
+    return {
+      command: process.execPath,
+      args: [require.resolve("wrangler/bin/wrangler.js"), ...args],
+    };
+  } catch {
+    return { command: "wrangler", args };
+  }
 }
 
 async function readConfig() {
-  const path = captunConfigPath();
   try {
-    return JSON.parse(await readFile(path, "utf8")) as Config;
+    return JSON.parse(await readFile(configPath, "utf8")) as Config;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
@@ -227,21 +223,20 @@ async function readConfig() {
 }
 
 async function writeConfig(config: Config) {
-  const path = captunConfigPath();
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
 
 function tunnelUrl(baseUrl: string, name: string) {
-  if (baseUrl.includes("{name}")) return ensureTrailingSlash(baseUrl.replaceAll("{name}", name));
+  if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
 
   const url = new URL(baseUrl);
   if (url.hostname.match(/^[^.]+\.tunnels\./)) {
     url.pathname = "/";
   } else {
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}/`;
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
   }
-  return url.toString();
+  return removeTrailingSlash(url.toString());
 }
 
 function serverUrlFromRoute(route: string) {
@@ -258,8 +253,8 @@ function serverUrlFromWranglerOutput(output: string) {
   return output.match(/https:\/\/[^\s]+\.workers\.dev[^\s]*/)?.[0];
 }
 
-function ensureTrailingSlash(url: string) {
-  return url.endsWith("/") ? url : `${url}/`;
+function removeTrailingSlash(url: string) {
+  return url.replace(/\/$/, "");
 }
 
 function waitForShutdown() {

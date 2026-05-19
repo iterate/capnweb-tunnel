@@ -2,9 +2,7 @@
   "serverUrl": "https://{name}.tunnels.templestein.com",
   "bytes": 2097152,
   "chunkBytes": 65536,
-  "modes": [
-    "stream"
-  ],
+  "modes": ["stream"],
   "readMode": "stream",
   "timeoutMs": 60000,
   "results": [

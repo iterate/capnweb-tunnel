@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { createCaptunTunnel } from "../src/client.ts";
+import { createCaptunTunnel } from "../src/client.js";
 
 // Stress the expensive path: many named tunnels, each returning a large streamed
 // binary response through Captun. This measures aggregate tunnel throughput,
@@ -63,7 +63,7 @@ if (warmupCount > 0) {
     Math.min(warmupCount, Math.max(connectConcurrency, 25)),
     async (index) => {
       const session = await createCaptunTunnel({
-        url: new URL("__connect", tunnelUrl(`${namePrefix}-warm-${index}`)),
+        url: `${tunnelUrl(`${namePrefix}-warm-${index}`)}/__captun-connect`,
         headers: captunHeaders(),
         fetch: () => testResponse("stream"),
       });
@@ -134,7 +134,7 @@ async function measure(index: number, mode: string): Promise<Measurement> {
   let tunnel: Disposable | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: new URL("__connect", url),
+      url: `${url}/__captun-connect`,
       headers: captunHeaders(),
       fetch: () => testResponse(mode),
     });
@@ -217,11 +217,11 @@ async function readBytes(response: Response) {
 }
 
 function tunnelUrl(name: string) {
-  if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
+  if (serverUrl.includes("{name}")) return serverUrl.replaceAll("{name}", name).replace(/\/$/, "");
   const url = new URL(serverUrl);
   if (url.hostname.match(/^[^.]+\.tunnels\./)) url.pathname = "/";
-  else url.pathname = `/${name}/`;
-  return url;
+  else url.pathname = `/${name}`;
+  return url.toString().replace(/\/$/, "");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, message: string) {

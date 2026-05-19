@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push: {}
+  pull_request: {}
+
+jobs:
+  build-test-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g corepack@0.31.0
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run test
+      - name: arethetypeswrong
+        run: |
+          pnpm pack
+          mv $(ls | grep .tgz) pkg-ignoreme.tgz
+          npx --yes --package @arethetypeswrong/cli@0.18.2 --package fflate@0.8.2 attw pkg-ignoreme.tgz --profile esm-only

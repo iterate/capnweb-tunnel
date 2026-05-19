@@ -1,9 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "noEmit": false,
     "rootDir": "src",
     "outDir": "dist",
-    "rewriteRelativeImportExtensions": true
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true
   },
   "include": ["src/**/*.ts", "worker-configuration.d.ts"]
 }
