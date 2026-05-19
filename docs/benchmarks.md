@@ -6,7 +6,7 @@ The startup benchmark in [scripts/benchmark-startup.ts](../scripts/benchmark-sta
 
 ```bash
 CAPTUN_SERVER_URL=https://{name}.tunnels.example.com \
-PROVIDERS=captun,ngrok,cloudflared \
+PROVIDERS=captun,ngrok,cloudflared,wrangler-tunnel \
 COUNTS=1 \
 OUT=docs/performance/captun-startup.json \
 node scripts/benchmark-startup.ts
@@ -46,6 +46,13 @@ Provider recheck on May 18, 2026:
 | cloudflared quick tunnel x 10 |       2/10 | 8.89s | 9.00s | 9.00s |
 
 The cloudflared failures were not local process startup failures. The tunnel processes registered with Cloudflare in LHR, but most `trycloudflare.com` hostnames never served traffic before the 120s benchmark timeout. A separate phase probe printed URLs after 4.8-6.2s, resolved DNS after 8.2-9.5s, and served the first fetch after 8.5-9.7s.
+
+`wrangler tunnel quick-start` appears to use the same Cloudflare Quick Tunnel path:
+on May 19, 2026, a 120s one-tunnel probe printed a `trycloudflare.com`
+URL and registered a LHR tunnel connection, but the hostname never resolved
+DNS before timeout. It is supported as `PROVIDERS=wrangler-tunnel` for ad-hoc
+checks, but is not listed in the README table until there is a successful
+first-fetch sample to compare.
 
 Captun concurrent startup:
 
