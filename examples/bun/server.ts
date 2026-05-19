@@ -1,7 +1,5 @@
-import {
-  createCaptunBunTunnelHandler,
-  type CaptunServerTunnel,
-} from "captun/bun";
+import type { CaptunServerTunnel } from "captun";
+import { createCaptunBunTunnelHandler } from "captun/bun";
 
 let egressTunnel: CaptunServerTunnel | undefined;
 const egressFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {

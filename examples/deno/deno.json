@@ -1,5 +1,6 @@
 {
   "imports": {
+    "captun": "../../src/types.ts",
     "captun/deno": "../../src/deno.ts",
     "capnweb": "npm:capnweb@0.8.0"
   }
