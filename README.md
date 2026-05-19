@@ -76,6 +76,15 @@ Then open `http://127.0.0.1:8080/browser-demo.html`, enter the origin of a deplo
 
 Browser WebSocket APIs cannot send arbitrary `Authorization` headers, so the demo needs a Captun Worker without `CAPTUN_SECRET`. Use the Node CLI for secret-protected tunnels.
 
+The normal `npx captun deploy` command creates a secret-protected Worker. For a throwaway browser demo Worker from this repo, deploy one without a secret under a separate Worker name:
+
+```bash
+pnpm install
+npx wrangler deploy --name captun-browser-demo
+```
+
+Handler source in the demo runs as first-party JavaScript in the page and is saved in local storage. Only paste handler code you wrote or trust.
+
 ## Advanced usage
 
 The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:

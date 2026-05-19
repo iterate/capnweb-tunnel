@@ -53,14 +53,14 @@
             <button type="button" id="disconnect">Disconnect</button>
           </div>
 
-          <label class="field">
-            <span>Public tunnel URL</span>
+          <div class="field">
+            <label for="publicUrl">Public tunnel URL</label>
             <div class="readonly-row">
               <input id="publicUrl" type="url" readonly>
               <a class="button-link" id="openPublicUrl" href="#" target="_blank" rel="noreferrer" aria-disabled="true">Open</a>
               <button type="button" id="copyPublicUrl">Copy</button>
             </div>
-          </label>
+          </div>
         </form>
       </section>
 
@@ -69,6 +69,10 @@
           <h2 id="handlerTitle">Fetch Handler</h2>
         </div>
         <div class="panel-body handler-grid">
+          <p class="notice">
+            Handler source runs as first-party JavaScript in this page and is saved locally. Only
+            run code you wrote or trust.
+          </p>
           <label class="field">
             <span>Handler source</span>
             <textarea id="handlerSource" class="code-editor" spellcheck="false"></textarea>

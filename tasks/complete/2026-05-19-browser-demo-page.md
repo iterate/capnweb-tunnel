@@ -36,3 +36,4 @@ Original prompt: "We could probably have a github-pages page which shows a tunne
 - Browser smoke test connected the demo to `http://127.0.0.1:8788`, exposed `http://127.0.0.1:8788/fresh-bridge-2ro4t7`, sent the built-in `/health` probe, and received `200 OK` JSON from the browser fetch handler.
 - Mobile viewport check at 390x844 showed the tool controls stacking cleanly.
 - Browser automation could not navigate to a `file://` URL, so local browser verification used the static HTTP server path.
+- Follow-up review pass added no-secret Worker deployment docs, an explicit trusted-code warning for the editable handler, clearer public URL labeling, and wider log kind spacing.

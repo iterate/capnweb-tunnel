@@ -232,7 +232,7 @@ button:focus-visible,
 
 .handler-grid {
   display: grid;
-  grid-template-rows: minmax(22rem, 1fr);
+  grid-template-rows: auto minmax(22rem, 1fr);
   min-height: 28rem;
 }
 
@@ -290,8 +290,8 @@ button:focus-visible,
 
 .log-row {
   display: grid;
-  grid-template-columns: 5.75rem 5.25rem minmax(0, 1fr);
-  gap: 0.5rem;
+  grid-template-columns: 5.75rem 7rem minmax(0, 1fr);
+  gap: 0.75rem;
   align-items: start;
   border: 1px solid #e1e7ea;
   border-radius: 6px;
@@ -309,6 +309,7 @@ button:focus-visible,
   color: var(--muted);
   font-weight: 700;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .log-row[data-kind="error"] {
