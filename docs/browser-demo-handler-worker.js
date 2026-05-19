@@ -19,8 +19,7 @@ async function handleMessage(message) {
     const handler = compileHandler(message.source);
     const request = deserializeRequest(message.request);
     const response = await normalizeResponse(await handler(request, handlerContext(message)));
-    const serialized = await serializeResponse(response);
-    self.postMessage({ type: "result", response: serialized.response }, serialized.transfer);
+    await postResponse(response);
     return;
   }
 
@@ -54,6 +53,7 @@ function deserializeRequest(request) {
 
   if (request.body !== null && typeof request.body !== "undefined") {
     init.body = request.body;
+    init.duplex = "half";
   }
 
   return new Request(request.url, init);
@@ -95,26 +95,45 @@ async function normalizeResponse(value) {
   throw new Error("Handler must return a Response, string, Blob, ReadableStream, or Uint8Array.");
 }
 
-async function serializeResponse(response) {
+async function postResponse(response) {
   if (response.type === "error") {
-    return {
-      response: { type: "error" },
-      transfer: [],
-    };
+    self.postMessage({ type: "response-start", response: { type: "error" } });
+    return;
   }
 
-  const body = response.body ? await response.arrayBuffer() : null;
-
-  return {
+  self.postMessage({
+    type: "response-start",
     response: {
-      body,
+      hasBody: Boolean(response.body),
       headers: Array.from(response.headers.entries()),
       status: response.status,
       statusText: response.statusText,
       type: "default",
     },
-    transfer: body ? [body] : [],
-  };
+  });
+
+  if (!response.body) return;
+
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+
+      const bytes = transferableBytes(chunk.value);
+      self.postMessage({ type: "response-chunk", chunk: bytes }, [bytes.buffer]);
+    }
+    self.postMessage({ type: "response-done" });
+  } catch (error) {
+    self.postMessage({ type: "response-error", error: serializeError(error) });
+  }
+}
+
+function transferableBytes(value) {
+  if (value.byteOffset === 0 && value.byteLength === value.buffer.byteLength) {
+    return value;
+  }
+  return value.slice();
 }
 
 function postError(error) {

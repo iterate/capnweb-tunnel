@@ -54,6 +54,7 @@ let activeTunnel;
 let activePublicUrl = "";
 let requestCount = 0;
 let createTunnel;
+let transferableReadableStreamSupport;
 
 initialize();
 
@@ -261,7 +262,7 @@ async function validateHandlerSource() {
 
 async function runHandlerInWorker(request, tunnelName, requestId) {
   const serialized = await serializeRequest(request);
-  const response = await runHandlerWorker(
+  return await runHandlerWorker(
     {
       type: "fetch",
       source: currentHandlerSource(),
@@ -275,22 +276,39 @@ async function runHandlerInWorker(request, tunnelName, requestId) {
     },
     serialized.transfer,
   );
-
-  return deserializeResponse(response);
 }
 
 function runHandlerWorker(message, transfer) {
   return new Promise((resolve, reject) => {
-    let settled = false;
+    let responseStarted = false;
+    let settledInitialResponse = false;
+    let streamController;
     let worker;
     let timeout;
 
-    const settle = (callback) => {
-      if (settled) return;
-      settled = true;
+    const terminate = () => {
       clearTimeout(timeout);
       if (worker) worker.terminate();
-      callback();
+    };
+
+    const resolveInitialResponse = (value, keepWorker) => {
+      if (settledInitialResponse) return;
+      settledInitialResponse = true;
+      clearTimeout(timeout);
+      if (!keepWorker) terminate();
+      resolve(value);
+    };
+
+    const rejectOrErrorStream = (error) => {
+      if (responseStarted && streamController) {
+        streamController.error(error);
+        terminate();
+        return;
+      }
+      if (settledInitialResponse) return;
+      settledInitialResponse = true;
+      terminate();
+      reject(error);
     };
 
     try {
@@ -301,9 +319,7 @@ function runHandlerWorker(message, transfer) {
     }
 
     timeout = window.setTimeout(() => {
-      settle(() => {
-        reject(new Error("Handler worker did not respond within 30 seconds."));
-      });
+      rejectOrErrorStream(new Error("Handler worker did not respond within 30 seconds."));
     }, handlerWorkerTimeoutMs);
 
     worker.addEventListener("message", (event) => {
@@ -316,49 +332,118 @@ function runHandlerWorker(message, transfer) {
       }
 
       if (workerMessage.type === "validated") {
-        settle(() => resolve(undefined));
+        resolveInitialResponse(undefined, false);
         return;
       }
 
-      if (workerMessage.type === "result") {
-        settle(() => resolve(workerMessage.response));
+      if (workerMessage.type === "response-start") {
+        responseStarted = true;
+        try {
+          const response = responseFromWorkerStart(workerMessage.response, () => worker);
+          resolveInitialResponse(response, Boolean(workerMessage.response?.hasBody));
+        } catch (error) {
+          rejectOrErrorStream(error);
+        }
+        return;
+      }
+
+      if (workerMessage.type === "response-chunk") {
+        if (!streamController) {
+          rejectOrErrorStream(new Error("Handler worker sent a response chunk before a response."));
+          return;
+        }
+        streamController.enqueue(new Uint8Array(workerMessage.chunk));
+        return;
+      }
+
+      if (workerMessage.type === "response-done") {
+        if (streamController) streamController.close();
+        terminate();
+        return;
+      }
+
+      if (workerMessage.type === "response-error") {
+        rejectOrErrorStream(deserializeWorkerError(workerMessage.error));
         return;
       }
 
       if (workerMessage.type === "error") {
-        settle(() => reject(deserializeWorkerError(workerMessage.error)));
+        rejectOrErrorStream(deserializeWorkerError(workerMessage.error));
         return;
       }
 
-      settle(() => {
-        reject(new Error("Handler worker sent an unknown message: " + workerMessage.type));
-      });
+      rejectOrErrorStream(new Error("Handler worker sent an unknown message: " + workerMessage.type));
     });
 
     worker.addEventListener("error", (event) => {
       event.preventDefault();
-      settle(() => {
-        reject(new Error(event.message || "Handler worker failed."));
-      });
+      rejectOrErrorStream(new Error(event.message || "Handler worker failed."));
     });
 
     worker.addEventListener("messageerror", () => {
-      settle(() => {
-        reject(new Error("Handler worker sent a response that could not be read."));
-      });
+      rejectOrErrorStream(new Error("Handler worker sent a response that could not be read."));
     });
 
     try {
       worker.postMessage(message, transfer);
     } catch (error) {
-      settle(() => reject(error));
+      rejectOrErrorStream(error);
+    }
+
+    function responseFromWorkerStart(response, currentWorker) {
+      if (!response || typeof response !== "object") {
+        throw new Error("Handler worker returned an invalid response.");
+      }
+
+      if (response.type === "error") return Response.error();
+
+      const body = response.hasBody
+        ? new ReadableStream({
+            start(controller) {
+              streamController = controller;
+            },
+            cancel() {
+              const runningWorker = currentWorker();
+              if (runningWorker) runningWorker.terminate();
+            },
+          })
+        : null;
+
+      return new Response(body, {
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
     }
   });
 }
 
 async function serializeRequest(request) {
-  const body =
-    request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer();
+  if (request.method === "GET" || request.method === "HEAD") {
+    return {
+      request: {
+        body: null,
+        headers: Array.from(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+      transfer: [],
+    };
+  }
+
+  if (request.body && (await supportsTransferableReadableStreams())) {
+    return {
+      request: {
+        body: request.body,
+        headers: Array.from(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+      transfer: [request.body],
+    };
+  }
+
+  const body = await request.arrayBuffer();
 
   return {
     request: {
@@ -371,18 +456,29 @@ async function serializeRequest(request) {
   };
 }
 
-function deserializeResponse(response) {
-  if (!response || typeof response !== "object") {
-    throw new Error("Handler worker returned an invalid response.");
+async function supportsTransferableReadableStreams() {
+  if (typeof ReadableStream !== "function") return false;
+  if (typeof transferableReadableStreamSupport === "boolean") {
+    return transferableReadableStreamSupport;
   }
 
-  if (response.type === "error") return Response.error();
+  const channel = new MessageChannel();
+  try {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.close();
+      },
+    });
+    channel.port1.postMessage(stream, [stream]);
+    transferableReadableStreamSupport = true;
+  } catch {
+    transferableReadableStreamSupport = false;
+  } finally {
+    channel.port1.close();
+    channel.port2.close();
+  }
 
-  return new Response(response.body, {
-    headers: response.headers,
-    status: response.status,
-    statusText: response.statusText,
-  });
+  return transferableReadableStreamSupport;
 }
 
 function deserializeWorkerError(error) {

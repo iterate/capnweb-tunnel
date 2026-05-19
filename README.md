@@ -83,7 +83,7 @@ pnpm install
 npx wrangler deploy --name captun-browser-demo
 ```
 
-Handler source in the demo runs as first-party JavaScript in the page and is saved in local storage. Only paste handler code you wrote or trust.
+Handler source in the demo runs in a dedicated same-origin Web Worker and is saved in local storage. It cannot touch the page DOM directly, but it is still JavaScript you are choosing to run in this origin, so only paste handler code you wrote or trust.
 
 ## Advanced usage
 
