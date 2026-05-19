@@ -22,16 +22,20 @@ test("Captun test lint rules reject non-preferred test structure", async () => {
     `
       import { beforeEach, describe, expect, test, vi } from "vitest";
 
-      function helper() {
-        return { status: 200 };
-      }
-
       beforeEach(() => {});
 
       describe("wrapped tests", () => {});
 
       test("uses discouraged patterns", () => {
-        vi.mock("node:fs");
+        expect([1, 2, 3].length).toBe(3);
+      });
+
+      function helper() {
+        return { status: 200 };
+      }
+
+      test("uses more discouraged patterns", () => {
+        vi.doMock("node:fs");
         const response = helper();
         expect(response.status).toBe(200);
       });
@@ -48,6 +52,41 @@ test("Captun test lint rules reject non-preferred test structure", async () => {
 
   expect(result).toMatchObject({ status: 1 });
   expect(codes).toEqual(expect.arrayContaining(EXPECTED_RULE_CODES));
+});
+
+test("Captun test lint rules allow non-object property assertions and helpers below tests", async () => {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  await using tempDir = await createTempDirFixture();
+  const goodTestFile = join(tempDir.path, "good.test.ts");
+  await writeFile(
+    goodTestFile,
+    `
+      import { expect, test } from "vitest";
+
+      test("uses allowed property assertions", () => {
+        const items = [1, 2, 3];
+        expect(items.length).toBe(3);
+        const key = "status";
+        const response = helper();
+        expect(response[key]).toBe(200);
+        expect(response).toMatchObject({ status: 200 });
+      });
+
+      function helper() {
+        return { status: 200 };
+      }
+    `,
+  );
+
+  const result = await execFileResult(
+    "pnpm",
+    ["exec", "oxlint", goodTestFile, "-c", ".oxlintrc.json", "--threads", "1", "-f", "json"],
+    repoRoot,
+  );
+  const report = JSON.parse(result.stdout) as any;
+
+  expect(result).toMatchObject({ status: 0 });
+  expect(report).toMatchObject({ diagnostics: [] });
 });
 
 async function createTempDirFixture() {

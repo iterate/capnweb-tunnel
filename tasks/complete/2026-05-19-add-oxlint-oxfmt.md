@@ -22,3 +22,4 @@ Summary: Done. oxlint/oxfmt are installed with Captun-scoped scripts/config, exi
 
 - 2026-05-19: Added baseline tooling using `../iterate` as the reference. `pnpm run lint:check` and `pnpm run format:check` pass before adding the custom plugin.
 - 2026-05-19: Added `captun-test` oxlint plugin and a Vitest spec that verifies the bad-pattern fixture reports all five custom rule codes.
+- 2026-05-19: Follow-up review pass narrowed the property assertion rule to avoid `.length` and computed properties, caught `vi.doMock`, and made helper ordering check all tests rather than just the first.

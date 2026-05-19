@@ -1,5 +1,6 @@
 const TEST_FILE_REGEX = /(?:^|\/)(?:test\/.*|.*\.(?:test|spec)\.[cm]?[jt]sx?)$/;
 const LIFECYCLE_HOOKS = new Set(["beforeAll", "beforeEach", "afterAll", "afterEach"]);
+const MOCK_METHODS = new Set(["mock", "doMock"]);
 const PROPERTY_MATCHERS = new Set(["toBe", "toEqual", "toStrictEqual"]);
 
 function isTestFile(context) {
@@ -79,6 +80,11 @@ function getMatcherCall(node) {
 
   const actual = expectChain.arguments[0];
   if (!actual || actual.type !== "MemberExpression") return undefined;
+  if (actual.computed) return undefined;
+
+  const propertyName = getPropertyName(actual.property);
+  if (propertyName === "length") return undefined;
+
   return { actual, matcherName };
 }
 
@@ -145,11 +151,13 @@ const plugin = {
         if (!isTestFile(context)) return {};
         return {
           CallExpression(node) {
-            if (getCallName(node.callee) !== "vi.mock") return;
+            const name = getCallName(node.callee);
+            const mockMethod = name?.split(".").at(-1);
+            if (!MOCK_METHODS.has(mockMethod)) return;
             context.report({
               node,
               message:
-                "Avoid vi.mock in tests. Prefer dependency injection or a controllable fake dependency.",
+                "Avoid vi.mock/vi.doMock in tests. Prefer dependency injection or a controllable fake dependency.",
             });
           },
         };
@@ -167,15 +175,15 @@ const plugin = {
         if (!isTestFile(context)) return {};
         return {
           Program(node) {
-            const firstTestIndex = node.body.findIndex((statement) => {
+            const lastTestIndex = node.body.findLastIndex((statement) => {
               return (
                 statement.type === "ExpressionStatement" &&
                 isTestCallExpression(statement.expression)
               );
             });
-            if (firstTestIndex === -1) return;
+            if (lastTestIndex === -1) return;
 
-            for (const statement of node.body.slice(0, firstTestIndex)) {
+            for (const statement of node.body.slice(0, lastTestIndex)) {
               if (!isFunctionLikeDeclaration(statement)) continue;
               context.report({
                 node: statement,
