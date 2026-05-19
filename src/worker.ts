@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel } from "./server.js";
 import type { CaptunServerTunnel } from "./types.js";
 import {
+  CAPTUN_ACTIVE_TUNNEL_COOKIE,
   captunActiveTunnelSetCookie,
   captunCookieWithoutRoutingCookie,
   captunRequestRouteParts,
@@ -81,7 +82,9 @@ export default {
 
     const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS || 1));
     const response = await env.CaptunServerShard.getByName(shard).fetch(route.request);
-    return route.rootedByCookie ? withCookieVary(response) : response;
+    return route.forwardedTunnelResponse
+      ? withForwardedTunnelHeaders(response, route.variesByCookie)
+      : response;
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
@@ -102,8 +105,9 @@ function captunRoute(request: Request) {
   return {
     kind: route.kind,
     tunnelName: route.name,
-    rootedByCookie: route.rootedByCookie,
+    forwardedTunnelResponse: route.path !== "/__captun-connect",
     request: requestWithUrlAndStrippedRoutingCookie(url, request),
+    variesByCookie: route.rootedByCookie || url.pathname !== route.path,
   };
 }
 
@@ -139,9 +143,33 @@ function requestWithUrlAndStrippedRoutingCookie(url: URL, request: Request) {
   return new Request(url, init);
 }
 
-/** Marks cookie-selected responses as varying by the browser routing cookie. */
-function withCookieVary(response: Response) {
+/** Normalizes origin-controlled headers before forwarding a tunnel response to browsers. */
+function withForwardedTunnelHeaders(response: Response, variesByCookie: boolean) {
   const headers = new Headers(response.headers);
+  stripReservedSetCookies(response.headers, headers);
+  if (variesByCookie) addCookieVary(headers);
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+/** Prevents origins from overwriting Captun's host-scoped routing cookie. */
+function stripReservedSetCookies(sourceHeaders: Headers, forwardedHeaders: Headers) {
+  const setCookies = sourceHeaders.getSetCookie();
+  if (setCookies.length === 0) return;
+
+  forwardedHeaders.delete("set-cookie");
+  for (const setCookie of setCookies) {
+    if (setCookieName(setCookie) !== CAPTUN_ACTIVE_TUNNEL_COOKIE) {
+      forwardedHeaders.append("set-cookie", setCookie);
+    }
+  }
+}
+
+/** Marks folder-host responses as varying by the browser routing cookie. */
+function addCookieVary(headers: Headers) {
   const vary = headers.get("vary");
   if (!vary) headers.set("vary", "Cookie");
   else if (
@@ -150,9 +178,11 @@ function withCookieVary(response: Response) {
   ) {
     headers.set("vary", `${vary}, Cookie`);
   }
-  return new Response(response.body, {
-    headers,
-    status: response.status,
-    statusText: response.statusText,
-  });
+}
+
+/** Extracts the cookie name from a Set-Cookie header value. */
+function setCookieName(setCookie: string) {
+  const [cookiePair] = setCookie.split(";");
+  const separatorIndex = cookiePair.indexOf("=");
+  return (separatorIndex === -1 ? cookiePair : cookiePair.slice(0, separatorIndex)).trim();
 }

@@ -211,6 +211,46 @@ test("Captun Worker routes folder-rooted browser paths through the active tunnel
   });
 });
 
+test("Captun Worker varies no-cookie direct folder responses by Cookie", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+  using _tunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: () =>
+      new Response("cacheable direct response", {
+        headers: { "cache-control": "public, max-age=60" },
+      }),
+  });
+
+  const response = await fetch(`${fixture.origin}/demo/cacheable`);
+
+  expect(response.headers.get("cache-control")).toBe("public, max-age=60");
+  expect(response.headers.get("vary")).toContain("Cookie");
+  expect(await response.text()).toBe("cacheable direct response");
+});
+
+test("Captun Worker strips reserved Set-Cookie values from origin responses", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+  using _tunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: () =>
+      new Response("origin cookies", {
+        headers: [
+          ["set-cookie", `${CAPTUN_ACTIVE_TUNNEL_COOKIE}=other; Path=/; HttpOnly`],
+          ["set-cookie", "session=origin; Path=/; HttpOnly"],
+          ["set-cookie", "prefs=dark; Path=/"],
+        ],
+      }),
+  });
+
+  const response = await fetch(`${fixture.origin}/demo/cookies`);
+  const setCookies = response.headers.getSetCookie();
+
+  expect(setCookies).toEqual([
+    "session=origin; Path=/; HttpOnly",
+    "prefs=dark; Path=/",
+  ]);
+});
+
 test("Captun Worker keeps same-host path names from stealing cookie-rooted requests", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _demoTunnel = await createCaptunTunnel({
