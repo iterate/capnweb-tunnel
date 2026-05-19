@@ -15,5 +15,9 @@
     "test/**/*.ts",
     "scripts/**/*.ts",
     "examples/*/*.ts"
+  ],
+  "exclude": [
+    "examples/bun/server.ts",
+    "examples/deno/server.ts"
   ]
 }

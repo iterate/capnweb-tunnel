@@ -1,16 +1,5 @@
 import { acceptCaptunDenoTunnel, type CaptunServerTunnel } from "captun/deno";
 
-declare const Deno: {
-  env: { get(name: string): string | undefined };
-  serve(
-    options: { hostname: string; port: number },
-    handler: (request: Request) => Response | Promise<Response>,
-  ): { shutdown(): Promise<void> };
-  upgradeWebSocket(request: Request): { socket: WebSocket; response: Response };
-  addSignalListener(signal: "SIGINT", handler: () => void): void;
-  exit(code?: number): never;
-};
-
 let egressTunnel: CaptunServerTunnel | undefined;
 const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
