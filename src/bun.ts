@@ -29,100 +29,78 @@ export interface CaptunBunServer {
 
 export type CaptunBunWebSocketMessage = string | Uint8Array | ArrayBuffer;
 
-interface CaptunBunWebSocketTransport {
-  dispatchMessage(message: CaptunBunWebSocketMessage): void;
-  dispatchClose(code: number, reason: string): void;
-  dispatchError(error: Error): void;
-}
-
-interface CaptunBunWebSocketSession {
-  transport: CaptunBunWebSocketTransport;
-}
-
-interface CaptunBunAcceptedTunnel {
+interface PendingCaptunBunTunnel {
   tunnel: CaptunServerTunnel;
   connect(remoteClient: CaptunRemoteClient): void;
 }
 
-interface CaptunBunServerWebSocketData {
-  captunTunnel?: CaptunBunAcceptedTunnel;
+interface CaptunBunUpgradeData {
+  captunTunnel?: PendingCaptunBunTunnel;
 }
 
-const { newBunWebSocketRpcSession } = (await import("capnweb")) as unknown as {
-  newBunWebSocketRpcSession<T>(
-    socket: CaptunBunServerWebSocket,
-    localMain?: unknown,
-  ): { stub: T; transport: CaptunBunWebSocketTransport };
+interface CapnwebBunWebSocketData {
+  __capnwebStub: CaptunRemoteClient;
+}
+
+const { newBunWebSocketRpcHandler } = (await import("capnweb")) as unknown as {
+  newBunWebSocketRpcHandler(createMain: () => unknown): CaptunBunWebSocketHandler;
 };
 
 export function createCaptunBunTunnelHandler(): CaptunBunTunnelHandler {
-  const sessions = new WeakMap<CaptunBunServerWebSocket, CaptunBunWebSocketSession>();
+  const capnweb = newBunWebSocketRpcHandler(() => undefined);
 
   return {
     accept(request, server, options = {}) {
-      const acceptedTunnel = createCaptunBunAcceptedTunnel(options);
-      if (!server.upgrade(request, { data: { captunTunnel: acceptedTunnel } })) {
-        acceptedTunnel.tunnel[Symbol.dispose]();
+      const pendingTunnel = createPendingCaptunBunTunnel(options);
+      if (!server.upgrade(request, { data: { captunTunnel: pendingTunnel } })) {
+        pendingTunnel.tunnel[Symbol.dispose]();
         return undefined;
       }
-      return acceptedTunnel.tunnel;
+      return pendingTunnel.tunnel;
     },
     websocket: {
       open(socket) {
-        const acceptedTunnel = (socket.data as CaptunBunServerWebSocketData).captunTunnel;
-        if (!acceptedTunnel) {
+        const pendingTunnel = (socket.data as CaptunBunUpgradeData).captunTunnel;
+        if (!pendingTunnel) {
           socket.close(1008, "Missing Captun tunnel data");
           return;
         }
 
-        const session = newBunWebSocketRpcSession<CaptunRemoteClient>(socket);
-        acceptedTunnel.connect(session.stub);
-        sessions.set(socket, session);
+        capnweb.open(socket);
+        pendingTunnel.connect((socket.data as CapnwebBunWebSocketData).__capnwebStub);
       },
-      message(socket, message) {
-        sessions.get(socket)?.transport.dispatchMessage(message);
-      },
-      close(socket, code, reason) {
-        const session = sessions.get(socket);
-        if (!session) return;
-        session.transport.dispatchClose(code, reason);
-        sessions.delete(socket);
-      },
-      error(socket, error) {
-        const session = sessions.get(socket);
-        if (!session) return;
-        session.transport.dispatchError(error);
-        sessions.delete(socket);
-      },
+      message: capnweb.message,
+      close: capnweb.close,
+      error: capnweb.error,
     },
   };
 }
 
-function createCaptunBunAcceptedTunnel(
+function createPendingCaptunBunTunnel(
   options: CaptunServerAcceptTunnelOptions,
-): CaptunBunAcceptedTunnel {
+): PendingCaptunBunTunnel {
   let connectedTunnel: CaptunServerTunnel | undefined;
-  let connectRemoteClient: (remoteClient: CaptunRemoteClient) => void = () => {};
-  let rejectRemoteClient: (error: Error) => void = () => {};
+  let connectTunnel: (tunnel: CaptunServerTunnel) => void = () => {};
+  let rejectTunnel: (error: Error) => void = () => {};
   let closed = false;
-  const remoteClient = new Promise<CaptunRemoteClient>((resolve, reject) => {
-    connectRemoteClient = resolve;
-    rejectRemoteClient = reject;
+  const tunnelReady = new Promise<CaptunServerTunnel>((resolve, reject) => {
+    connectTunnel = resolve;
+    rejectTunnel = reject;
   });
-  remoteClient.catch(() => undefined);
+  tunnelReady.catch(() => undefined);
 
   const tunnel: CaptunServerTunnel = {
     async fetch(request) {
       if (closed) throw new Error("Captun Bun tunnel is closed");
-      const remote = await remoteClient;
+      const connected = await tunnelReady;
       if (closed) throw new Error("Captun Bun tunnel is closed");
-      return remote.fetch(request);
+      return connected.fetch(request);
     },
     [Symbol.dispose]() {
       if (closed) return;
       closed = true;
       connectedTunnel?.[Symbol.dispose]();
-      rejectRemoteClient(new Error("Captun Bun tunnel closed before the WebSocket opened"));
+      rejectTunnel(new Error("Captun Bun tunnel closed before the WebSocket opened"));
     },
   };
 
@@ -134,7 +112,7 @@ function createCaptunBunAcceptedTunnel(
         return;
       }
       connectedTunnel = captunTunnelFromRemoteClient(remote, options);
-      connectRemoteClient(remote);
+      connectTunnel(connectedTunnel);
     },
   };
 }
