@@ -1,16 +1,16 @@
 ---
-status: implementation-done
+status: done
 size: medium
 kind: bedtime-architecture
 ---
 
-Summary: Core implementation is done and verified. Named tunnel addressing now lives behind a shared module used by the CLI, Worker routing, and E2E helpers; the remaining work is to push replacement compare branches for the open bedtime PR queue and link them from the architecture PR.
+Summary: Done. Named tunnel addressing now lives behind a shared module used by the CLI, Worker routing, and E2E helpers; replacement compare branches were pushed for the open PR queue and linked from the architecture PR body.
 
 - [x] Add a named tunnel addressing module for folder/subdomain classification and public tunnel/connect URL construction. _Implemented in `src/tunnel-addressing.ts`._
 - [x] Move CLI tunnel URL construction to the addressing module instead of keeping private URL helpers in `src/bin.ts`. _`captun tunnel` now calls `publicTunnelUrl()` and `tunnelConnectUrl()`._
 - [x] Keep Worker route parsing behavior unchanged while making the shared classification explicit. _`captunRouteParts()` now imports `usesFolderRouting()` from the addressing module._
 - [x] Add focused unit coverage for public URL and connect URL construction, including folder, path-prefixed folder, `{name}` template, and subdomain-style hosts. _Added named tunnel addressing cases in `test/worker.test.ts`._
-- [ ] Update the PR body with replacement compare branches for the open bedtime PR queue.
+- [x] Update the PR body with replacement compare branches for the open bedtime PR queue. _Pushed replacement branches for PRs #3-#9 and linked them in PR #10._
 - [x] Verify with typecheck and tests. _Ran `pnpm run typecheck` and `pnpm test` in the architecture worktree._
 
 ## Architecture Decision
