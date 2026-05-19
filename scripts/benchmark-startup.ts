@@ -112,17 +112,17 @@ async function measureCaptun(index: number, originUrl: string): Promise<Measurem
   let tunnel: Disposable | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: new URL("__connect", url),
+      url: `${url}/__connect`,
       headers: process.env.CAPTUN_SECRET
         ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
         : undefined,
       fetch: (request) => {
         const incoming = new URL(request.url);
-        return fetch(new URL(incoming.pathname + incoming.search, originUrl), request);
+        return fetch(`${originUrl}${incoming.pathname}${incoming.search}`, request);
       },
     });
     await waitForFetch(url, started);
-    return { index, ok: true, ms: performance.now() - started, url: url.toString() };
+    return { index, ok: true, ms: performance.now() - started, url };
   } finally {
     tunnel?.[Symbol.dispose]();
   }
@@ -202,7 +202,7 @@ async function waitForDns(url: URL, started: number) {
   throw new Error(`DNS timed out for ${url.hostname}: ${lastError}`);
 }
 
-async function waitForFetch(url: URL, started: number) {
+async function waitForFetch(url: string | URL, started: number) {
   let lastError = "";
   while (performance.now() - started < timeoutMs) {
     try {
@@ -218,10 +218,10 @@ async function waitForFetch(url: URL, started: number) {
 }
 
 function tunnelUrl(base: string, name: string) {
-  if (base.includes("{name}")) return new URL(base.replaceAll("{name}", name));
+  if (base.includes("{name}")) return base.replaceAll("{name}", name).replace(/\/$/, "");
   const url = new URL(base);
-  url.pathname = `/${name}/`;
-  return url;
+  url.pathname = `/${name}`;
+  return url.toString().replace(/\/$/, "");
 }
 
 function parseCloudflaredUrl(output: string) {

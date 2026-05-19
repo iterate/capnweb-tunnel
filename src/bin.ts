@@ -63,11 +63,11 @@ const router = os.router({
       const origin = `http://127.0.0.1:${input.port}`;
 
       using _tunnelSession = await createCaptunTunnel({
-        url: new URL("__connect", tunnel),
+        url: `${tunnel}/__connect`,
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
         fetch: (request) => {
           const url = new URL(request.url);
-          return fetch(new Request(new URL(url.pathname + url.search, origin), request));
+          return fetch(new Request(`${origin}${url.pathname}${url.search}`, request));
         },
       });
 
@@ -187,15 +187,15 @@ async function writeConfig(config: Config) {
 }
 
 function tunnelUrl(baseUrl: string, name: string) {
-  if (baseUrl.includes("{name}")) return ensureTrailingSlash(baseUrl.replaceAll("{name}", name));
+  if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
 
   const url = new URL(baseUrl);
   if (url.hostname.match(/^[^.]+\.tunnels\./)) {
     url.pathname = "/";
   } else {
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}/`;
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
   }
-  return url.toString();
+  return removeTrailingSlash(url.toString());
 }
 
 function serverUrlFromRoute(route: string) {
@@ -212,8 +212,8 @@ function serverUrlFromWranglerOutput(output: string) {
   return output.match(/https:\/\/[^\s]+\.workers\.dev[^\s]*/)?.[0];
 }
 
-function ensureTrailingSlash(url: string) {
-  return url.endsWith("/") ? url : `${url}/`;
+function removeTrailingSlash(url: string) {
+  return url.replace(/\/$/, "");
 }
 
 function waitForShutdown() {

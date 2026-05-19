@@ -153,12 +153,12 @@ async function createTunnelFixture(
   try {
     const url = tunnelUrl(server.url, name);
     const tunnel = await createCaptunTunnel({
-      url: new URL("__connect", url),
+      url: `${url}/__connect`,
       headers: server.headers,
       fetch,
     });
     return {
-      url: url.toString(),
+      url,
       async [Symbol.asyncDispose]() {
         tunnel[Symbol.dispose]();
         await server[Symbol.asyncDispose]();
@@ -203,15 +203,15 @@ function tunnelName(testName: string) {
 }
 
 function tunnelUrl(serverUrl: string, name: string) {
-  if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
+  if (serverUrl.includes("{name}")) return serverUrl.replaceAll("{name}", name).replace(/\/$/, "");
 
   const url = new URL(serverUrl);
   if (url.hostname.match(/^[^.]+\.tunnels\./)) {
     url.pathname = "/";
   } else {
-    url.pathname = `/${name}/`;
+    url.pathname = `/${name}`;
   }
-  return url;
+  return url.toString().replace(/\/$/, "");
 }
 
 function makeBytes(size: number) {
