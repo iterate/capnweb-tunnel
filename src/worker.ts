@@ -41,7 +41,7 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       if (
         expectedAuthorization &&
         (actualAuthorization.length !== encodedExpectedAuthorization.length ||
-          !crypto.subtle.timingSafeEqual(actualAuthorization, encodedExpectedAuthorization))
+          !timingSafeEqual(actualAuthorization, encodedExpectedAuthorization))
       ) {
         return new Response("Unauthorized\n", { status: 401 });
       }
@@ -81,4 +81,14 @@ function captunRoute(request: Request) {
 
   url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
   return { tunnelName: route.name, request: new Request(url, request) };
+}
+
+function timingSafeEqual(left: Uint8Array, right: Uint8Array) {
+  if (left.length !== right.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    diff |= left[i] ^ right[i];
+  }
+  return diff === 0;
 }

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@whatwg-node/server": "^0.10.18",
     "captun": "workspace:*",
     "ws": "^8.19.0"
   },
