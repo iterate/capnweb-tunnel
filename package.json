@@ -28,6 +28,18 @@
     "./server": {
       "types": "./src/server.ts",
       "import": "./src/server.ts"
+    },
+    "./bun": {
+      "types": "./src/bun.ts",
+      "import": "./src/bun.ts"
+    },
+    "./deno": {
+      "types": "./src/deno.ts",
+      "import": "./src/deno.ts"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "import": "./src/node.ts"
     }
   },
   "publishConfig": {
@@ -46,6 +58,18 @@
       "./server": {
         "types": "./dist/server.d.ts",
         "import": "./dist/server.js"
+      },
+      "./bun": {
+        "types": "./dist/bun.d.ts",
+        "import": "./dist/bun.js"
+      },
+      "./deno": {
+        "types": "./dist/deno.d.ts",
+        "import": "./dist/deno.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
       }
     }
   },

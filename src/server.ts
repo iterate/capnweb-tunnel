@@ -1,4 +1,5 @@
 import { newWebSocketRpcSession } from "capnweb";
+import { captunTunnelFromRemoteClient, type CaptunRemoteClient } from "./server-core.js";
 import type {
   CaptunClientRemoteFetcher,
   CaptunServerAcceptTunnelOptions,
@@ -25,11 +26,8 @@ export function acceptCaptunTunnelFromSocket(
   socket: WebSocket,
   options: CaptunServerAcceptTunnelOptions = {},
 ): CaptunServerTunnel {
-  const remoteClient = newWebSocketRpcSession<CaptunClientRemoteFetcher>(socket);
-  remoteClient.onRpcBroken(() => options.onDisconnect?.());
-
-  return {
-    fetch: (request) => remoteClient.fetch(request),
-    [Symbol.dispose]: () => remoteClient[Symbol.dispose](),
-  };
+  const remoteClient = newWebSocketRpcSession<CaptunClientRemoteFetcher>(
+    socket,
+  ) as CaptunRemoteClient;
+  return captunTunnelFromRemoteClient(remoteClient, options);
 }
