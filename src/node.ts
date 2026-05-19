@@ -3,7 +3,8 @@ import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./type
 
 export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
-export interface CaptunNodeWebSocket {
+/** A type `import('ws').WebSocket` conforms to. This will be cast internally before passing to `capnweb` */
+export interface WSWebSocketLike {
   readyState: number;
   addEventListener(type: string, listener: (event: any) => void): void;
   send(message: string): unknown;
@@ -11,7 +12,7 @@ export interface CaptunNodeWebSocket {
 }
 
 export function acceptCaptunNodeTunnel(
-  socket: CaptunNodeWebSocket,
+  socket: WSWebSocketLike,
   options: CaptunServerAcceptTunnelOptions = {},
 ): CaptunServerTunnel {
   return acceptCaptunTunnelFromSocket(socket as unknown as WebSocket, options);
