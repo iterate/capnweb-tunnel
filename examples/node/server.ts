@@ -1,11 +1,7 @@
 import http from "node:http";
 
 import { createServerAdapter } from "@whatwg-node/server";
-import {
-  acceptCaptunNodeTunnel,
-  type CaptunNodeWebSocket,
-  type CaptunServerTunnel,
-} from "captun/node";
+import { acceptCaptunNodeTunnel, type CaptunServerTunnel } from "captun/node";
 import { WebSocketServer } from "ws";
 
 let egressTunnel: CaptunServerTunnel | undefined;
@@ -15,23 +11,23 @@ const egressFetch: typeof fetch = async (input, init) => {
 };
 const webSockets = new WebSocketServer({ noServer: true });
 
-const server = http.createServer(
-  createServerAdapter(async (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/weather") {
-      const city = url.searchParams.get("city") || "";
-      const weatherResponse = await egressFetch(`https://wttr.in/${city}?format=j1`);
-      const weather = (await weatherResponse.json()) as {
-        current_condition: [{ temp_C: string }];
-      };
-      return new Response(
-        `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
-      );
-    }
+const server = http.createServer(createServerAdapter(serverFetch));
 
-    return new Response("Not found\n", { status: 404 });
-  }),
-);
+async function serverFetch(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname === "/weather") {
+    const city = url.searchParams.get("city") || "";
+    const weatherResponse = await egressFetch(`https://wttr.in/${city}?format=j1`);
+    const weather = (await weatherResponse.json()) as {
+      current_condition: [{ temp_C: string }];
+    };
+    return new Response(
+      `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+    );
+  }
+
+  return new Response("Not found\n", { status: 404 });
+}
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
@@ -41,7 +37,7 @@ server.on("upgrade", (request, socket, head) => {
   }
 
   webSockets.handleUpgrade(request, socket, head, (webSocket) => {
-    const tunnel = acceptCaptunNodeTunnel(webSocket as unknown as CaptunNodeWebSocket, {
+    const tunnel = acceptCaptunNodeTunnel(webSocket, {
       onDisconnect: () => {
         if (egressTunnel === tunnel) egressTunnel = undefined;
       },
