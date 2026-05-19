@@ -70,7 +70,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.2",
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.8.0",
     "esbuild": "^0.28.0",
@@ -79,11 +78,6 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.6",
     "wrangler": "^4.92.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "@arethetypeswrong/core>fflate": "0.8.2"
-    }
   },
   "packageManager": "pnpm@10.11.1"
 }
