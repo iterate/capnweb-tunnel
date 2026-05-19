@@ -5,7 +5,7 @@ import { createCaptunWorkerFixture } from "./miniflare.js";
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
-    url: `${fixture.origin}/demo/__connect`,
+    url: `${fixture.origin}/demo/__captun-connect`,
     fetch: async (request) => {
       const url = new URL(request.url);
       return Response.json({
@@ -47,7 +47,7 @@ test("Captun Worker routes subdomain tunnel requests", async () => {
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
-  const response = await fetch(`${fixture.origin}/__connect`);
+  const response = await fetch(`${fixture.origin}/__captun-connect`);
 
   expect(response.status).toBe(404);
   expect(await response.text()).toBe("Missing tunnel name\n");
@@ -65,7 +65,7 @@ test("Captun Worker rejects malformed folder tunnel names", async () => {
 test("Captun Worker requires the configured secret before accepting a tunnel client", async () => {
   await using fixture = await createCaptunWorkerFixture({ CAPTUN_SECRET: "secret" });
 
-  const response = await fetch(`${fixture.origin}/demo/__connect`);
+  const response = await fetch(`${fixture.origin}/demo/__captun-connect`);
 
   expect(response.status).toBe(401);
   expect(await response.text()).toBe("Unauthorized\n");

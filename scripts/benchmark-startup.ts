@@ -112,7 +112,7 @@ async function measureCaptun(index: number, originUrl: string): Promise<Measurem
   let tunnel: Disposable | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: `${url}/__connect`,
+      url: `${url}/__captun-connect`,
       headers: process.env.CAPTUN_SECRET
         ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
         : undefined,

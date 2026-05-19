@@ -63,7 +63,7 @@ if (warmupCount > 0) {
     Math.min(warmupCount, Math.max(connectConcurrency, 25)),
     async (index) => {
       const session = await createCaptunTunnel({
-        url: `${tunnelUrl(`${namePrefix}-warm-${index}`)}/__connect`,
+        url: `${tunnelUrl(`${namePrefix}-warm-${index}`)}/__captun-connect`,
         headers: captunHeaders(),
         fetch: () => testResponse("stream"),
       });
@@ -134,7 +134,7 @@ async function measure(index: number, mode: string): Promise<Measurement> {
   let tunnel: Disposable | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: `${url}/__connect`,
+      url: `${url}/__captun-connect`,
       headers: captunHeaders(),
       fetch: () => testResponse(mode),
     });

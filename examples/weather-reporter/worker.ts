@@ -11,14 +11,16 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
   async fetch(request: Request) {
     const url = new URL(request.url);
 
-    const city = url.pathname.match(/^\/weather\/([^/]+)$/)?.[1];
-    if (city) {
-      const response = await this.egressFetch(new Request(`https://wttr.in/${city}?format=j1`));
+    if (url.pathname === "/weather") {
+      // Here's the value our app provides: fetching and gorgeously formatting weather data
+      const city = url.searchParams.get("city");
+      const response = await this.egressFetch(`https://wttr.in/${city}?format=j1`);
       const weather = await response.json<{ current_condition: [{ temp_C: string }] }>();
       return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
+      // Here we set up our worker to allow clients/tests to intercept egress traffic
       this.egressTunnel?.[Symbol.dispose]();
       const { response, tunnel } = acceptCaptunTunnel({
         onDisconnect: () => {
@@ -32,9 +34,11 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     return new Response("Not found\n", { status: 404 });
   }
 
-  private egressFetch(request: Request) {
-    if (this.egressTunnel) return this.egressTunnel.fetch(request);
-    return fetch(request);
+  get egressFetch(): typeof fetch {
+    if (this.egressTunnel) {
+      return async (input, init) => this.egressTunnel!.fetch(new Request(input, init));
+    }
+    return fetch;
   }
 }
 

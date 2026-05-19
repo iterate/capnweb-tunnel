@@ -153,7 +153,7 @@ async function createTunnelFixture(
   try {
     const url = tunnelUrl(server.url, name);
     const tunnel = await createCaptunTunnel({
-      url: `${url}/__connect`,
+      url: `${url}/__captun-connect`,
       headers: server.headers,
       fetch,
     });

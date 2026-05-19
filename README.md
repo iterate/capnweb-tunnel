@@ -80,14 +80,16 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
   async fetch(request: Request) {
     const url = new URL(request.url);
 
-    const city = url.pathname.match(/^\/weather\/([^/]+)$/)?.[1];
-    if (city) {
-      const response = await this.egressFetch(new Request(`https://wttr.in/${city}?format=j1`));
+    if (url.pathname === "/weather") {
+      // Here's the value our app provides: fetching and gorgeously formatting weather data
+      const city = url.searchParams.get("city");
+      const response = await this.egressFetch(`https://wttr.in/${city}?format=j1`);
       const weather = await response.json<{ current_condition: [{ temp_C: string }] }>();
       return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
+      // Here we set up our worker to allow clients/tests to intercept egress traffic
       this.egressTunnel?.[Symbol.dispose]();
       const { response, tunnel } = acceptCaptunTunnel({
         onDisconnect: () => {
@@ -101,9 +103,11 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     return new Response("Not found\n", { status: 404 });
   }
 
-  private egressFetch(request: Request) {
-    if (this.egressTunnel) return this.egressTunnel.fetch(request);
-    return fetch(request);
+  get egressFetch(): typeof fetch {
+    if (this.egressTunnel) {
+      return async (input, init) => this.egressTunnel!.fetch(new Request(input, init));
+    }
+    return fetch;
   }
 }
 
@@ -111,35 +115,26 @@ export default {
   fetch(request: Request, env: WeatherReporterEnv) {
     return env.WEATHER_REPORTER_EGRESS.getByName("default").fetch(request);
   },
-}
+} satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
 The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).
 
-## 1. CLI Usage
+## Advanced CLI Usage
 
-Deploy the Worker first:
+The CLI is mostly focused on ngrok-style use-cases with our opinionated worker deployment. Once you have run `npx captun deploy`, further commands will pick up the server URL and connection secret from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
 
-```bash
-npx captun deploy
+```3000
+npx captun 3000 --server-url 'https://abc123.captun.youraccount.workers.dev' --secret abc123
 ```
 
-Then expose a local port through a named folder tunnel:
+By default, the `npx captun 3000` command will generate a name for the tunnel it creates. You can customise this with `--name`:
 
 ```bash
-python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev captun --name demo 3000
-curl https://captun.<your-account>.workers.dev/demo/
+npx captun 3000 --name my-very-serious-tunnel-name
 ```
 
-If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker manually, pass the same value to the CLI through `CAPTUN_SECRET` or `--secret`:
-
-```bash
-pnpm exec wrangler secret put CAPTUN_SECRET
-CAPTUN_SECRET=secret CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev captun --name demo 3000
-```
-
-`captun deploy` stores the deployed Worker URL and generated secret in `$XDG_CONFIG_HOME/captun/config.json`, or `~/.config/captun/config.json` when `XDG_CONFIG_HOME` is not set. `CAPTUN_SERVER_URL` and `CAPTUN_SECRET` override the saved config, and `--server-url` and `--secret` override both. The repo script runs the same source CLI with `pnpm run cli --`.
+<!-- got here -->
 
 Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
 

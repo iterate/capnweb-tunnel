@@ -29,7 +29,7 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       routedRequest = new Request(routedUrl, request);
     }
 
-    if (route.path === "/__connect") {
+    if (route.path === "/__captun-connect") {
       const expectedAuthorization = this.env.CAPTUN_SECRET
         ? `Bearer ${this.env.CAPTUN_SECRET}`
         : undefined;
@@ -91,7 +91,7 @@ function captunRouteParts(hostname: string, pathname: string) {
     return decodedName ? { name: decodedName, path: pathname } : undefined;
   }
   const [name, ...rest] = pathname.split("/").filter(Boolean);
-  if (!name || name === "__connect") return undefined;
+  if (!name || name === "__captun-connect") return undefined;
   const decodedName = safeDecodeURIComponent(name);
   return decodedName ? { name: decodedName, path: `/${rest.join("/")}` } : undefined;
 }

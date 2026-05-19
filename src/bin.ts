@@ -63,7 +63,7 @@ const router = os.router({
       const origin = `http://127.0.0.1:${input.port}`;
 
       using _tunnelSession = await createCaptunTunnel({
-        url: `${tunnel}/__connect`,
+        url: `${tunnel}/__captun-connect`,
         headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
         fetch: (request) => {
           const url = new URL(request.url);

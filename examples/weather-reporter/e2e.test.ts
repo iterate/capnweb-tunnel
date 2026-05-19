@@ -13,18 +13,18 @@ test("returns nicely formatted weather report", async () => {
       if (request.url === "https://wttr.in/london?format=j1") {
         return Response.json({ current_condition: [{ temp_C: "18" }] });
       }
-      if (request.url === "https://wttr.in/new+york?format=j1") {
+      if (request.url === "https://wttr.in/paris?format=j1") {
         return Response.json({ current_condition: [{ temp_C: "22" }] });
       }
       return new Response("Unexpected egress", { status: 500 });
     },
   });
 
-  const london = await fetch(`${app.url}/weather/london`);
+  const london = await fetch(`${app.url}/weather?city=london`);
   expect(await london.text()).toBe("The temperature in london is 18 celsius");
 
-  const newYork = await fetch(`${app.url}/weather/new+york`);
-  expect(await newYork.text()).toBe("The temperature in new+york is 22 celsius");
+  const paris = await fetch(`${app.url}/weather?city=paris`);
+  expect(await paris.text()).toBe("The temperature in paris is 22 celsius");
 });
 
 async function createWeatherReporterFixture() {
