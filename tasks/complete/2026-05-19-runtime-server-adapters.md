@@ -35,6 +35,7 @@ Captun should support the weather-reporter pattern outside Cloudflare Workers. T
 - 2026-05-19: Adding `@whatwg-node/server` exposed the Worker's untyped `crypto.subtle.timingSafeEqual` usage during root typecheck. Replaced it with a small local byte comparison in `src/worker.ts`.
 - 2026-05-19: Follow-up review asked to remove local Bun and Deno ambient declarations from the server examples. Added runtime-specific example typecheck setup instead: Bun uses `@types/bun`, Deno uses `deno check`, and the shared socket accept helper moved to `src/server-core.ts` so Deno does not need to typecheck Cloudflare's `WebSocketPair` route.
 - 2026-05-19: Follow-up review questioned repeated runtime subpath type re-exports. Moved shared public types to the root `captun` export and removed `CaptunServerTunnel`/`CaptunServerAcceptTunnelOptions` re-exports from `captun/server`, `captun/bun`, `captun/deno`, and `captun/node`.
+- 2026-05-19: Follow-up review asked why the Bun adapter was much larger than the Cap'n Web README example. Simplified `src/bun.ts` to wrap `newBunWebSocketRpcHandler()` instead of manually storing sessions and dispatching message/close/error events.
 - 2026-05-19: Verification passed:
   - `pnpm exec tsc -p tsconfig.json --noEmit`
   - `pnpm exec vitest run examples/bun/bun.test.ts examples/node/node.test.ts examples/deno/deno.test.ts examples/cloudflare/cloudflare.test.ts`
