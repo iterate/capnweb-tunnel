@@ -126,7 +126,7 @@ The core client/server pieces are small TypeScript modules around [Cap'n Web](ht
 
 The CLI is mostly focused on ngrok-style use-cases with our opinionated worker deployment. Once you have run `npx captun deploy`, further commands will pick up the server URL and connection secret from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
 
-```3000
+```bash
 npx captun 3000 --server-url 'https://abc123.captun.youraccount.workers.dev' --secret abc123
 ```
 
@@ -140,7 +140,13 @@ By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my
 
 ### Custom hostnames
 
-Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com`. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
+Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com`. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`.
+
+```bash
+npx captun deploy --route '*.tunnels.example.com/*' --zone example.com
+```
+
+If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
 
 ### Sharding
 
@@ -166,7 +172,7 @@ sequenceDiagram
   participant Server as Cloudflare Worker / CaptunServerShard
   participant Client as Node client
 
-  Client->>Server: WebSocket RPC connect to /demo/__connect with fetcher as main capability
+  Client->>Server: WebSocket RPC connect to /demo/__captun-connect with fetcher as main capability
   HTTP->>Server: GET /demo/report
   Server->>Client: fetch(request)
   Client-->>Server: Response
@@ -186,6 +192,14 @@ pnpm run dev
 ```
 
 Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_SERVER_URL`, with optional `CAPTUN_SECRET`, to run the same cases against a deployed Worker.
+
+End-to-end smoke tests for build, dry-run deploy, local `wrangler dev`, tunnel, and `curl` live in [`scripts/smoke/`](./scripts/smoke) with documentation in [docs/smoke-test.md](./docs/smoke-test.md):
+
+```bash
+pnpm smoke
+./scripts/smoke-test.sh list
+./scripts/smoke-test.sh step-5-tunnel-local
+```
 
 ## 4. Performance
 

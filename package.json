@@ -58,6 +58,7 @@
     "test": "vitest run",
     "test:unit": "vitest run test/worker.test.ts",
     "cli": "tsx src/bin.ts",
+    "smoke": "./scripts/smoke-test.sh",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",
     "publish:dry-run": "pnpm publish --dry-run --no-git-checks"

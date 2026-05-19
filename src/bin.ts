@@ -91,6 +91,10 @@ const router = os.router({
           .string()
           .optional()
           .describe("Optional Worker route, for example *.tunnels.example.com/*"),
+        zone: z
+          .string()
+          .optional()
+          .describe("Cloudflare zone name for the route, for example example.com"),
         secret: z
           .string()
           .optional()
@@ -101,11 +105,23 @@ const router = os.router({
           .min(1)
           .optional()
           .describe("Number of Durable Object shards to spread tunnel names across"),
+        dryRun: z.boolean().optional().describe("Compile and validate the deploy without uploading"),
       }),
     )
     .handler(async ({ input }) => {
       const secret = input.secret || randomSecret();
-      const serverUrl = await deployWorker({ route: input.route, secret, shards: input.shards });
+      const serverUrl = await deployWorker({
+        route: input.route,
+        zone: input.zone,
+        secret,
+        shards: input.shards,
+        dryRun: input.dryRun,
+      });
+      if (input.dryRun) {
+        console.log("\nDry run complete (no upload, config not written).");
+        console.log(`Expected server URL pattern: ${serverUrl}`);
+        return { serverUrl, dryRun: true };
+      }
       await writeConfig({ serverUrl, secret });
       return { serverUrl, configPath };
     }),
@@ -120,29 +136,43 @@ const cli = createCli({
 
 await cli.run({ prompts, logger: yamlTableConsoleLogger });
 
-async function deployWorker(input: { route?: string; secret: string; shards?: number }) {
+async function deployWorker(input: {
+  route?: string;
+  zone?: string;
+  secret: string;
+  shards?: number;
+  dryRun?: boolean;
+}) {
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
   const secretsFile = resolve(tempDir, "secrets.json");
   try {
     await writeFile(secretsFile, JSON.stringify({ CAPTUN_SECRET: input.secret }), { mode: 0o600 });
 
-    const config = resolve(packageRoot, "wrangler.toml");
+    let config = resolve(packageRoot, "wrangler.toml");
     const worker = resolve(packageRoot, "dist/worker.js");
-    const args = [
-      "--cwd",
-      packageRoot,
-      "deploy",
-      worker,
-      "--config",
-      config,
-      "--secrets-file",
-      secretsFile,
-      "--keep-vars",
-    ];
-    if (input.route) args.push("--route", input.route);
+    const args = ["--cwd", packageRoot, "deploy"];
+    if (input.route && input.zone) {
+      const baseConfig = await readFile(config, "utf8");
+      const deployConfig = resolve(tempDir, "wrangler.toml");
+      const withMain = baseConfig.replace(/^main\s*=\s*.+$/m, `main = ${JSON.stringify(worker)}`);
+      await writeFile(
+        deployConfig,
+        `${withMain.trimEnd()}\n\n[[routes]]\npattern = ${JSON.stringify(input.route)}\nzone_name = ${JSON.stringify(input.zone)}\n`,
+      );
+      config = deployConfig;
+    } else {
+      args.push(worker);
+    }
+    args.push("--config", config, "--secrets-file", secretsFile, "--keep-vars");
+    if (input.route && !input.zone) args.push("--route", input.route);
     if (input.shards) args.push("--var", `CAPTUN_SHARDS:${input.shards}`);
+    if (input.dryRun) args.push("--dry-run");
 
     const output = await runWrangler(args);
+    if (input.dryRun) {
+      return input.route ? serverUrlFromRoute(input.route) : "https://captun.<your-account>.workers.dev";
+    }
+
     const serverUrl = input.route
       ? serverUrlFromRoute(input.route)
       : serverUrlFromWranglerOutput(output);
