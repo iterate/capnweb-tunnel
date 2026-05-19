@@ -22,7 +22,13 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     const route = captunRouteParts("localhost", new URL(request.url).pathname);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
 
-    const routedRequest = rewritePath(request, route.path);
+    let routedRequest = request;
+    const routedUrl = new URL(request.url);
+    if (routedUrl.pathname !== route.path) {
+      routedUrl.pathname = route.path;
+      routedRequest = new Request(routedUrl, request);
+    }
+
     if (route.path === "/__connect") {
       const expectedAuthorization = this.env.CAPTUN_SECRET
         ? `Bearer ${this.env.CAPTUN_SECRET}`
@@ -65,14 +71,6 @@ export default {
     return env.CaptunServerShard.getByName(shard).fetch(route.request);
   },
 } satisfies ExportedHandler<CaptunEnv>;
-
-/** Rebuilds the request only when the Durable Object route prefix must be stripped. */
-function rewritePath(request: Request, pathname: string) {
-  const url = new URL(request.url);
-  if (url.pathname === pathname) return request;
-  url.pathname = pathname;
-  return new Request(url, request);
-}
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request. */
 function captunRoute(request: Request) {

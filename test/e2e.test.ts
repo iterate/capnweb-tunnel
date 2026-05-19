@@ -2,15 +2,12 @@ import { createHash } from "node:crypto";
 import { expect, test, vi } from "vitest";
 
 import { createCaptunTunnel } from "../src/client.ts";
+import { createCaptunWorkerFixture } from "./fixtures/captun-worker.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-const captunServerUrl = process.env.CAPTUN_SERVER_URL;
-if (!captunServerUrl) throw new Error("CAPTUN_SERVER_URL is required to load this e2e test module");
-const serverUrl = captunServerUrl;
-
 test.concurrent("forwards HTTP", async ({ task }) => {
-  using tunnel = await createTunnelFixture(task.name, async (request) =>
+  await using tunnel = await createTunnelFixture(task.name, async (request) =>
     Response.json({ body: await request.text() }),
   );
 
@@ -22,7 +19,7 @@ test.concurrent("forwards HTTP", async ({ task }) => {
 });
 
 test.concurrent("streams a binary response", async ({ task }) => {
-  using tunnel = await createTunnelFixture(task.name, () => {
+  await using tunnel = await createTunnelFixture(task.name, () => {
     let sent = 0;
     return new Response(
       new ReadableStream({
@@ -46,7 +43,7 @@ test.concurrent("streams a binary response", async ({ task }) => {
 });
 
 test.concurrent("streams SSE events", async ({ task }) => {
-  using tunnel = await createTunnelFixture(task.name, () => {
+  await using tunnel = await createTunnelFixture(task.name, () => {
     const events = Array.from(
       { length: 5 },
       (_, i) => `event: tunnel\nid: ${i + 1}\ndata: ${i + 1}\n\n`,
@@ -65,7 +62,7 @@ test.concurrent("streams response chunks before the local fetcher finishes", asy
   const encoder = new TextEncoder();
   const secondChunk = Promise.withResolvers<void>();
 
-  using tunnel = await createTunnelFixture(task.name, () => {
+  await using tunnel = await createTunnelFixture(task.name, () => {
     async function* events() {
       yield encoder.encode("first\n");
       await secondChunk.promise;
@@ -100,7 +97,7 @@ test.concurrent("streams response chunks before the local fetcher finishes", asy
 });
 
 test.concurrent("uploads a raw file body", async ({ task }) => {
-  using tunnel = await createTunnelFixture(task.name, async (request) => {
+  await using tunnel = await createTunnelFixture(task.name, async (request) => {
     const bytes = new Uint8Array(await request.arrayBuffer());
     return Response.json({ bytes: bytes.byteLength, sha256: sha256(bytes) });
   });
@@ -118,7 +115,7 @@ test.concurrent("uploads a raw file body", async ({ task }) => {
 });
 
 test.concurrent("uploads multipart form data", async ({ task }) => {
-  using tunnel = await createTunnelFixture(task.name, async (request) => {
+  await using tunnel = await createTunnelFixture(task.name, async (request) => {
     const form = await request.formData();
     const parts = [];
     for (const [name, value] of form.entries() as Iterable<[string, string | Blob]>) {
@@ -151,18 +148,46 @@ async function createTunnelFixture(
   testName: string,
   fetch: (request: Request) => Response | Promise<Response>,
 ) {
+  const server = await createServerFixture();
   const name = tunnelName(testName);
-  const url = tunnelUrl(name);
-  const tunnel = await createCaptunTunnel({
-    url: new URL("__connect", url),
-    headers: process.env.CAPTUN_SECRET
-      ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
-      : undefined,
-    fetch,
-  });
+  try {
+    const url = tunnelUrl(server.url, name);
+    const tunnel = await createCaptunTunnel({
+      url: new URL("__connect", url),
+      headers: server.headers,
+      fetch,
+    });
+    return {
+      url: url.toString(),
+      async [Symbol.asyncDispose]() {
+        tunnel[Symbol.dispose]();
+        await server[Symbol.asyncDispose]();
+      },
+    };
+  } catch (error) {
+    await server[Symbol.asyncDispose]();
+    throw error;
+  }
+}
+
+async function createServerFixture() {
+  if (process.env.CAPTUN_SERVER_URL) {
+    return {
+      url: process.env.CAPTUN_SERVER_URL,
+      headers: process.env.CAPTUN_SECRET
+        ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
+        : undefined,
+      async [Symbol.asyncDispose]() {},
+    };
+  }
+
+  const worker = await createCaptunWorkerFixture();
   return {
-    url: url.toString(),
-    [Symbol.dispose]: () => tunnel[Symbol.dispose](),
+    url: worker.origin,
+    headers: undefined,
+    async [Symbol.asyncDispose]() {
+      await worker[Symbol.asyncDispose]();
+    },
   };
 }
 
@@ -177,7 +202,7 @@ function tunnelName(testName: string) {
   return `${prefix}-${hash}`;
 }
 
-function tunnelUrl(name: string) {
+function tunnelUrl(serverUrl: string, name: string) {
   if (serverUrl.includes("{name}")) return new URL(serverUrl.replaceAll("{name}", name));
 
   const url = new URL(serverUrl);

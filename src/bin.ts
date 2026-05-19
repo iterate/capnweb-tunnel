@@ -37,6 +37,7 @@ const router = os.router({
     .input(
       z.object({
         port: z
+          .coerce
           .number()
           .int()
           .positive()
@@ -50,14 +51,14 @@ const router = os.router({
     )
     .handler(async ({ input }) => {
       const config = await readConfig();
-      const serverUrl = input.serverUrl || config?.serverUrl;
+      const serverUrl = input.serverUrl || process.env.CAPTUN_SERVER_URL || config?.serverUrl;
       if (!serverUrl) {
         throw new Error(
           `No tunnel server configured. Run "captun deploy" first or pass --server-url.`,
         );
       }
 
-      const secret = input.secret || config?.secret;
+      const secret = input.secret || process.env.CAPTUN_SECRET || config?.secret;
       const name = input.name || randomName();
       const tunnel = tunnelUrl(serverUrl, name);
       const origin = `http://127.0.0.1:${input.port}`;
@@ -145,8 +146,8 @@ async function deployWorker(input: { route?: string; secret: string }) {
 }
 
 async function runWrangler(args: string[]) {
-  const wranglerBin = require.resolve("wrangler/bin/wrangler.js");
-  const child = spawn(process.execPath, [wranglerBin, ...args], {
+  const wrangler = wranglerCommand(args);
+  const child = spawn(wrangler.command, wrangler.args, {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -161,12 +162,33 @@ async function runWrangler(args: string[]) {
   });
 
   return new Promise<string>((resolvePromise, reject) => {
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if ("code" in error && error.code === "ENOENT") {
+        reject(
+          new Error(
+            "Wrangler is required for `captun deploy`. Install it globally or run `pnpm add -D wrangler` in the project invoking captun.",
+          ),
+        );
+        return;
+      }
+      reject(error);
+    });
     child.on("close", (code) => {
       if (code === 0) resolvePromise(output);
       else reject(new Error(`wrangler deploy failed with exit code ${code ?? "unknown"}`));
     });
   });
+}
+
+function wranglerCommand(args: string[]) {
+  try {
+    return {
+      command: process.execPath,
+      args: [require.resolve("wrangler/bin/wrangler.js"), ...args],
+    };
+  } catch {
+    return { command: "wrangler", args };
+  }
 }
 
 async function readConfig() {

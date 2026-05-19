@@ -6,7 +6,7 @@ Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare T
 npx captun deploy
 
 python3 -m http.server 3000
-npx captun --name demo 3000
+CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev npx captun --name demo 3000
 
 curl https://captun.<your-account>.workers.dev/demo/
 ```
@@ -36,18 +36,18 @@ Then expose a local port through a named folder tunnel:
 
 ```bash
 python3 -m http.server 3000
-captun --name demo 3000
+CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev captun --name demo 3000
 curl https://captun.<your-account>.workers.dev/demo/
 ```
 
-If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker manually, pass the same value to the CLI with `--secret`:
+If you omit `--name`, the CLI generates a random hyphenated tunnel name. If you set `CAPTUN_SECRET` on the Worker manually, pass the same value to the CLI through `CAPTUN_SECRET` or `--secret`:
 
 ```bash
 pnpm exec wrangler secret put CAPTUN_SECRET
-captun --server-url https://captun.<your-account>.workers.dev --secret secret --name demo 3000
+CAPTUN_SECRET=secret CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev captun --name demo 3000
 ```
 
-`captun deploy` stores the deployed Worker URL and generated secret in `$XDG_CONFIG_HOME/captun/config.json`, or `~/.config/captun/config.json` when `XDG_CONFIG_HOME` is not set. `--server-url` and `--secret` override the saved config. The repo script runs the same source CLI with `pnpm run cli --`.
+`captun deploy` stores the deployed Worker URL and generated secret in `$XDG_CONFIG_HOME/captun/config.json`, or `~/.config/captun/config.json` when `XDG_CONFIG_HOME` is not set. `CAPTUN_SERVER_URL` and `CAPTUN_SECRET` override the saved config, and `--server-url` and `--secret` override both. The repo script runs the same source CLI with `pnpm run cli --`.
 
 Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
 
@@ -140,7 +140,7 @@ pnpm run build
 pnpm run dev
 ```
 
-Run tests with `pnpm test`. The unit tests run without external services; the root e2e suite also runs when `CAPTUN_SERVER_URL` is set, with optional `CAPTUN_SECRET`.
+Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_SERVER_URL`, with optional `CAPTUN_SECRET`, to run the same cases against a deployed Worker.
 
 ## 4. Performance
 

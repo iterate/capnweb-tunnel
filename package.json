@@ -8,7 +8,7 @@
     "url": "https://github.com/iterate/captun.git"
   },
   "bin": {
-    "captun": "./src/cli.ts"
+    "captun": "./src/bin.ts"
   },
   "files": [
     "dist",
@@ -16,8 +16,6 @@
     "wrangler.toml"
   ],
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -34,7 +32,7 @@
   },
   "publishConfig": {
     "bin": {
-      "captun": "./dist/cli.js"
+      "captun": "./dist/bin.js"
     },
     "exports": {
       ".": {
@@ -57,9 +55,9 @@
     "typecheck": "tsc -p tsconfig.json && pnpm --filter @captun/weather-reporter typecheck",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "pnpm run build && vitest run",
-    "test:unit": "pnpm run build && vitest run test/worker.test.ts",
-    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run test/worker.test.ts",
+    "cli": "tsx src/bin.ts",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",
     "publish:dry-run": "pnpm publish --dry-run --no-git-checks"
