@@ -4,20 +4,46 @@ import { dirname, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-export type WeatherReporterRuntime = "bun" | "deno" | "node";
+import { expect, test, vi } from "vitest";
 
-const exampleRoot = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(exampleRoot, "../..");
-type WeatherReporterProcess = ChildProcessByStdio<null, Readable, Readable>;
+import { createCaptunTunnel } from "../../src/client.js";
 
-export async function createRuntimeWeatherReporterFixture(runtime: WeatherReporterRuntime) {
+vi.setConfig({ testTimeout: 20_000 });
+
+test("returns nicely formatted weather report from a Bun server", async () => {
+  await using app = await createBunWeatherReporterFixture();
+  using _tunnel = await createCaptunTunnel({
+    url: `${app.url}/__intercept-egress-traffic`,
+    fetch(request) {
+      if (request.url === "https://wttr.in/london?format=j1") {
+        return Response.json({ current_condition: [{ temp_C: "18" }] });
+      }
+      if (request.url === "https://wttr.in/paris?format=j1") {
+        return Response.json({ current_condition: [{ temp_C: "22" }] });
+      }
+      return new Response("Unexpected egress", { status: 500 });
+    },
+  });
+
+  const london = await fetch(`${app.url}/weather?city=london`);
+  expect(await london.text()).toBe("The temperature in london is 18 celsius");
+
+  const paris = await fetch(`${app.url}/weather?city=paris`);
+  expect(await paris.text()).toBe("The temperature in paris is 22 celsius");
+});
+
+async function createBunWeatherReporterFixture() {
   const port = await getAvailablePort();
   const url = `http://127.0.0.1:${port}`;
-  const server = startWeatherReporterProcess(runtime, port);
+  const server = spawn("bun", ["run", "examples/bun/server.ts"], {
+    cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+    env: { ...process.env, PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   const output = captureOutput(server);
 
   try {
-    await waitForHttp(`${url}/__health__`, 15_000, server, output);
+    await waitForHttp(`${url}/__health__`, server, output);
     return {
       url,
       async [Symbol.asyncDispose]() {
@@ -30,32 +56,7 @@ export async function createRuntimeWeatherReporterFixture(runtime: WeatherReport
   }
 }
 
-function startWeatherReporterProcess(runtime: WeatherReporterRuntime, port: number) {
-  const commands: Record<WeatherReporterRuntime, { command: string; args: string[] }> = {
-    bun: { command: "bun", args: ["run", "examples/weather-reporter/bun.ts"] },
-    deno: {
-      command: "deno",
-      args: [
-        "run",
-        "--config",
-        "examples/weather-reporter/deno.json",
-        "--node-modules-dir=auto",
-        "--no-lock",
-        "--sloppy-imports",
-        "--allow-env=PORT",
-        "--allow-net=127.0.0.1",
-        "examples/weather-reporter/deno.ts",
-      ],
-    },
-    node: { command: "pnpm", args: ["exec", "tsx", "examples/weather-reporter/node.ts"] },
-  };
-  const command = commands[runtime];
-  return spawn(command.command, command.args, {
-    cwd: repoRoot,
-    env: { ...process.env, PORT: String(port) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
+type ServerProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 async function getAvailablePort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
@@ -68,33 +69,21 @@ async function getAvailablePort(): Promise<number> {
       }
 
       server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(address.port);
+        if (error) reject(error);
+        else resolve(address.port);
       });
     });
     server.on("error", reject);
   });
 }
 
-async function waitForHttp(
-  url: string,
-  timeoutMs: number,
-  server: WeatherReporterProcess,
-  output: CapturedProcessOutput,
-): Promise<void> {
+async function waitForHttp(url: string, server: ServerProcess, output: CapturedProcessOutput) {
   const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
+  while (Date.now() - startedAt < 15_000) {
     const error = output.error();
     if (error) throw error;
-
     if (server.exitCode !== null || server.signalCode) {
-      throw new Error(
-        `Weather reporter process exited before ${url} responded\n\n${output.logs().trim() || "(none)"}`,
-      );
+      throw new Error(`Bun server exited before ${url} responded\n\n${output.logs().trim() || "(none)"}`);
     }
 
     try {
@@ -105,10 +94,10 @@ async function waitForHttp(
     await delay(100);
   }
 
-  throw new Error(`Timed out waiting for weather reporter to respond at ${url}`);
+  throw new Error(`Timed out waiting for Bun server to respond at ${url}`);
 }
 
-function captureOutput(child: WeatherReporterProcess) {
+function captureOutput(child: ServerProcess) {
   const chunks: string[] = [];
   let processError: Error | undefined;
   const capture = (chunk: string | Buffer) => {
@@ -133,11 +122,11 @@ interface CapturedProcessOutput {
   error(): Error | undefined;
 }
 
-function formatFixtureFailure(message: string, serverLogs: string): string {
+function formatFixtureFailure(message: string, serverLogs: string) {
   return [message, "", "Server logs:", serverLogs.trim() || "(none)"].join("\n");
 }
 
-async function stopProcess(child: WeatherReporterProcess): Promise<void> {
+async function stopProcess(child: ServerProcess): Promise<void> {
   if (child.exitCode !== null || child.killed) return;
 
   child.kill("SIGINT");
