@@ -1,30 +1,36 @@
 import { captunTunnelFromRemoteClient, type CaptunRemoteClient } from "./server-core.js";
 import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
-const { newBunWebSocketRpcHandler } = (await import("capnweb")) as any;
+// @ts-ignore -- capnweb exports separate types for bun but this lib is built from node. it'll work at runtime though.
+import { newBunWebSocketRpcHandler } from "capnweb";
 
 export function createCaptunBunTunnelHandler() {
   const capnweb = newBunWebSocketRpcHandler(() => undefined);
 
   return {
-    accept(request: Request, server: any, options: CaptunServerAcceptTunnelOptions = {}) {
+    accept(request: Request, server: { upgrade: Function }, options: CaptunServerAcceptTunnelOptions = {}) {
       const pendingTunnel = createPendingCaptunBunTunnel(options);
-      if (!server.upgrade(request, { data: { captunTunnel: pendingTunnel } })) {
+      const upgraded = server.upgrade(request, { data: { captunTunnel: pendingTunnel } });
+      if (!upgraded) {
         pendingTunnel.tunnel[Symbol.dispose]();
         return undefined;
       }
       return pendingTunnel.tunnel;
     },
     websocket: {
-      open(socket: any) {
-        const pendingTunnel = socket.data.captunTunnel;
+      open(socket: unknown) {
+        const _socket = socket as {
+          data: { __capnwebStub: any; captunTunnel: any };
+          close: Function;
+        };
+        const pendingTunnel = _socket.data.captunTunnel;
         if (!pendingTunnel) {
-          socket.close(1008, "Missing Captun tunnel data");
+          _socket.close(1008, "Missing Captun tunnel data");
           return;
         }
 
-        capnweb.open(socket);
-        pendingTunnel.connect(socket.data.__capnwebStub);
+        capnweb.open(_socket);
+        pendingTunnel.connect(_socket.data.__capnwebStub);
       },
       message: capnweb.message,
       close: capnweb.close,
@@ -33,9 +39,11 @@ export function createCaptunBunTunnelHandler() {
   };
 }
 
-function createPendingCaptunBunTunnel(
-  options: CaptunServerAcceptTunnelOptions,
-) {
+/**
+ * Creates a tunnel handle *before* Bun gives us the actual socket, because `server.upgrade(...)` just returns a boolean. The WebSocket arrives later in `open(...)`.
+ * So we need to pass this "pending tunnel" reference to `server.upgrade(...)` via `data`, to be fished out later.
+ */
+function createPendingCaptunBunTunnel(options: CaptunServerAcceptTunnelOptions) {
   let connectedTunnel: CaptunServerTunnel | undefined;
   let connectTunnel: (tunnel: CaptunServerTunnel) => void = () => {};
   let rejectTunnel: (error: Error) => void = () => {};
