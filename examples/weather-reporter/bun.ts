@@ -1,6 +1,8 @@
 import {
-  createCaptunBunWebSocketHandler,
+  createCaptunBunTunnelHandler,
+  type CaptunBunServer,
   type CaptunBunWebSocketHandler,
+  type CaptunServerTunnel,
 } from "captun/bun";
 import { WeatherReporter } from "./app.js";
 
@@ -10,21 +12,18 @@ declare const Bun: {
     port: number;
     fetch(
       request: Request,
-      server: { upgrade(request: Request): boolean },
+      server: CaptunBunServer,
     ): Response | Promise<Response | undefined> | undefined;
     websocket: CaptunBunWebSocketHandler;
   }): { stop(force?: boolean): void };
 };
 
-const app = new WeatherReporter();
-const websocket = createCaptunBunWebSocketHandler({
-  onTunnel(tunnel) {
-    app.replaceEgressTunnel(tunnel);
-  },
-  onDisconnect(tunnel) {
-    app.clearEgressTunnel(tunnel);
-  },
+let egressTunnel: CaptunServerTunnel | undefined;
+const app = new WeatherReporter(async (input, init) => {
+  if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
+  return fetch(input, init);
 });
+const captun = createCaptunBunTunnelHandler();
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -38,13 +37,21 @@ const server = Bun.serve({
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
         return new Response("Expected WebSocket upgrade\n", { status: 400 });
       }
-      if (server.upgrade(request)) return;
-      return new Response("WebSocket upgrade failed\n", { status: 500 });
+
+      const tunnel = captun.accept(request, server, {
+        onDisconnect: () => {
+          if (egressTunnel === tunnel) egressTunnel = undefined;
+        },
+      });
+      if (!tunnel) return new Response("WebSocket upgrade failed\n", { status: 500 });
+      egressTunnel?.[Symbol.dispose]();
+      egressTunnel = tunnel;
+      return;
     }
 
     return app.fetch(request);
   },
-  websocket,
+  websocket: captun.websocket,
 });
 
 process.on("SIGINT", () => {

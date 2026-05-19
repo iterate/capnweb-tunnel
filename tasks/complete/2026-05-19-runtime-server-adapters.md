@@ -28,6 +28,7 @@ Captun should support the weather-reporter pattern outside Cloudflare Workers. T
 - 2026-05-19: Created this task in a dedicated worktree from `mmkal/26/05/18/tweaks` on branch `mmkal/26/05/19/runtime-adapters`.
 - 2026-05-19: Opened draft PR #3 after the spec commit, then implemented the runtime adapters and subprocess-backed weather tests.
 - 2026-05-19: CI initially failed because the GitHub Node runner did not have `bun` or `deno` installed; added explicit setup steps for both runtimes and made fixture spawn errors report cleanly.
+- 2026-05-19: Review feedback called out that the PR body example referenced non-existent `app.*` methods and made Bun look unlike the Cloudflare accept flow. Reworked the Bun adapter to `createCaptunBunTunnelHandler().accept(...)` plus a `websocket` handler, and changed the runtime examples to use local `let egressTunnel` variables.
 - 2026-05-19: Verification passed:
   - `pnpm exec tsc -p tsconfig.json --noEmit`
   - `pnpm exec vitest run examples/weather-reporter/bun.e2e.test.ts examples/weather-reporter/deno.e2e.test.ts examples/weather-reporter/node.e2e.test.ts`
