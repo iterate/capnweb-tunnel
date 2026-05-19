@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
-import { createCli } from "trpc-cli";
+import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { createCaptunTunnel } from "./client.ts";
 import { CommandNotFoundError, ExecError, exec } from "./exec.ts";
@@ -108,7 +108,7 @@ const cli = createCli({
   description: "Expose local HTTP servers through a tiny Cloudflare Worker tunnel.",
 });
 
-await cli.run({ prompts });
+await cli.run({ prompts, logger: yamlTableConsoleLogger });
 
 async function deployWorker(input: { route?: string; secret: string }) {
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));

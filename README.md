@@ -2,24 +2,116 @@
 
 Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a Node process over [Cap'n Web](https://github.com/cloudflare/capnweb).
 
+## Quick start
+
+First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server:
+
 ```bash
 npx captun deploy
-
-python3 -m http.server 3000
-CAPTUN_SERVER_URL=https://captun.<your-account>.workers.dev npx captun --name demo 3000
-
-curl https://captun.<your-account>.workers.dev/demo/
 ```
 
-Or use it directly from code:
+Then tunnel to it:
+
+```bash
+npx captun 3000
+```
+
+<!-- # https://captun.my-account.workers.dev/funny-banana-wall 
+
+# [if you want tunnels like https://funny-banana-wall.tunnels.yourdomain.com instead - click here]
+
+
+# mydomain.com and www.mydomain.com and something.mydomain.com 
+# then you _could_ say *.mydomain.com goes to tunnels - and that could include <tunnel-name>__tunnels.mydomain.com -->
+
+This will use `wrangler` under the hood to deploy an opinionated captun-tunneler-worker to your cloudflare account, and will store the server url in an XDG config file, and uses it when you tunnel to it.
+
+<!-- - With captun you can make your own faster ngrok for free in 10 seconds
+  - This is how you use it on the cli
+  - This is how you use it (your deployed ngrok) programmaticaly
+- Or you can build other stuff like this very easily
+  - Weather / vitest example
+  - How we use it at iterate
+  - Low level client API
+  - Low level server API -->
+
+### Programmatic usage
+
+You can use the worker you just deployed to create a tunnel from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
 
 ```ts
 import { createCaptunTunnel } from "captun/client";
 
-using tunnel = await createCaptunTunnel({
-  url: "https://captun.<your-account>.workers.dev/demo/__connect",
-  fetch: (request) => fetch(request),
+const url = "https://captun.account.workers.dev/my-cool-tunnel"
+
+const tunnel = await createCaptunTunnel({
+  url: `${url}/__captun-connect`, // creates a tunnel named "my-tunnel". choose any slug-safe string here
+  fetch: async (request) => {
+    const url = new URL(request.url)
+    if (url.pathname.endsWith('/webhook')) {
+      console.log('Received a webhook:', await request.json())
+      return Response.json({ ok: true })
+    }
+
+    return new Response('not found', { status: 404 })
+  },
 });
+
+console.log(`Listening to webhooks on ${url}/webhook`)
+
+await new Promise(() => {}) // stay alive until killed
+```
+
+## Advanced usage
+
+The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
+
+```ts
+import { DurableObject } from "cloudflare:workers";
+import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun/server";
+
+type WeatherReporterEnv = Env & {
+  WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
+};
+
+export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
+  private egressTunnel: CaptunServerTunnel | undefined;
+
+  async fetch(request: Request) {
+    const url = new URL(request.url);
+
+    const city = url.pathname.match(/^\/weather\/([^/]+)$/)?.[1];
+    if (city) {
+      const response = await this.egressFetch(new Request(`https://wttr.in/${city}?format=j1`));
+      const weather = await response.json<{ current_condition: [{ temp_C: string }] }>();
+      return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
+    }
+
+    if (url.pathname === "/__intercept-egress-traffic") {
+      this.egressTunnel?.[Symbol.dispose]();
+      const { response, tunnel } = acceptCaptunTunnel({
+        onDisconnect: () => {
+          if (this.egressTunnel === tunnel) this.egressTunnel = undefined;
+        },
+      });
+      this.egressTunnel = tunnel;
+      return response;
+    }
+
+    return new Response("Not found\n", { status: 404 });
+  }
+
+  private egressFetch(request: Request) {
+    if (this.egressTunnel) return this.egressTunnel.fetch(request);
+    return fetch(request);
+  }
+}
+
+export default {
+  fetch(request: Request, env: WeatherReporterEnv) {
+    return env.WEATHER_REPORTER_EGRESS.getByName("default").fetch(request);
+  },
+}
 ```
 
 The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).

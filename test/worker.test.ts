@@ -10,7 +10,7 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
       const url = new URL(request.url);
       return Response.json({
         path: url.pathname,
-        body: await request.text(),
+        body: `You said: ${await request.text()}`,
       });
     },
   });
@@ -22,7 +22,7 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
 
   expect(await response.json()).toMatchObject({
     path: "/hello",
-    body: "hello through miniflare",
+    body: "You said: hello through miniflare",
   });
 });
 
