@@ -64,6 +64,18 @@ await new Promise(() => {}) // stay alive until killed
 
 That's all you need! No local ports, just a fetch function.
 
+### Browser demo
+
+There is also a static browser demo in [docs/browser-demo.html](./docs/browser-demo.html). It runs without a framework or build step, so you can serve it directly while developing:
+
+```bash
+python3 -m http.server 8080 --directory docs
+```
+
+Then open `http://127.0.0.1:8080/browser-demo.html`, enter the origin of a deployed Captun Worker, choose a tunnel name, and edit the in-page fetch handler. The page connects from the browser session and shows the public tunnel URL plus request, response, and error logs.
+
+Browser WebSocket APIs cannot send arbitrary `Authorization` headers, so the demo needs a Captun Worker without `CAPTUN_SECRET`. Use the Node CLI for secret-protected tunnels.
+
 ## Advanced usage
 
 The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:

@@ -1,0 +1,359 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-alt: #f0f4f5;
+  --border: #cfd8dc;
+  --border-strong: #9aa9af;
+  --text: #152026;
+  --muted: #5b6970;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --danger: #b42318;
+  --warning: #9a6700;
+  --success: #166534;
+  --code: #111827;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+.button-link {
+  min-height: 2.25rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  color: var(--text);
+  background: #ffffff;
+  line-height: 1.1;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled),
+.button-link:hover {
+  border-color: var(--accent);
+}
+
+button:disabled,
+.button-link[aria-disabled="true"] {
+  color: #8a969c;
+  border-color: var(--border);
+  background: #eef1f2;
+  cursor: not-allowed;
+}
+
+.primary {
+  color: #ffffff;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.primary:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 4rem;
+  padding: 0.8rem clamp(1rem, 3vw, 2rem);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.status {
+  min-width: 8.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  color: var(--muted);
+  background: var(--panel-alt);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.status[data-status="connecting"] {
+  color: var(--warning);
+  border-color: #d6a400;
+  background: #fff8d8;
+}
+
+.status[data-status="connected"] {
+  color: var(--success);
+  border-color: #86b888;
+  background: #e9f8ed;
+}
+
+.status[data-status="error"] {
+  color: var(--danger);
+  border-color: #e5aaa5;
+  background: #fff0ef;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
+  gap: 1rem;
+  width: min(96rem, 100%);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.panel-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field span,
+.inline-label span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.inline-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.inline-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0.55rem 0.65rem;
+  color: var(--text);
+  background: #ffffff;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+.button-link:focus-visible {
+  outline: 3px solid #9dd7d0;
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.notice {
+  margin: 0;
+  border-left: 3px solid var(--warning);
+  padding: 0.5rem 0.65rem;
+  color: #5f4100;
+  background: #fff8d8;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.readonly-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+}
+
+.handler-grid {
+  display: grid;
+  grid-template-rows: minmax(22rem, 1fr);
+  min-height: 28rem;
+}
+
+.code-editor,
+.probe-output {
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, ui-monospace, monospace;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.code-editor {
+  height: 100%;
+  min-height: 22rem;
+  color: #e5edf0;
+  border-color: #24323a;
+  background: var(--code);
+  tab-size: 2;
+}
+
+.lower-grid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.7fr) minmax(20rem, 1fr);
+  gap: 1rem;
+}
+
+.probe-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.probe-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.probe-output {
+  min-height: 9rem;
+  color: var(--text);
+  background: #fbfcfd;
+}
+
+.log-list {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  max-height: 18rem;
+  min-height: 9rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 5.75rem 5.25rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  border: 1px solid #e1e7ea;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  background: #fbfcfd;
+  font-size: 0.83rem;
+}
+
+.log-row time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-kind {
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.log-row[data-kind="error"] {
+  border-color: #f0bbb6;
+  background: #fff7f6;
+}
+
+.log-row[data-kind="request"] {
+  border-color: #b6d3df;
+}
+
+.log-row[data-kind="response"] {
+  border-color: #bdd8be;
+}
+
+.log-row pre {
+  grid-column: 1 / -1;
+  max-height: 8rem;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 840px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .status {
+    width: 100%;
+  }
+
+  .workspace,
+  .lower-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .readonly-row,
+  .probe-row {
+    grid-template-columns: 1fr;
+  }
+
+  .button-link,
+  button {
+    width: 100%;
+  }
+}
