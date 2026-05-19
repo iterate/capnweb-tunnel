@@ -13,17 +13,20 @@ declare const Deno: {
 };
 
 let egressTunnel: CaptunServerTunnel | undefined;
-const app = new WeatherReporter(async (input, init) => {
+const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);
-});
+};
+const app = new WeatherReporter(egressFetch);
 
 const server = Deno.serve(
   { hostname: "127.0.0.1", port: Number(Deno.env.get("PORT")) },
   (request) => {
     const url = new URL(request.url);
 
-    if (url.pathname === "/__health__") return new Response("ok");
+    if (url.pathname === "/weather") {
+      return app.fetch(request);
+    }
 
     if (url.pathname === "/__intercept-egress-traffic") {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
@@ -42,6 +45,8 @@ const server = Deno.serve(
       });
       return response;
     }
+
+    if (url.pathname === "/__health__") return new Response("ok");
 
     return app.fetch(request);
   },

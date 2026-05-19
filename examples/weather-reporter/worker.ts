@@ -8,13 +8,18 @@ type WeatherReporterEnv = Env & {
 
 export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
   private egressTunnel: CaptunServerTunnel | undefined;
-  private readonly app = new WeatherReporter(async (input, init) => {
+  private readonly egressFetch: typeof fetch = async (input, init) => {
     if (this.egressTunnel) return this.egressTunnel.fetch(new Request(input, init));
     return fetch(input, init);
-  });
+  };
+  private readonly app = new WeatherReporter(this.egressFetch);
 
   fetch(request: Request) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/weather") {
+      return this.app.fetch(request);
+    }
 
     if (url.pathname === "/__intercept-egress-traffic") {
       // Here we set up our worker to allow clients/tests to intercept egress traffic
