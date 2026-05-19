@@ -1,7 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel } from "./server.js";
 import type { CaptunServerTunnel } from "./types.js";
-import { captunRouteParts, captunShardName } from "./worker-routing.js";
+import {
+  captunActiveTunnelSetCookie,
+  captunCookieWithoutRoutingCookie,
+  captunRequestRouteParts,
+  captunRouteParts,
+  captunShardName,
+} from "./worker-routing.js";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
@@ -65,20 +71,88 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 }
 
 export default {
-  fetch(request: Request, env: CaptunEnv) {
+  async fetch(request: Request, env: CaptunEnv) {
     const route = captunRoute(request);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
+
+    if (route.kind === "select-active-tunnel") {
+      return selectActiveTunnelResponse(request, route.tunnelName);
+    }
+
     const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS || 1));
-    return env.CaptunServerShard.getByName(shard).fetch(route.request);
+    const response = await env.CaptunServerShard.getByName(shard).fetch(route.request);
+    return route.rootedByCookie ? withCookieVary(response) : response;
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request. */
 function captunRoute(request: Request) {
   const url = new URL(request.url);
-  const route = captunRouteParts(url.hostname, url.pathname);
+  const route = captunRequestRouteParts(
+    url.hostname,
+    url.pathname,
+    request.headers.get("cookie") || "",
+  );
   if (!route) return undefined;
+  if (route.kind === "select-active-tunnel") {
+    return { kind: route.kind, tunnelName: route.name };
+  }
 
   url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
-  return { tunnelName: route.name, request: new Request(url, request) };
+  return {
+    kind: route.kind,
+    tunnelName: route.name,
+    rootedByCookie: route.rootedByCookie,
+    request: requestWithUrlAndStrippedRoutingCookie(url, request),
+  };
+}
+
+/** Sets the active tunnel cookie and sends browsers back to the Worker root. */
+function selectActiveTunnelResponse(request: Request, tunnelName: string) {
+  const url = new URL(request.url);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "cache-control": "no-store",
+      location: "/",
+      "set-cookie": captunActiveTunnelSetCookie(tunnelName, url.protocol),
+    },
+  });
+}
+
+/** Clones a request to the Durable Object URL without leaking Captun's cookie to origins. */
+function requestWithUrlAndStrippedRoutingCookie(url: URL, request: Request) {
+  const headers = new Headers(request.headers);
+  const cookieHeader = captunCookieWithoutRoutingCookie(headers.get("cookie") || "");
+  if (cookieHeader) headers.set("cookie", cookieHeader);
+  else headers.delete("cookie");
+
+  const init: RequestInit = {
+    headers,
+    method: request.method,
+    redirect: request.redirect,
+    signal: request.signal,
+  };
+  if (request.body && request.method !== "GET" && request.method !== "HEAD") {
+    init.body = request.body;
+  }
+  return new Request(url, init);
+}
+
+/** Marks cookie-selected responses as varying by the browser routing cookie. */
+function withCookieVary(response: Response) {
+  const headers = new Headers(response.headers);
+  const vary = headers.get("vary");
+  if (!vary) headers.set("vary", "Cookie");
+  else if (
+    vary.trim() !== "*" &&
+    !vary.split(",").some((part) => part.trim().toLowerCase() === "cookie")
+  ) {
+    headers.set("vary", `${vary}, Cookie`);
+  }
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
