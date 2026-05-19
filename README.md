@@ -4,7 +4,7 @@ Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare T
 
 ## Quick start
 
-First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server:
+First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
 
 ```bash
 npx captun deploy
@@ -24,7 +24,7 @@ npx captun 3000
 # mydomain.com and www.mydomain.com and something.mydomain.com 
 # then you _could_ say *.mydomain.com goes to tunnels - and that could include <tunnel-name>__tunnels.mydomain.com -->
 
-This will use `wrangler` under the hood to deploy an opinionated captun-tunneler-worker to your cloudflare account, and will store the server url in an XDG config file, and uses it when you tunnel to it.
+The deploy command will use `wrangler` under the hood to deploy an opinionated captun-tunneler-worker to your cloudflare account, and will store the server url in an XDG config file, and uses it when you tunnel to it.
 
 <!-- - With captun you can make your own faster ngrok for free in 10 seconds
   - This is how you use it on the cli
@@ -158,50 +158,7 @@ npx captun deploy --shards 256
 
 You can import the public API from `captun`, or use subpath imports from `captun/client` and `captun/server`. The server package also exports `acceptCaptunTunnelFromSocket(socket)` for Workers that already performed the WebSocket upgrade.
 
-## How Does It Work?
-
-We just pass `fetch()` through `fetch()`. No, really.
-
-With Cap'n Web, the Node client opens a WebSocket RPC session to the Worker and exposes its local fetcher as the session's main capability. The Worker's tunnel handle is a stub for that capability, whose only interesting method is `fetch(request)`. From then on, the Worker can forward public HTTP requests to that function and return the resulting `Response`.
-
-All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE, and uploads are already web standards; this is the web-standards way this should work.
-
-```mermaid
-sequenceDiagram
-  participant HTTP as HTTP client
-  participant Server as Cloudflare Worker / CaptunServerShard
-  participant Client as Node client
-
-  Client->>Server: WebSocket RPC connect to /demo/__captun-connect with fetcher as main capability
-  HTTP->>Server: GET /demo/report
-  Server->>Client: fetch(request)
-  Client-->>Server: Response
-  Server-->>HTTP: Response
-```
-
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own e2e tests.
-
-## 3. Development
-
-The Worker needs the `CaptunServerShard` Durable Object binding and migration from [wrangler.toml](./wrangler.toml). For local development:
-
-```bash
-pnpm install
-pnpm run build
-pnpm run dev
-```
-
-Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_SERVER_URL`, with optional `CAPTUN_SECRET`, to run the same cases against a deployed Worker.
-
-End-to-end smoke tests for build, dry-run deploy, local `wrangler dev`, tunnel, and `curl` live in [`scripts/smoke/`](./scripts/smoke) with documentation in [docs/smoke-test.md](./docs/smoke-test.md):
-
-```bash
-pnpm smoke
-./scripts/smoke-test.sh list
-./scripts/smoke-test.sh step-5-tunnel-local
-```
-
-## 4. Performance
+## Performance
 
 On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in 188ms p50. Rechecking provider startup on the same day showed ngrok was much faster than the earlier sample: one ngrok ad-hoc tunnel reached 451ms, and 10 concurrent ngrok tunnels reached 658ms p50. Cloudflared quick tunnels still took about 8.5-9s when successful because the `trycloudflare.com` hostname was printed several seconds before DNS/public routing was ready.
 
@@ -225,7 +182,50 @@ The scripts used for these numbers are [scripts/benchmark-startup.ts](./scripts/
 
 For test and development traffic, this should usually cost effectively nothing on Cloudflare: the [Workers Free plan](https://developers.cloudflare.com/workers/platform/pricing/) includes daily Worker requests, and Durable Objects have their own included free usage. Check pricing before serious volume, because connected Durable Objects cannot hibernate while the WebSocket is open.
 
-## 5. Caveats
+## How Does It Work?
+
+We just pass `fetch()` through `fetch()`. No, really.
+
+With Cap'n Web, the Node client opens a WebSocket RPC session to the Worker and exposes its local fetcher as the session's main capability. The Worker's tunnel handle is a stub for that capability, whose only interesting method is `fetch(request)`. From then on, the Worker can forward public HTTP requests to that function and return the resulting `Response`.
+
+All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE, and uploads are already web standards; this is the web-standards way this should work.
+
+```mermaid
+sequenceDiagram
+  participant HTTP as HTTP client
+  participant Server as Cloudflare Worker / CaptunServerShard
+  participant Client as Node client
+
+  Client->>Server: WebSocket RPC connect to /demo/__captun-connect with fetcher as main capability
+  HTTP->>Server: GET /demo/report
+  Server->>Client: fetch(request)
+  Client-->>Server: Response
+  Server-->>HTTP: Response
+```
+
+See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own e2e tests.
+
+## Development
+
+The Worker needs the `CaptunServerShard` Durable Object binding and migration from [wrangler.toml](./wrangler.toml). For local development:
+
+```bash
+pnpm install
+pnpm run build
+pnpm run dev
+```
+
+Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_SERVER_URL`, with optional `CAPTUN_SECRET`, to run the same cases against a deployed Worker.
+
+End-to-end smoke tests for build, dry-run deploy, local `wrangler dev`, tunnel, and `curl` live in [`scripts/smoke/`](./scripts/smoke) with documentation in [docs/smoke-test.md](./docs/smoke-test.md):
+
+```bash
+pnpm smoke
+./scripts/smoke-test.sh list
+./scripts/smoke-test.sh step-5-tunnel-local
+```
+
+## Caveats
 
 Captun is intentionally small. It is a reference implementation you can copy into a Worker or Durable Object, not a managed tunnel product.
 
