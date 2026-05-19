@@ -19,4 +19,4 @@ jobs:
       - run: pnpm run test
       - run: mkdir -p .pkg
       - run: pnpm pack --pack-destination .pkg --json
-      - run: npx --yes @arethetypeswrong/cli .pkg/*.tgz --profile esm-only
+      - run: pnpm exec attw .pkg/*.tgz --profile esm-only

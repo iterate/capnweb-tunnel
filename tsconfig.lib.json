@@ -7,8 +7,6 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
-    "sourceMap": true,
-    "declarationMap": true,
     "rewriteRelativeImportExtensions": true
   },
   "include": ["src/**/*.ts", "worker-configuration.d.ts"]
