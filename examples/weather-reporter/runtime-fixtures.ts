@@ -14,10 +14,10 @@ export async function createRuntimeWeatherReporterFixture(runtime: WeatherReport
   const port = await getAvailablePort();
   const url = `http://127.0.0.1:${port}`;
   const server = startWeatherReporterProcess(runtime, port);
-  const logs = captureOutput(server);
+  const output = captureOutput(server);
 
   try {
-    await waitForHttp(`${url}/__health__`, 15_000, server, logs);
+    await waitForHttp(`${url}/__health__`, 15_000, server, output);
     return {
       url,
       async [Symbol.asyncDispose]() {
@@ -26,7 +26,7 @@ export async function createRuntimeWeatherReporterFixture(runtime: WeatherReport
     };
   } catch (error) {
     await stopProcess(server);
-    throw new Error(formatFixtureFailure(error instanceof Error ? error.message : String(error), logs()));
+    throw new Error(formatFixtureFailure(error instanceof Error ? error.message : String(error), output.logs()));
   }
 }
 
@@ -83,14 +83,17 @@ async function waitForHttp(
   url: string,
   timeoutMs: number,
   server: WeatherReporterProcess,
-  logs: () => string,
+  output: CapturedProcessOutput,
 ): Promise<void> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
+    const error = output.error();
+    if (error) throw error;
+
     if (server.exitCode !== null || server.signalCode) {
       throw new Error(
-        `Weather reporter process exited before ${url} responded\n\n${logs().trim() || "(none)"}`,
+        `Weather reporter process exited before ${url} responded\n\n${output.logs().trim() || "(none)"}`,
       );
     }
 
@@ -107,14 +110,27 @@ async function waitForHttp(
 
 function captureOutput(child: WeatherReporterProcess) {
   const chunks: string[] = [];
+  let processError: Error | undefined;
   const capture = (chunk: string | Buffer) => {
     chunks.push(String(chunk));
     if (chunks.length > 200) chunks.shift();
   };
   child.stdout.on("data", capture);
   child.stderr.on("data", capture);
+  child.on("error", (error) => {
+    processError = error;
+    chunks.push(error.stack || error.message);
+  });
 
-  return () => chunks.join("");
+  return {
+    logs: () => chunks.join(""),
+    error: () => processError,
+  };
+}
+
+interface CapturedProcessOutput {
+  logs(): string;
+  error(): Error | undefined;
 }
 
 function formatFixtureFailure(message: string, serverLogs: string): string {
