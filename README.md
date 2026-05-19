@@ -78,38 +78,37 @@ type WeatherReporterEnv = Env & {
 
 export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
   private egressTunnel: CaptunServerTunnel | undefined;
+  private readonly egressFetch: typeof fetch = async (input, init) => {
+    if (this.egressTunnel) return this.egressTunnel.fetch(new Request(input, init));
+    return fetch(input, init);
+  };
 
   async fetch(request: Request) {
     const url = new URL(request.url);
 
     if (url.pathname === "/weather") {
       // Here's the value our app provides: fetching and gorgeously formatting weather data
-      const city = url.searchParams.get("city");
+      const city = url.searchParams.get("city") || "";
       const response = await this.egressFetch(`https://wttr.in/${city}?format=j1`);
-      const weather = await response.json<{ current_condition: [{ temp_C: string }] }>();
+      const weather = (await response.json()) as {
+        current_condition: [{ temp_C: string }];
+      };
       return new Response(`The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`);
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
       // Here we set up our worker to allow clients/tests to intercept egress traffic
-      this.egressTunnel?.[Symbol.dispose]();
       const { response, tunnel } = acceptCaptunTunnel({
         onDisconnect: () => {
           if (this.egressTunnel === tunnel) this.egressTunnel = undefined;
         },
       });
+      this.egressTunnel?.[Symbol.dispose]();
       this.egressTunnel = tunnel;
       return response;
     }
 
     return new Response("Not found\n", { status: 404 });
-  }
-
-  get egressFetch(): typeof fetch {
-    if (this.egressTunnel) {
-      return async (input, init) => this.egressTunnel!.fetch(new Request(input, init));
-    }
-    return fetch;
   }
 }
 
@@ -209,7 +208,7 @@ sequenceDiagram
   Server-->>HTTP: Response
 ```
 
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that runs the same egress-intercepting weather app on Cloudflare Workers, Bun, Deno, and Node from Vitest.
+See [examples/bun](./examples/bun), [examples/node](./examples/node), [examples/deno](./examples/deno), and [examples/cloudflare](./examples/cloudflare) for small self-contained weather apps that run the same egress-intercepting flow from Vitest.
 
 ## Development
 

@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun/server";
-import { WeatherReporter } from "./app.js";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
@@ -12,13 +11,20 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     if (this.egressTunnel) return this.egressTunnel.fetch(new Request(input, init));
     return fetch(input, init);
   };
-  private readonly app = new WeatherReporter(this.egressFetch);
 
-  fetch(request: Request) {
+  async fetch(request: Request) {
     const url = new URL(request.url);
 
     if (url.pathname === "/weather") {
-      return this.app.fetch(request);
+      // Here's the value our app provides: fetching and gorgeously formatting weather data
+      const city = url.searchParams.get("city") || "";
+      const response = await this.egressFetch(`https://wttr.in/${city}?format=j1`);
+      const weather = (await response.json()) as {
+        current_condition: [{ temp_C: string }];
+      };
+      return new Response(
+        `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+      );
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
@@ -33,7 +39,7 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
       return response;
     }
 
-    return this.app.fetch(request);
+    return new Response("Not found\n", { status: 404 });
   }
 }
 

@@ -36,7 +36,7 @@ async function createWeatherReporterFixture() {
   }
 
   const worker = await createMiniflareWorkerFixture({
-    entryPoint: "examples/weather-reporter/worker.ts",
+    entryPoint: "examples/cloudflare/worker.ts",
     durableObjects: {
       WEATHER_REPORTER_EGRESS: { className: "WeatherReporterEgressTunnel" },
     },

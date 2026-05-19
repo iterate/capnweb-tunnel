@@ -7,15 +7,12 @@ import {
   type CaptunServerTunnel,
 } from "captun/node";
 import { WebSocketServer } from "ws";
-import { WeatherReporter } from "./app.js";
 
 let egressTunnel: CaptunServerTunnel | undefined;
 const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);
 };
-const app = new WeatherReporter(egressFetch);
-const port = Number(process.env.PORT);
 const webSockets = new WebSocketServer({ noServer: true });
 
 const server = http.createServer(async (request, response) => {
@@ -24,15 +21,33 @@ const server = http.createServer(async (request, response) => {
   try {
     const fetchRequest = nodeRequestToFetchRequest(request);
     const url = new URL(fetchRequest.url);
-    let fetchResponse: Response;
+
     if (url.pathname === "/weather") {
-      fetchResponse = await app.fetch(fetchRequest);
-    } else if (url.pathname === "/__health__") {
-      fetchResponse = new Response("ok");
-    } else {
-      fetchResponse = await app.fetch(fetchRequest);
+      const city = url.searchParams.get("city") || "";
+      const weatherResponse = await egressFetch(`https://wttr.in/${city}?format=j1`);
+      const weather = (await weatherResponse.json()) as {
+        current_condition: [{ temp_C: string }];
+      };
+      await writeFetchResponse(
+        response,
+        new Response(
+          `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+        ),
+      );
+      return;
     }
-    await writeFetchResponse(response, fetchResponse);
+
+    if (url.pathname === "/__intercept-egress-traffic") {
+      await writeFetchResponse(response, new Response("Expected WebSocket upgrade\n", { status: 400 }));
+      return;
+    }
+
+    if (url.pathname === "/__health__") {
+      await writeFetchResponse(response, new Response("ok"));
+      return;
+    }
+
+    await writeFetchResponse(response, new Response("Not found\n", { status: 404 }));
   } catch (error) {
     response.writeHead(500, { "content-type": "text/plain" });
     response.end(String(error instanceof Error ? error.stack || error.message : error));
@@ -57,7 +72,7 @@ server.on("upgrade", (request, socket, head) => {
   });
 });
 
-server.listen(port, "127.0.0.1");
+server.listen(Number(process.env.PORT), "127.0.0.1");
 
 process.on("SIGINT", () => {
   webSockets.close();

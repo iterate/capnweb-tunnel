@@ -1,5 +1,4 @@
 import { acceptCaptunDenoTunnel, type CaptunServerTunnel } from "captun/deno";
-import { WeatherReporter } from "./app.js";
 
 declare const Deno: {
   env: { get(name: string): string | undefined };
@@ -17,15 +16,21 @@ const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);
 };
-const app = new WeatherReporter(egressFetch);
 
 const server = Deno.serve(
   { hostname: "127.0.0.1", port: Number(Deno.env.get("PORT")) },
-  (request) => {
+  async (request) => {
     const url = new URL(request.url);
 
     if (url.pathname === "/weather") {
-      return app.fetch(request);
+      const city = url.searchParams.get("city") || "";
+      const response = await egressFetch(`https://wttr.in/${city}?format=j1`);
+      const weather = (await response.json()) as {
+        current_condition: [{ temp_C: string }];
+      };
+      return new Response(
+        `The temperature in ${city} is ${weather.current_condition[0].temp_C} celsius`,
+      );
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
@@ -48,7 +53,7 @@ const server = Deno.serve(
 
     if (url.pathname === "/__health__") return new Response("ok");
 
-    return app.fetch(request);
+    return new Response("Not found\n", { status: 404 });
   },
 );
 
