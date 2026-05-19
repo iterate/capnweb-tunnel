@@ -7,9 +7,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "captun": "workspace:*"
+    "captun": "workspace:*",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   }

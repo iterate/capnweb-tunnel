@@ -1,6 +1,6 @@
 # Captun (cap[tainweb] tun[nel])
 
-Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a Node process over [Cap'n Web](https://github.com/cloudflare/capnweb).
+Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a local fetch function over [Cap'n Web](https://github.com/cloudflare/capnweb).
 
 ## Quick start
 
@@ -120,7 +120,13 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).
+The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). `captun/server` contains the Cloudflare `WebSocketPair` helper and the standard `acceptCaptunTunnelFromSocket(socket)` core. Runtime-specific subpaths adapt that core to the server upgrade shape:
+
+- `captun/bun`: `createCaptunBunWebSocketHandler()` for `Bun.serve({ websocket })`.
+- `captun/deno`: `acceptCaptunDenoTunnel(socket)` for `Deno.upgradeWebSocket(request)`.
+- `captun/node`: `acceptCaptunNodeTunnel(socket)` for `ws`/Node HTTP upgrade handlers.
+
+For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).
 
 ## Advanced CLI Usage
 
@@ -156,7 +162,7 @@ By default, all tunnel names live in one warm `CaptunServerShard` Durable Object
 npx captun deploy --shards 256
 ```
 
-You can import the public API from `captun`, or use subpath imports from `captun/client` and `captun/server`. The server package also exports `acceptCaptunTunnelFromSocket(socket)` for Workers that already performed the WebSocket upgrade.
+You can import the public API from `captun`, or use subpath imports from `captun/client`, `captun/server`, `captun/bun`, `captun/deno`, and `captun/node`.
 
 ## Performance
 
@@ -194,7 +200,7 @@ All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE, a
 sequenceDiagram
   participant HTTP as HTTP client
   participant Server as Cloudflare Worker / CaptunServerShard
-  participant Client as Node client
+  participant Client as Local client
 
   Client->>Server: WebSocket RPC connect to /demo/__captun-connect with fetcher as main capability
   HTTP->>Server: GET /demo/report
@@ -203,7 +209,7 @@ sequenceDiagram
   Server-->>HTTP: Response
 ```
 
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own e2e tests.
+See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that runs the same egress-intercepting weather app on Cloudflare Workers, Bun, Deno, and Node from Vitest.
 
 ## Development
 
