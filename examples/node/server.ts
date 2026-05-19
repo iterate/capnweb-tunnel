@@ -1,7 +1,8 @@
 import http from "node:http";
 
 import { createServerAdapter } from "@whatwg-node/server";
-import { acceptCaptunNodeTunnel, type CaptunServerTunnel } from "captun/node";
+import type { CaptunServerTunnel } from "captun";
+import { acceptCaptunNodeTunnel } from "captun/node";
 import { WebSocketServer } from "ws";
 
 let egressTunnel: CaptunServerTunnel | undefined;

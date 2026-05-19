@@ -1,6 +1,5 @@
 import { acceptCaptunTunnelFromSocket } from "./server-core.js";
 import type { CaptunServerAcceptTunnelOptions } from "./types.js";
-export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 export { acceptCaptunTunnelFromSocket } from "./server-core.js";
 
 /** Creates a Worker WebSocket upgrade response and matching tunnel handle. */

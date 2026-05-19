@@ -1,8 +1,6 @@
 import { captunTunnelFromRemoteClient, type CaptunRemoteClient } from "./server-core.js";
 import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
-export type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
-
 export interface CaptunBunTunnelHandler {
   accept(
     request: Request,
