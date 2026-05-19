@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Captun Browser Demo</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+    <link rel="stylesheet" href="./browser-demo.css">
+    <script defer src="./browser-demo-client.js"></script>
+    <script defer src="./browser-demo.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Captun Browser Demo</h1>
+      <div class="status" id="status" role="status" aria-live="polite">Disconnected</div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel" aria-labelledby="connectionTitle">
+        <div class="panel-header">
+          <h2 id="connectionTitle">Tunnel</h2>
+        </div>
+        <form class="panel-body" id="connectionForm">
+          <label class="field">
+            <span>Captun server URL</span>
+            <input
+              id="serverUrl"
+              type="url"
+              placeholder="https://your-captun-worker.workers.dev"
+              autocomplete="url"
+            >
+          </label>
+
+          <div class="inline-field">
+            <label class="inline-label">
+              <span>Tunnel name</span>
+              <input id="tunnelName" type="text" spellcheck="false" autocomplete="off">
+            </label>
+            <button type="button" id="newName">New name</button>
+          </div>
+
+          <label class="field">
+            <span>Bearer secret</span>
+            <input id="secret" type="password" autocomplete="off">
+          </label>
+          <p class="notice" id="secretNotice" hidden>
+            Browser WebSocket connections cannot send Authorization headers. Leave this empty for
+            browser demos.
+          </p>
+
+          <div class="actions">
+            <button type="button" class="primary" id="connect">Connect</button>
+            <button type="button" id="disconnect">Disconnect</button>
+          </div>
+
+          <div class="field">
+            <label for="publicUrl">Public tunnel URL</label>
+            <div class="readonly-row">
+              <input id="publicUrl" type="url" readonly>
+              <a class="button-link" id="openPublicUrl" href="#" target="_blank" rel="noreferrer" aria-disabled="true">Open</a>
+              <button type="button" id="copyPublicUrl">Copy</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="handlerTitle">
+        <div class="panel-header">
+          <h2 id="handlerTitle">Fetch Handler</h2>
+        </div>
+        <div class="panel-body handler-grid">
+          <p class="notice">
+            Handler source runs in an isolated Web Worker and is saved locally. Only run code you
+            wrote or trust.
+          </p>
+          <label class="field">
+            <span>Handler source</span>
+            <textarea id="handlerSource" class="code-editor" spellcheck="false"></textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="probeTitle">
+        <div class="panel-header">
+          <h2 id="probeTitle">Probe</h2>
+        </div>
+        <div class="panel-body">
+          <div class="probe-form">
+            <div class="probe-row">
+              <label class="field">
+                <span>Method</span>
+                <select id="probeMethod">
+                  <option>GET</option>
+                  <option>POST</option>
+                  <option>PUT</option>
+                  <option>PATCH</option>
+                  <option>DELETE</option>
+                  <option>HEAD</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Path</span>
+                <input id="probePath" type="text" placeholder="/health" spellcheck="false">
+              </label>
+            </div>
+            <label class="field">
+              <span>Body</span>
+              <textarea id="probeBody" rows="5" spellcheck="false"></textarea>
+            </label>
+            <button type="button" class="primary" id="sendProbe">Send request</button>
+            <label class="field">
+              <span>Response</span>
+              <textarea id="probeOutput" class="probe-output" readonly></textarea>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="logTitle">
+        <div class="panel-header">
+          <h2 id="logTitle">Log</h2>
+          <button type="button" id="clearLog">Clear</button>
+        </div>
+        <div class="panel-body">
+          <ol class="log-list" id="logList" aria-live="polite"></ol>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
