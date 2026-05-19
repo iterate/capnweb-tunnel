@@ -10,10 +10,11 @@ import { WebSocketServer } from "ws";
 import { WeatherReporter } from "./app.js";
 
 let egressTunnel: CaptunServerTunnel | undefined;
-const app = new WeatherReporter(async (input, init) => {
+const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);
-});
+};
+const app = new WeatherReporter(egressFetch);
 const port = Number(process.env.PORT);
 const webSockets = new WebSocketServer({ noServer: true });
 
@@ -23,8 +24,14 @@ const server = http.createServer(async (request, response) => {
   try {
     const fetchRequest = nodeRequestToFetchRequest(request);
     const url = new URL(fetchRequest.url);
-    const fetchResponse =
-      url.pathname === "/__health__" ? new Response("ok") : await app.fetch(fetchRequest);
+    let fetchResponse: Response;
+    if (url.pathname === "/weather") {
+      fetchResponse = await app.fetch(fetchRequest);
+    } else if (url.pathname === "/__health__") {
+      fetchResponse = new Response("ok");
+    } else {
+      fetchResponse = await app.fetch(fetchRequest);
+    }
     await writeFetchResponse(response, fetchResponse);
   } catch (error) {
     response.writeHead(500, { "content-type": "text/plain" });

@@ -19,10 +19,11 @@ declare const Bun: {
 };
 
 let egressTunnel: CaptunServerTunnel | undefined;
-const app = new WeatherReporter(async (input, init) => {
+const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);
-});
+};
+const app = new WeatherReporter(egressFetch);
 const captun = createCaptunBunTunnelHandler();
 
 const server = Bun.serve({
@@ -31,7 +32,9 @@ const server = Bun.serve({
   async fetch(request, server) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/__health__") return new Response("ok");
+    if (url.pathname === "/weather") {
+      return app.fetch(request);
+    }
 
     if (url.pathname === "/__intercept-egress-traffic") {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
@@ -48,6 +51,8 @@ const server = Bun.serve({
       egressTunnel = tunnel;
       return;
     }
+
+    if (url.pathname === "/__health__") return new Response("ok");
 
     return app.fetch(request);
   },
