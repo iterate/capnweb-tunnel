@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { createCaptunTunnel } from "../src/client.ts";
+import { createCaptunTunnel } from "../src/client.js";
 
 // Stress the expensive path: many named tunnels, each returning a large streamed
 // binary response through Captun. This measures aggregate tunnel throughput,

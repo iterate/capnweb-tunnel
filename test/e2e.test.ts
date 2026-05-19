@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { expect, test, vi } from "vitest";
 
-import { createCaptunTunnel } from "../src/client.ts";
-import { createCaptunWorkerFixture } from "./miniflare.ts";
+import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunWorkerFixture } from "./miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });
 

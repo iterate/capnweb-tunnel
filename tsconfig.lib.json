@@ -6,8 +6,7 @@
     "outDir": "dist",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "declaration": true,
-    "rewriteRelativeImportExtensions": true
+    "declaration": true
   },
   "include": ["src/**/*.ts", "worker-configuration.d.ts"]
 }

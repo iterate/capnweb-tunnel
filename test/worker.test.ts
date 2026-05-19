@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { createCaptunTunnel } from "../src/client.ts";
-import { createCaptunWorkerFixture } from "./miniflare.ts";
+import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunWorkerFixture } from "./miniflare.js";
 
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {
   await using fixture = await createCaptunWorkerFixture({});

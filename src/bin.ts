@@ -10,8 +10,8 @@ import * as prompts from "@inquirer/prompts";
 import { os } from "@orpc/server";
 import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
-import { createCaptunTunnel } from "./client.ts";
-import { CommandNotFoundError, ExecError, exec } from "./exec.ts";
+import { createCaptunTunnel } from "./client.js";
+import { CommandNotFoundError, ExecError, exec } from "./exec.js";
 
 type Config = {
   serverUrl: string;

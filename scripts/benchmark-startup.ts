@@ -4,7 +4,7 @@ import { resolve4 } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
-import { createCaptunTunnel } from "../src/client.ts";
+import { createCaptunTunnel } from "../src/client.js";
 
 // Measures time from "start creating a tunnel" to the first successful public
 // HTTP fetch through that tunnel. It can compare this project with cloudflared
