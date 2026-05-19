@@ -164,15 +164,15 @@ On May 18, 2026 from London, one warm-shard Captun tunnel reached first fetch in
 
 | Ad-hoc tunnel            | First fetch |
 | ------------------------ | ----------: |
-| Captun                   |       188ms |
-| ngrok                    |       451ms |
-| cloudflared quick tunnel |       8.51s |
+| captun                   |       188ms |
+| ngrok                    | 451ms (+140%) |
+| cloudflared quick tunnel | 8.51s (+4,427%) |
 
 | 10 concurrent ad-hoc tunnels | Successful |   p50 |   p90 |   p99 |
 | ---------------------------- | ---------: | ----: | ----: | ----: |
-| Captun                       |      10/10 | 172ms | 186ms | 189ms |
-| ngrok                        |      10/10 | 658ms | 695ms | 985ms |
-| cloudflared quick tunnel     |       2/10 | 8.89s | 9.00s | 9.00s |
+| captun                       |      10/10 | 172ms | 186ms | 189ms |
+| ngrok                        |      10/10 | 658ms (+283%) | 695ms (+274%) | 985ms (+421%) |
+| cloudflared quick tunnel     |       2/10 | 8.89s (+5,069%) | 9.00s (+4,739%) | 9.00s (+4,662%) |
 
 One shard is the default because it spins up fastest. More shards trade extra cold starts for more total throughput: 100 concurrent 2MiB streams through one shard took 26.34s p50, while 150 concurrent 2MiB streams spread over 256 warmed shards took 9.76s p50.
 
