@@ -66,9 +66,7 @@ test("Captun named tunnel addressing builds public and connect URLs", () => {
 });
 
 test("Captun named tunnel addressing infers server URLs from route patterns", () => {
-  expect(serverUrlFromRoute("*.tunnels.example.com/*")).toBe(
-    "https://{name}.tunnels.example.com",
-  );
+  expect(serverUrlFromRoute("*.tunnels.example.com/*")).toBe("https://{name}.tunnels.example.com");
   expect(serverUrlFromRoute("https://*.my-tunnels.com/path/*")).toBe(
     "https://{name}.my-tunnels.com/path",
   );
