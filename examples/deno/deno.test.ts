@@ -57,7 +57,7 @@ async function createDenoWeatherReporterFixture() {
   const output = captureOutput(server);
 
   try {
-    await waitForHttp(`${url}/__health__`, server, output);
+    await waitForTcp(port, server, output);
     return {
       url,
       async [Symbol.asyncDispose]() {
@@ -91,24 +91,35 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
-async function waitForHttp(url: string, server: ServerProcess, output: CapturedProcessOutput) {
+async function waitForTcp(port: number, server: ServerProcess, output: CapturedProcessOutput) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 15_000) {
     const error = output.error();
     if (error) throw error;
     if (server.exitCode !== null || server.signalCode) {
-      throw new Error(`Deno server exited before ${url} responded\n\n${output.logs().trim() || "(none)"}`);
+      throw new Error(`Deno server exited before port ${port} accepted connections\n\n${output.logs().trim() || "(none)"}`);
     }
 
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {}
+    if (await canConnect(port)) return;
 
     await delay(100);
   }
 
-  throw new Error(`Timed out waiting for Deno server to respond at ${url}`);
+  throw new Error(`Timed out waiting for Deno server to accept connections on port ${port}`);
+}
+
+async function canConnect(port: number) {
+  return new Promise<boolean>((resolve) => {
+    const socket = net.connect(port, "127.0.0.1");
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
 }
 
 function captureOutput(child: ServerProcess) {

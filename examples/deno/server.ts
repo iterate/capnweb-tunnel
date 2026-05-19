@@ -34,10 +34,6 @@ const server = Deno.serve(
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
-      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-        return new Response("Expected WebSocket upgrade\n", { status: 400 });
-      }
-
       const { socket, response } = Deno.upgradeWebSocket(request);
       socket.addEventListener("open", () => {
         const tunnel = acceptCaptunDenoTunnel(socket, {
@@ -50,8 +46,6 @@ const server = Deno.serve(
       });
       return response;
     }
-
-    if (url.pathname === "/__health__") return new Response("ok");
 
     return new Response("Not found\n", { status: 404 });
   },

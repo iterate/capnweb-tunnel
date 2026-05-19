@@ -42,10 +42,6 @@ const server = Bun.serve({
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
-      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-        return new Response("Expected WebSocket upgrade\n", { status: 400 });
-      }
-
       const tunnel = captun.accept(request, server, {
         onDisconnect: () => {
           if (egressTunnel === tunnel) egressTunnel = undefined;
@@ -56,8 +52,6 @@ const server = Bun.serve({
       egressTunnel = tunnel;
       return;
     }
-
-    if (url.pathname === "/__health__") return new Response("ok");
 
     return new Response("Not found\n", { status: 404 });
   },
