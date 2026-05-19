@@ -78,8 +78,12 @@ const router = os.router({
   deploy: os
     .meta({
       description: "Deploy the Captun tunnel Worker with Wrangler and save local CLI config.",
-      prompt: true,
-      examples: ["captun deploy", "captun deploy --route '*.tunnels.example.com/*'"],
+      prompt: false,
+      examples: [
+        "captun deploy",
+        "captun deploy --route '*.tunnels.example.com/*'",
+        "captun deploy --shards 16",
+      ],
     })
     .input(
       z.object({
@@ -91,11 +95,17 @@ const router = os.router({
           .string()
           .optional()
           .describe("Secret required by tunnel clients; generated when omitted"),
+        shards: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("Number of Durable Object shards to spread tunnel names across"),
       }),
     )
     .handler(async ({ input }) => {
       const secret = input.secret || randomSecret();
-      const serverUrl = await deployWorker({ route: input.route, secret });
+      const serverUrl = await deployWorker({ route: input.route, secret, shards: input.shards });
       await writeConfig({ serverUrl, secret });
       return { serverUrl, configPath };
     }),
@@ -110,7 +120,7 @@ const cli = createCli({
 
 await cli.run({ prompts, logger: yamlTableConsoleLogger });
 
-async function deployWorker(input: { route?: string; secret: string }) {
+async function deployWorker(input: { route?: string; secret: string; shards?: number }) {
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
   const secretsFile = resolve(tempDir, "secrets.json");
   try {
@@ -130,6 +140,7 @@ async function deployWorker(input: { route?: string; secret: string }) {
       "--keep-vars",
     ];
     if (input.route) args.push("--route", input.route);
+    if (input.shards) args.push("--var", `CAPTUN_SHARDS:${input.shards}`);
 
     const output = await runWrangler(args);
     const serverUrl = input.route

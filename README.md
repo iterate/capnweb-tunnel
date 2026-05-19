@@ -62,6 +62,8 @@ console.log(`Listening to webhooks on ${url}/webhook`)
 await new Promise(() => {}) // stay alive until killed
 ```
 
+That's all you need! No local ports, just a fetch function.
+
 ## Advanced usage
 
 The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
@@ -134,67 +136,23 @@ By default, the `npx captun 3000` command will generate a name for the tunnel it
 npx captun 3000 --name my-very-serious-tunnel-name
 ```
 
-<!-- got here -->
+By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my-tunnel", and becomes a corresponding HTTP request with pathname `/foo/bar` when it reaches your client.
 
-Folder tunnels are the golden path. The Worker routes `/:name/__connect` to the Cap'n Web session and `/:name/*` to normal proxied HTTP requests, stripping `/:name` before calling your local fetcher.
+### Custom hostnames
 
-Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com` for around $10/year is often the simplest option. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
+Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com`. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`. If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
 
-By default, all tunnel names live in one warm `CaptunServerShard` Durable Object. That minimizes cold-start latency. Set `CAPTUN_SHARDS` only when you need more aggregate throughput for many concurrent large responses:
+### Sharding
+
+By default, all tunnel names live in one warm `CaptunServerShard` Durable Object. That minimizes cold-start latency. Use `--shards` only when you need more aggregate throughput for many concurrent large responses:
 
 ```bash
-pnpm exec wrangler deploy --var CAPTUN_SHARDS:256
-```
-
-## 2. Programmatic Usage
-
-The client side is just a disposable connection:
-
-```ts
-import { createCaptunTunnel } from "captun/client";
-
-using tunnel = await createCaptunTunnel({
-  url: "https://captun.example.workers.dev/my-test/__connect",
-  headers: process.env.CAPTUN_SECRET
-    ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
-    : undefined,
-  fetch: async (request) => {
-    const url = new URL(request.url);
-    return fetch(`http://localhost:3000${url.pathname}${url.search}`, request);
-  },
-});
-```
-
-On the server side, authorize your connect route, accept it as a tunnel, then hand normal requests to `tunnel.fetch(request)`:
-
-```ts
-import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun/server";
-
-export class MyDurableObject {
-  private tunnel?: CaptunServerTunnel;
-
-  fetch(request: Request) {
-    const url = new URL(request.url);
-    if (url.pathname === "/egress/__connect") {
-      const { response, tunnel } = acceptCaptunTunnel({
-        onDisconnect: () => {
-          if (this.tunnel === tunnel) this.tunnel = undefined;
-        },
-      });
-      this.tunnel = tunnel;
-      return response;
-    }
-    if (url.pathname.startsWith("/egress/")) {
-      return this.tunnel?.fetch(request) ?? new Response("No tunnel client connected", { status: 503 });
-    }
-    return new Response("Not found", { status: 404 });
-  }
-}
+npx captun deploy --shards 256
 ```
 
 You can import the public API from `captun`, or use subpath imports from `captun/client` and `captun/server`. The server package also exports `acceptCaptunTunnelFromSocket(socket)` for Workers that already performed the WebSocket upgrade.
 
-### How Does It Work?
+## How Does It Work?
 
 We just pass `fetch()` through `fetch()`. No, really.
 
