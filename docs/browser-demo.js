@@ -1,4 +1,6 @@
 const storagePrefix = "captun-browser-demo:";
+const handlerWorkerUrl = new URL("./browser-demo-handler-worker.js", window.location.href);
+const handlerWorkerTimeoutMs = 30000;
 const defaultHandler = `async function fetch(request, context) {
   const url = new URL(request.url);
   const headers = new Headers(context.corsHeaders);
@@ -110,7 +112,7 @@ async function connect() {
   }
 
   try {
-    compileHandler();
+    await validateHandlerSource();
   } catch (error) {
     setError("Handler did not compile");
     appendLog("error", "Handler did not compile", formatError(error));
@@ -162,49 +164,13 @@ async function handleTunnelRequest(request, tunnelName) {
   appendLog("request", "#" + id + " " + request.method + " " + url.pathname + url.search);
 
   try {
-    const handler = compileHandler();
-    const response = await normalizeResponse(
-      await handler(request, {
-        corsHeaders: corsHeaders(),
-        log(message) {
-          appendLog("handler", "#" + id + " " + message);
-        },
-        publicUrl: activePublicUrl,
-        requestId: id,
-        tunnelName,
-      }),
-    );
+    const response = await runHandlerInWorker(request, tunnelName, id);
     appendLog("response", "#" + id + " " + response.status + " " + response.statusText);
     return response;
   } catch (error) {
     appendLog("error", "#" + id + " handler error", formatError(error));
     return jsonErrorResponse(error);
   }
-}
-
-function compileHandler() {
-  const source = elements.handlerSource.value.trim();
-  const value = Function('"use strict"; return (' + source + ");")();
-
-  if (typeof value === "function") return value;
-  if (value && typeof value.fetch === "function") return value.fetch.bind(value);
-
-  throw new Error("Handler source must evaluate to a function or an object with fetch().");
-}
-
-async function normalizeResponse(value) {
-  const resolved = await value;
-  if (resolved instanceof Response) return resolved;
-  if (
-    typeof resolved === "string" ||
-    resolved instanceof Blob ||
-    resolved instanceof ReadableStream ||
-    resolved instanceof Uint8Array
-  ) {
-    return new Response(resolved);
-  }
-
-  throw new Error("Handler must return a Response, string, Blob, ReadableStream, or Uint8Array.");
 }
 
 async function sendProbe() {
@@ -281,6 +247,157 @@ async function loadBrowserClient() {
     throw new Error("Browser Captun client did not load.");
   }
   return createTunnel;
+}
+
+async function validateHandlerSource() {
+  await runHandlerWorker(
+    {
+      type: "validate",
+      source: currentHandlerSource(),
+    },
+    [],
+  );
+}
+
+async function runHandlerInWorker(request, tunnelName, requestId) {
+  const serialized = await serializeRequest(request);
+  const response = await runHandlerWorker(
+    {
+      type: "fetch",
+      source: currentHandlerSource(),
+      request: serialized.request,
+      context: {
+        corsHeaders: corsHeaders(),
+        publicUrl: activePublicUrl,
+        requestId,
+        tunnelName,
+      },
+    },
+    serialized.transfer,
+  );
+
+  return deserializeResponse(response);
+}
+
+function runHandlerWorker(message, transfer) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let worker;
+    let timeout;
+
+    const settle = (callback) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (worker) worker.terminate();
+      callback();
+    };
+
+    try {
+      worker = new Worker(handlerWorkerUrl.href, { name: "captun-browser-demo-handler" });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    timeout = window.setTimeout(() => {
+      settle(() => {
+        reject(new Error("Handler worker did not respond within 30 seconds."));
+      });
+    }, handlerWorkerTimeoutMs);
+
+    worker.addEventListener("message", (event) => {
+      const workerMessage = event.data;
+      if (!workerMessage || typeof workerMessage.type !== "string") return;
+
+      if (workerMessage.type === "handler-log") {
+        appendLog("handler", "#" + workerMessage.requestId + " " + workerMessage.message);
+        return;
+      }
+
+      if (workerMessage.type === "validated") {
+        settle(() => resolve(undefined));
+        return;
+      }
+
+      if (workerMessage.type === "result") {
+        settle(() => resolve(workerMessage.response));
+        return;
+      }
+
+      if (workerMessage.type === "error") {
+        settle(() => reject(deserializeWorkerError(workerMessage.error)));
+        return;
+      }
+
+      settle(() => {
+        reject(new Error("Handler worker sent an unknown message: " + workerMessage.type));
+      });
+    });
+
+    worker.addEventListener("error", (event) => {
+      event.preventDefault();
+      settle(() => {
+        reject(new Error(event.message || "Handler worker failed."));
+      });
+    });
+
+    worker.addEventListener("messageerror", () => {
+      settle(() => {
+        reject(new Error("Handler worker sent a response that could not be read."));
+      });
+    });
+
+    try {
+      worker.postMessage(message, transfer);
+    } catch (error) {
+      settle(() => reject(error));
+    }
+  });
+}
+
+async function serializeRequest(request) {
+  const body =
+    request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer();
+
+  return {
+    request: {
+      body,
+      headers: Array.from(request.headers.entries()),
+      method: request.method,
+      url: request.url,
+    },
+    transfer: body ? [body] : [],
+  };
+}
+
+function deserializeResponse(response) {
+  if (!response || typeof response !== "object") {
+    throw new Error("Handler worker returned an invalid response.");
+  }
+
+  if (response.type === "error") return Response.error();
+
+  return new Response(response.body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function deserializeWorkerError(error) {
+  const name = error && error.name ? String(error.name) : "Error";
+  const message = error && error.message ? String(error.message) : "Unknown handler worker error";
+  const formatted = name === "Error" ? message : name + ": " + message;
+  const value = new Error(formatted);
+
+  if (error && error.stack) value.stack = String(error.stack);
+
+  return value;
+}
+
+function currentHandlerSource() {
+  return elements.handlerSource.value.trim();
 }
 
 function setConnecting() {
