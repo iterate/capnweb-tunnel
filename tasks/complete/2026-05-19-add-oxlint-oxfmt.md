@@ -1,16 +1,16 @@
 ---
-status: in-progress
+status: complete
 size: medium
 ---
 
-Summary: About 60% done. oxlint/oxfmt are installed and wired with a Captun-scoped config based on `../iterate`; existing files have been formatted and the baseline lint check is clean. Missing pieces are the custom test-style plugin, full verification, and moving this task to complete.
+Summary: Done. oxlint/oxfmt are installed with Captun-scoped scripts/config, existing files pass formatting/linting, and a local oxlint JS plugin now enforces the practical test-file preferences from the project instructions. Verified lint, format, typecheck, and tests.
 
 - [x] Add `oxlint` and `oxfmt` dev dependencies and root scripts for format/lint/fix workflows. _Implemented in `package.json` with `format`, `format:check`, `lint`, `lint:check`, and `lint:fix` scripts._
 - [x] Add an oxlint configuration based on `../iterate`, scoped down for Captun's current package shape. _Added `.oxlintrc.json` with Iterate-style categories-off correctness rules and Captun ignores._
 - [x] Make existing source/tests pass oxlint and oxfmt with minimal product-code churn. _Ran `oxfmt` and added a comment to the intentionally ignored JSON parse failure in `scripts/benchmark-startup.ts`._
-- [ ] In a separate follow-up commit, add a local oxlint JS plugin for test-file style preferences.
-- [ ] Enforce the test-file preferences that are practical to check statically: no lifecycle hooks, no `describe` wrappers, no `vi.mock`, helper functions below the tests, and object-level assertions over property-level `toBe` checks.
-- [ ] Verify `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and `pnpm test`.
+- [x] In a separate follow-up commit, add a local oxlint JS plugin for test-file style preferences. _Added `oxlint-plugin-captun-test.js` and enabled it through `.oxlintrc.json`._
+- [x] Enforce the test-file preferences that are practical to check statically: no lifecycle hooks, no `describe` wrappers, no `vi.mock`, helper functions below the tests, and object-level assertions over property-level `toBe` checks. _Implemented five `captun-test/*` rules and adjusted existing response assertions to match the new object-level style._
+- [x] Verify `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and `pnpm test`. _All pass locally; `pnpm test` reports 4 files and 30 tests passing._
 
 ## Assumptions
 
@@ -21,3 +21,4 @@ Summary: About 60% done. oxlint/oxfmt are installed and wired with a Captun-scop
 ## Implementation Notes
 
 - 2026-05-19: Added baseline tooling using `../iterate` as the reference. `pnpm run lint:check` and `pnpm run format:check` pass before adding the custom plugin.
+- 2026-05-19: Added `captun-test` oxlint plugin and a Vitest spec that verifies the bad-pattern fixture reports all five custom rule codes.

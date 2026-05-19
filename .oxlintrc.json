@@ -14,6 +14,7 @@
     "builtin": true,
     "node": true
   },
+  "jsPlugins": ["./oxlint-plugin-captun-test.js"],
   "ignorePatterns": [
     "**/.cache/",
     "**/.corepack/",
@@ -92,6 +93,11 @@
     "no-useless-escape": "error",
     "no-var": "error",
     "no-with": "error",
+    "captun-test/helpers-after-tests": "error",
+    "captun-test/no-describe": "error",
+    "captun-test/no-lifecycle-hooks": "error",
+    "captun-test/no-vi-mock": "error",
+    "captun-test/prefer-object-property-match": "error",
     "prefer-numeric-literals": "error",
     "require-yield": "error",
     "use-isnan": "error",
