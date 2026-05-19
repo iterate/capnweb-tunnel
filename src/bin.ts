@@ -72,6 +72,10 @@ const router = os.router({
       });
 
       console.log(`tunneling ${tunnel} -> ${origin}`);
+      const browserRootUrl = tunnelBrowserRootUrl(serverUrl, name);
+      if (browserRootUrl) {
+        console.log(`browser root ${browserRootUrl} -> ${origin}`);
+      }
       await waitForShutdown();
     }),
 
@@ -236,6 +240,17 @@ function tunnelUrl(baseUrl: string, name: string) {
   } else {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
   }
+  return removeTrailingSlash(url.toString());
+}
+
+function tunnelBrowserRootUrl(baseUrl: string, name: string) {
+  if (baseUrl.includes("{name}")) return undefined;
+
+  const url = new URL(baseUrl);
+  if (url.hostname.match(/^[^.]+\.tunnels\./)) return undefined;
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/__captun/t/${encodeURIComponent(name)}`;
+  url.search = "";
+  url.hash = "";
   return removeTrailingSlash(url.toString());
 }
 
