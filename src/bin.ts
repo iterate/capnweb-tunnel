@@ -18,9 +18,18 @@ type Config = {
   secret?: string;
 };
 
-const adjectives = "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(" ");
-const speeds = "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(" ");
-const things = "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(" ");
+const adjectives =
+  "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(
+    " ",
+  );
+const speeds =
+  "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(
+    " ",
+  );
+const things =
+  "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(
+    " ",
+  );
 
 const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -105,7 +114,10 @@ const router = os.router({
           .min(1)
           .optional()
           .describe("Number of Durable Object shards to spread tunnel names across"),
-        dryRun: z.boolean().optional().describe("Compile and validate the deploy without uploading"),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe("Compile and validate the deploy without uploading"),
       }),
     )
     .handler(async ({ input }) => {
@@ -170,7 +182,9 @@ async function deployWorker(input: {
 
     const output = await runWrangler(args);
     if (input.dryRun) {
-      return input.route ? serverUrlFromRoute(input.route) : "https://captun.<your-account>.workers.dev";
+      return input.route
+        ? serverUrlFromRoute(input.route)
+        : "https://captun.<your-account>.workers.dev";
     }
 
     const serverUrl = input.route
