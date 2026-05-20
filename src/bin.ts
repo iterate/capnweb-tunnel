@@ -425,55 +425,62 @@ async function ensureWildcardDns(opts: {
   dnsRecordName: string;
 }) {
   const fullDnsName = `${opts.dnsRecordName}.${opts.zoneName}`;
-  let existing;
+
+  let existing: Awaited<ReturnType<CloudflareClient["listDnsRecords"]>>;
+  let canRead = true;
   try {
     existing = await withSpinner(`Checking DNS for ${fullDnsName}`, () =>
       opts.client.listDnsRecords(opts.zoneId, fullDnsName),
     );
   } catch (error) {
-    if (isAuthError(error)) {
-      throw dnsAuthError(opts.accountId, opts.zoneName, opts.dnsRecordName, "list");
+    if (!isAuthError(error)) throw error;
+    canRead = false;
+    existing = [];
+  }
+
+  if (canRead) {
+    const proxied = existing.find((record) => record.proxied);
+    if (proxied) {
+      console.log(
+        `  ${color.dim(`existing proxied ${proxied.type} record found for ${fullDnsName} — leaving it alone`)}`,
+      );
+      return;
     }
-    throw error;
+
+    if (existing.length === 0) {
+      const created = await tryCreateWildcardDns(opts, fullDnsName);
+      if (created) return;
+      // create failed with auth — fall through to manual flow
+    }
+    // Either records exist but unproxied, or create failed: drop into manual flow
   }
 
-  const proxied = existing.find((record) => record.proxied);
-  if (proxied) {
-    console.log(
-      `  ${color.dim(`existing proxied ${proxied.type} record found for ${fullDnsName} — leaving it alone`)}`,
-    );
-    return;
-  }
+  await manualDnsRecoveryFlow({ ...opts, fullDnsName, canRead, existing });
+}
 
-  if (existing.length > 0) {
-    throw new CliFriendlyError(
-      [
-        `${fullDnsName} has DNS records but none of them are proxied through Cloudflare.`,
-        ``,
-        `Tunnel traffic won't reach the Worker without a proxied record. Either:`,
-        `  - Enable the orange-cloud proxy on the existing ${existing[0]?.type} record at`,
-        `    https://dash.cloudflare.com/${opts.accountId}/${opts.zoneName}/dns/records`,
-        `  - Or delete it and re-run \`captun deploy\` so we can create a proxied AAAA record.`,
-      ].join("\n"),
-    );
-  }
-
+async function tryCreateWildcardDns(
+  opts: {
+    client: CloudflareClient;
+    accountId: string;
+    zoneId: string;
+    zoneName: string;
+    dnsRecordName: string;
+  },
+  fullDnsName: string,
+): Promise<boolean> {
   try {
-    await withSpinner(
-      `Creating wildcard DNS ${fullDnsName} → 100:: (proxied)`,
-      () =>
-        opts.client.createDnsRecord(opts.zoneId, {
-          type: "AAAA",
-          name: opts.dnsRecordName,
-          content: "100::",
-          proxied: true,
-          comment: "captun: wildcard route to Worker",
-        }),
+    await withSpinner(`Creating wildcard DNS ${fullDnsName} → 100:: (proxied)`, () =>
+      opts.client.createDnsRecord(opts.zoneId, {
+        type: "AAAA",
+        name: opts.dnsRecordName,
+        content: "100::",
+        proxied: true,
+        comment: "captun: wildcard route to Worker",
+      }),
     );
+    return true;
   } catch (error) {
-    if (isAuthError(error)) {
-      throw dnsAuthError(opts.accountId, opts.zoneName, opts.dnsRecordName, "create");
-    }
+    if (isAuthError(error)) return false;
     if (error instanceof CloudflareApiError) {
       throw new CliFriendlyError(
         `Could not create wildcard DNS record for ${fullDnsName}: ${error.message} (status ${error.status}${error.cloudflareCode ? `, code ${error.cloudflareCode}` : ""}).`,
@@ -483,33 +490,104 @@ async function ensureWildcardDns(opts: {
   }
 }
 
-function dnsAuthError(
-  accountId: string,
-  zoneName: string,
-  dnsRecordName: string,
-  action: "list" | "create",
-) {
-  return new CliFriendlyError(
-    [
-      `Cannot ${action} DNS records via your current Cloudflare credentials.`,
-      ``,
-      `Wrangler's default OAuth scopes don't include DNS edit permission. Two options:`,
-      ``,
-      `${color.cyan("1.")} Add the wildcard DNS record manually:`,
-      `     ${color.cyan(`https://dash.cloudflare.com/${accountId}/${zoneName}/dns/records`)}`,
-      ``,
-      `     Type:    AAAA`,
-      `     Name:    ${dnsRecordName}`,
-      `     Target:  100::`,
-      `     Proxy:   ✓ enabled (orange cloud)`,
-      ``,
-      `   Then re-run ${color.cyan("captun deploy")}.`,
-      ``,
-      `${color.cyan("2.")} Use a Cloudflare API Token with ${color.cyan("Zone → DNS → Edit")} permission:`,
-      `     ${color.cyan("https://dash.cloudflare.com/profile/api-tokens")}`,
-      ``,
-      `     Then re-run with ${color.cyan("CLOUDFLARE_API_TOKEN=… npx captun deploy")}.`,
-    ].join("\n"),
+async function manualDnsRecoveryFlow(opts: {
+  client: CloudflareClient;
+  accountId: string;
+  zoneId: string;
+  zoneName: string;
+  dnsRecordName: string;
+  fullDnsName: string;
+  canRead: boolean;
+  existing: Awaited<ReturnType<CloudflareClient["listDnsRecords"]>>;
+}) {
+  const dashboardUrl = `https://dash.cloudflare.com/${opts.accountId}/${opts.zoneName}/dns/records`;
+  const hasUnproxied = opts.canRead && opts.existing.length > 0;
+
+  console.log("");
+  console.log(`${color.yellow("!")} ${color.yellow("Manual DNS step needed.")}`);
+  if (hasUnproxied) {
+    console.log(
+      `  ${opts.fullDnsName} has DNS records but none are proxied through Cloudflare.`,
+    );
+    console.log(
+      `  Tunnel traffic only reaches the Worker via proxied records (orange cloud).`,
+    );
+  } else if (!opts.canRead) {
+    console.log(
+      `  Wrangler's OAuth token can't read DNS records on this zone, so I can't tell you`,
+    );
+    console.log(
+      `  if a wildcard record already exists. Please make sure one is in place.`,
+    );
+  } else {
+    console.log(
+      `  No wildcard DNS record exists for ${opts.fullDnsName}, and wrangler's default`,
+    );
+    console.log(
+      `  OAuth scopes don't include DNS edit permission, so I can't create it for you.`,
+    );
+  }
+  console.log("");
+  console.log(`  ${color.dim("Add (or fix) this record in the Cloudflare dashboard:")}`);
+  console.log(`    ${color.dim("Type:   ")}${color.cyan("AAAA")}`);
+  console.log(`    ${color.dim("Name:   ")}${color.cyan(opts.dnsRecordName)}`);
+  console.log(`    ${color.dim("Target: ")}${color.cyan("100::")}`);
+  console.log(`    ${color.dim("Proxy:  ")}${color.cyan("enabled (orange cloud)")}`);
+  console.log("");
+  console.log(`  ${color.dim("Dashboard:")} ${color.cyan(dashboardUrl)}`);
+  console.log(
+    `  ${color.dim("Or set CLOUDFLARE_API_TOKEN with Zone:DNS:Edit and re-run for full automation.")}`,
+  );
+  console.log("");
+
+  const shouldOpen = await prompts.confirm({
+    message: "Open the Cloudflare DNS page in your browser now?",
+    default: true,
+  });
+  if (shouldOpen) openInBrowser(dashboardUrl);
+
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    await prompts.confirm({
+      message:
+        attempt === 1
+          ? "Press enter once you've saved the record (or Ctrl+C to cancel)"
+          : `Press enter to re-check (${attempt}/6)`,
+      default: true,
+    });
+
+    let records: Awaited<ReturnType<CloudflareClient["listDnsRecords"]>>;
+    try {
+      records = await withSpinner(`Re-checking DNS for ${opts.fullDnsName}`, () =>
+        opts.client.listDnsRecords(opts.zoneId, opts.fullDnsName),
+      );
+    } catch (error) {
+      if (isAuthError(error)) {
+        console.log(
+          `  ${color.dim("(can't verify via API — trusting that you've added the record and continuing)")}`,
+        );
+        return;
+      }
+      throw error;
+    }
+
+    if (records.find((record) => record.proxied)) {
+      console.log(`  ${color.green("✓")} found proxied record for ${opts.fullDnsName}`);
+      return;
+    }
+
+    if (records.length > 0) {
+      console.log(
+        `  ${color.yellow("Found records but none are proxied.")} Toggle the orange-cloud proxy on, then press enter again.`,
+      );
+    } else {
+      console.log(
+        `  ${color.yellow("No matching record yet.")} The DNS API can lag a few seconds — give it a moment, or double-check the name (${color.cyan(opts.dnsRecordName)}).`,
+      );
+    }
+  }
+
+  throw new CliFriendlyError(
+    `Gave up after 6 attempts waiting for the wildcard DNS record on ${opts.fullDnsName}. Add it and re-run \`captun deploy\`.`,
   );
 }
 
