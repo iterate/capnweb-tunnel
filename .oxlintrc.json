@@ -14,7 +14,7 @@
     "builtin": true,
     "node": true
   },
-  "jsPlugins": ["./oxlint-plugin-captun-test.js"],
+  "jsPlugins": ["./oxlint-plugin-captun.js"],
   "ignorePatterns": [
     "**/.cache/",
     "**/.corepack/",
@@ -93,11 +93,6 @@
     "no-useless-escape": "error",
     "no-var": "error",
     "no-with": "error",
-    "captun-test/helpers-after-tests": "error",
-    "captun-test/no-describe": "error",
-    "captun-test/no-lifecycle-hooks": "error",
-    "captun-test/no-vi-mock": "error",
-    "captun-test/prefer-object-property-match": "error",
     "prefer-numeric-literals": "error",
     "require-yield": "error",
     "use-isnan": "error",
@@ -105,8 +100,13 @@
   },
   "overrides": [
     {
-      "files": ["**/test/**", "**/*.test.ts", "**/*.test.tsx"],
+      "files": ["**/test/**", "**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"],
       "rules": {
+        "captun/helpers-after-tests": "error",
+        "captun/no-describe": "error",
+        "captun/no-lifecycle-hooks": "error",
+        "captun/no-vi-mock": "error",
+        "captun/prefer-object-property-match": "error",
         "no-console": "off"
       }
     }

@@ -1,12 +1,6 @@
-const TEST_FILE_REGEX = /(?:^|\/)(?:test\/.*|.*\.(?:test|spec)\.[cm]?[jt]sx?)$/;
 const LIFECYCLE_HOOKS = new Set(["beforeAll", "beforeEach", "afterAll", "afterEach"]);
-const MOCK_METHODS = new Set(["mock", "doMock"]);
+const VI_MOCK_CALLS = new Set(["vi.mock", "vi.doMock"]);
 const PROPERTY_MATCHERS = new Set(["toBe", "toEqual", "toStrictEqual"]);
-
-function isTestFile(context) {
-  const filename = context.filename || "";
-  return TEST_FILE_REGEX.test(filename.replaceAll("\\", "/"));
-}
 
 function getPropertyName(node) {
   if (!node) return undefined;
@@ -35,6 +29,15 @@ function getCallObjectName(node) {
 function isDescribeCall(callee) {
   const name = getCallName(callee);
   return name === "describe" || Boolean(name?.startsWith("describe."));
+}
+
+function isLifecycleHookCall(callee) {
+  return callee.type === "Identifier" && LIFECYCLE_HOOKS.has(callee.name);
+}
+
+function isViMockCall(callee) {
+  const name = getCallName(callee);
+  return Boolean(name && VI_MOCK_CALLS.has(name));
 }
 
 function isTestCallExpression(node) {
@@ -90,7 +93,7 @@ function getMatcherCall(node) {
 
 const plugin = {
   meta: {
-    name: "captun-test",
+    name: "captun",
   },
   rules: {
     "no-lifecycle-hooks": {
@@ -102,12 +105,9 @@ const plugin = {
         },
       },
       create(context) {
-        if (!isTestFile(context)) return {};
         return {
           CallExpression(node) {
-            const name = getCallName(node.callee);
-            const hookName = name?.split(".").at(-1);
-            if (!LIFECYCLE_HOOKS.has(hookName)) return;
+            if (!isLifecycleHookCall(node.callee)) return;
             context.report({
               node,
               message:
@@ -126,7 +126,6 @@ const plugin = {
         },
       },
       create(context) {
-        if (!isTestFile(context)) return {};
         return {
           CallExpression(node) {
             if (!isDescribeCall(node.callee)) return;
@@ -148,12 +147,9 @@ const plugin = {
         },
       },
       create(context) {
-        if (!isTestFile(context)) return {};
         return {
           CallExpression(node) {
-            const name = getCallName(node.callee);
-            const mockMethod = name?.split(".").at(-1);
-            if (!MOCK_METHODS.has(mockMethod)) return;
+            if (!isViMockCall(node.callee)) return;
             context.report({
               node,
               message:
@@ -172,7 +168,6 @@ const plugin = {
         },
       },
       create(context) {
-        if (!isTestFile(context)) return {};
         return {
           Program(node) {
             const lastTestIndex = node.body.findLastIndex((statement) => {
@@ -204,7 +199,6 @@ const plugin = {
         },
       },
       create(context) {
-        if (!isTestFile(context)) return {};
         return {
           CallExpression(node) {
             const matcherCall = getMatcherCall(node);

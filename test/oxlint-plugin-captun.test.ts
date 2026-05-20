@@ -6,11 +6,11 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
 const EXPECTED_RULE_CODES = [
-  "captun-test(helpers-after-tests)",
-  "captun-test(no-describe)",
-  "captun-test(no-lifecycle-hooks)",
-  "captun-test(no-vi-mock)",
-  "captun-test(prefer-object-property-match)",
+  "captun(helpers-after-tests)",
+  "captun(no-describe)",
+  "captun(no-lifecycle-hooks)",
+  "captun(no-vi-mock)",
+  "captun(prefer-object-property-match)",
 ];
 
 test("Captun test lint rules reject non-preferred test structure", async () => {
@@ -64,12 +64,34 @@ test("Captun test lint rules allow non-object property assertions and helpers be
       import { expect, test } from "vitest";
 
       test("uses allowed property assertions", () => {
+        const suite = {
+          beforeEach() {
+            return "setup";
+          },
+          afterAll() {
+            return "teardown";
+          },
+        };
+        const database = {
+          mock() {
+            return "mock";
+          },
+          doMock() {
+            return "doMock";
+          },
+        };
         const items = [1, 2, 3];
         expect(items.length).toBe(3);
         const key = "status";
         const response = helper();
         expect(response[key]).toBe(200);
         expect(response).toMatchObject({ status: 200 });
+        expect([suite.beforeEach(), suite.afterAll(), database.mock(), database.doMock()]).toEqual([
+          "setup",
+          "teardown",
+          "mock",
+          "doMock",
+        ]);
       });
 
       function helper() {
@@ -102,7 +124,7 @@ async function createTempDirFixture() {
 async function execFileResult(command: string, args: string[], cwd: string) {
   return new Promise<{ stdout: string; stderr: string; status: number }>((resolve) => {
     execFile(command, args, { cwd }, (error, stdout, stderr) => {
-      const status = typeof error?.code === "number" ? error.code : 0;
+      const status = error ? (typeof error.code === "number" ? error.code : 1) : 0;
       resolve({ stdout, stderr, status });
     });
   });
