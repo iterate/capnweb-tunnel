@@ -597,7 +597,11 @@ function serverUrlFromRoute(route: string) {
 }
 
 function serverUrlFromWranglerOutput(output: string) {
-  return output.match(/https:\/\/[^\s]+\.workers\.dev[^\s]*/)?.[0];
+  // Wrangler colorizes URLs with ANSI escapes (which would attach to the match
+  // tail) and also prints a `Worker Version Preview URL` with a literal
+  // `<VERSION_PREFIX>-` placeholder we want to skip.
+  const stripped = output.replace(/\[[0-9;]*m/g, "");
+  return stripped.match(/https:\/\/[^\s<>]+\.workers\.dev/)?.[0];
 }
 
 function randomSecret() {
