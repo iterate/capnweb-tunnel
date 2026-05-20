@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:net";
 import { expect, test } from "vitest";
 
-import { assertLocalTargetAcceptingConnections } from "../src/local-target.js";
+import { assertLocalTargetAcceptingConnections } from "../src/cli/local-target.js";
 
 test("local target preflight passes when the port accepts TCP connections", async () => {
   await using listening = await listenOnRandomPort();

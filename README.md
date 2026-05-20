@@ -68,7 +68,7 @@ That's all you need! No local ports, just a fetch function.
 
 ## Advanced usage
 
-The captun [worker.ts](./src/worker/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
+The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
 
 ```ts
 import { DurableObject } from "cloudflare:workers";
@@ -124,7 +124,7 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces (`createCaptunTunnel`, `acceptCaptunTunnel`, and the `Fetcher` type) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a deployable Cloudflare Worker, also copy or adapt [src/worker/worker.ts](./src/worker/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
+The core client/server pieces (`createCaptunTunnel`, `acceptCaptunTunnel`, and the `Fetcher` type) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
 
 ## Advanced CLI Usage
 

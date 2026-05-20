@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
-import { ExecError, type ExecOptions, type ExecResult, type exec } from "../src/exec.js";
-import { assertWranglerAuthenticated } from "../src/worker/wrangler.js";
+import { ExecError, type ExecOptions, type ExecResult, type exec } from "../src/cli/exec.js";
+import { assertWranglerAuthenticated } from "../src/cli/wrangler.js";
 
 test("Wrangler auth preflight skips whoami when CLOUDFLARE_API_TOKEN is set", async () => {
   let called = false;

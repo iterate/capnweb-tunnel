@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import * as prompts from "@inquirer/prompts";
-import { color } from "../ansi.js";
-import { CliFriendlyError } from "../cli-error.js";
-import { startSpinner, withSpinner } from "../spinner.js";
+import { color } from "./ansi.js";
+import { CliFriendlyError } from "./cli-error.js";
+import { startSpinner, withSpinner } from "./spinner.js";
 import {
   CloudflareApiError,
   createCloudflareClient,
@@ -16,7 +16,7 @@ import {
   type CloudflareClient,
   type CloudflareZone,
 } from "./cloudflare-api.js";
-import type { RoutingMode } from "./routing.js";
+import type { RoutingMode } from "../routing.js";
 import {
   assertWranglerAuthenticated,
   getAuthToken,
@@ -525,7 +525,7 @@ export async function deployWorker(
       string,
       unknown
     >;
-    const worker = resolve(packageRoot, "dist/worker/worker.js");
+    const worker = resolve(packageRoot, "dist/worker.js");
     baseConfig.main = worker;
     if (input.name) baseConfig.name = input.name;
     if (input.accountId) baseConfig.account_id = input.accountId;

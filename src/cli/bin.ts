@@ -12,7 +12,7 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { createCaptunTunnel } from "./index.js";
+import { createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
 import {
@@ -20,13 +20,8 @@ import {
   confirmTunnelHealth,
   isCaptunHealthRequest,
 } from "./tunnel-health.js";
-import {
-  deployWorker,
-  openInBrowser,
-  runDeployWizard,
-  waitForCertWithSpinner,
-} from "./worker/deploy.js";
-import { usesFolderRouting } from "./worker/routing.js";
+import { deployWorker, openInBrowser, runDeployWizard, waitForCertWithSpinner } from "./deploy.js";
+import { usesFolderRouting } from "../routing.js";
 
 type Config = {
   serverUrl: string;
@@ -63,7 +58,7 @@ const things =
     " ",
   );
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const xdgConfigHome = process.env.XDG_CONFIG_HOME;
 const configPath = resolve(xdgConfigHome || resolve(homedir(), ".config"), "captun", "config.json");
 

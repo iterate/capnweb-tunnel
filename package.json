@@ -8,7 +8,7 @@
     "url": "https://github.com/iterate/captun.git"
   },
   "bin": {
-    "captun": "./src/bin.ts"
+    "captun": "./src/cli/bin.ts"
   },
   "files": [
     "dist",
@@ -24,7 +24,7 @@
   },
   "publishConfig": {
     "bin": {
-      "captun": "./dist/bin.js"
+      "captun": "./dist/cli/bin.js"
     },
     "exports": {
       ".": {
@@ -46,7 +46,7 @@
     "dev": "wrangler dev",
     "test": "vitest run",
     "test:unit": "vitest run test/worker.test.ts",
-    "cli": "tsx src/bin.ts",
+    "cli": "tsx src/cli/bin.ts",
     "smoke": "./scripts/smoke-test.sh",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/index.js";
-import { captunHealthResponse, isCaptunHealthRequest } from "../src/tunnel-health.js";
-import { captunRouteParts, captunShardName } from "../src/worker/routing.js";
+import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
+import { captunRouteParts, captunShardName } from "../src/routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
 const routeCases: Array<
@@ -80,7 +80,7 @@ test("Captun Worker verifies health through a connected tunnel client", async ()
 
   const response = await fetch(`${fixture.origin}/demo/__captun/health`);
 
-  expect(response.status).toBe(200);
+  expect(response).toMatchObject({ status: 200 });
   expect(await response.json()).toEqual({ ok: true });
 });
 
@@ -95,7 +95,7 @@ test("Captun Worker returns 502 when the tunnel client fetch throws", async () =
 
   const response = await fetch(`${fixture.origin}/demo/hello`);
 
-  expect(response.status).toBe(502);
+  expect(response).toMatchObject({ status: 502 });
   expect(await response.text()).toBe("Tunnel fetch failed\n");
 });
 
@@ -104,7 +104,7 @@ test("Captun Worker returns 503 when a named tunnel has no connected client", as
 
   const response = await fetch(`${fixture.origin}/missing/hello`);
 
-  expect(response.status).toBe(503);
+  expect(response).toMatchObject({ status: 503 });
   expect(await response.text()).toBe("No tunnel client connected\n");
 });
 
@@ -113,7 +113,7 @@ test("Captun Worker routes subdomain tunnel requests", async () => {
 
   const response = await fixture.worker.fetch("http://demo.captun.example.com/hello");
 
-  expect(response.status).toBe(503);
+  expect(response).toMatchObject({ status: 503 });
   expect(await response.text()).toBe("No tunnel client connected\n");
 });
 
@@ -122,7 +122,7 @@ test("Captun Worker rejects missing tunnel names before Durable Object dispatch"
 
   const response = await fetch(`${fixture.origin}/__captun-connect`);
 
-  expect(response.status).toBe(404);
+  expect(response).toMatchObject({ status: 404 });
   expect(await response.text()).toBe("Missing tunnel name\n");
 });
 
@@ -131,7 +131,7 @@ test("Captun Worker rejects malformed folder tunnel names", async () => {
 
   const response = await fetch(`${fixture.origin}/bad%/hello`);
 
-  expect(response.status).toBe(404);
+  expect(response).toMatchObject({ status: 404 });
   expect(await response.text()).toBe("Missing tunnel name\n");
 });
 
@@ -140,6 +140,6 @@ test("Captun Worker requires the configured secret before accepting a tunnel cli
 
   const response = await fetch(`${fixture.origin}/demo/__captun-connect`);
 
-  expect(response.status).toBe(401);
+  expect(response).toMatchObject({ status: 401 });
   expect(await response.text()).toBe("Unauthorized\n");
 });

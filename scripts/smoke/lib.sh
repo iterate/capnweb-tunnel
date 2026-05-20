@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STATE_DIR="${CAPTUN_SMOKE_DIR:-/tmp/captun-smoke}"
-CAPTUN_BIN="${CAPTUN_BIN:-node $ROOT/dist/bin.js}"
+CAPTUN_BIN="${CAPTUN_BIN:-node $ROOT/dist/cli/bin.js}"
 HTTP_PORT="${SMOKE_HTTP_PORT:-3456}"
 WRANGLER_PORT="${SMOKE_WRANGLER_PORT:-8787}"
 SMOKE_NAME="${SMOKE_NAME:-smoke-test}"

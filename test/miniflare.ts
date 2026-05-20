@@ -49,7 +49,7 @@ export async function createMiniflareWorkerFixture(options: {
 
 export function createCaptunWorkerFixture(bindings: Record<string, string>) {
   return createMiniflareWorkerFixture({
-    entryPoint: "src/worker/worker.ts",
+    entryPoint: "src/worker.ts",
     durableObjects: {
       CaptunServerShard: { className: "CaptunServerShard" },
     },

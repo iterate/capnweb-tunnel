@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel, type Fetcher } from "../index.js";
+import { acceptCaptunTunnel, type Fetcher } from "./index.js";
 import { captunRouteParts, captunShardName, parseRoutingMode } from "./routing.js";
 
 type CaptunEnv = Env & {

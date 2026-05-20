@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "captun",
-  "main": "src/worker/worker.ts",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-05-15",
   "workers_dev": true,
   "preview_urls": false,

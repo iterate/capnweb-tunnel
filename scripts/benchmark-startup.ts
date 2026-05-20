@@ -245,7 +245,9 @@ function parseNgrokUrl(output: string) {
       const parsed = JSON.parse(line) as { msg?: string; url?: string };
       if (parsed.msg === "started tunnel" && parsed.url?.startsWith("https://"))
         return new URL(parsed.url);
-    } catch {}
+    } catch {
+      // skip non-JSON lines
+    }
   }
   return undefined;
 }

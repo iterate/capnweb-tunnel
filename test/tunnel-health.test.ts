@@ -4,7 +4,7 @@ import {
   captunHealthResponse,
   confirmTunnelHealth,
   isCaptunHealthRequest,
-} from "../src/tunnel-health.js";
+} from "../src/cli/tunnel-health.js";
 
 test("Captun health requests are reserved for the CLI tunnel", async () => {
   const request = new Request("https://captun.example/__captun/health");
