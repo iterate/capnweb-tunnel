@@ -154,9 +154,6 @@ test("Captun named tunnel addressing builds public and connect URLs", () => {
   expect(publicTunnelUrl("https://captun.account.workers.dev", "my-test")).toBe(
     "https://captun.account.workers.dev/my-test",
   );
-  expect(publicTunnelUrl("https://captun.account.workers.dev/prefix", "my test")).toBe(
-    "https://captun.account.workers.dev/prefix/my%20test",
-  );
   expect(publicTunnelUrl("https://{name}.tunnels.example.com", "my-test")).toBe(
     "https://my-test.tunnels.example.com",
   );
@@ -169,16 +166,19 @@ test("Captun named tunnel addressing builds public and connect URLs", () => {
   expect(tunnelConnectUrl("https://captun.account.workers.dev", "my-test")).toBe(
     "https://captun.account.workers.dev/my-test/__captun-connect",
   );
+  expect(() => publicTunnelUrl("https://captun.account.workers.dev/prefix", "my-test")).toThrow(
+    "Path-prefixed Captun server URLs are not supported yet",
+  );
 });
 
 test("Captun named tunnel addressing infers server URLs from route patterns", () => {
   expect(serverUrlFromRoute("*.tunnels.example.com/*")).toBe(
     "https://{name}.tunnels.example.com",
   );
-  expect(serverUrlFromRoute("https://*.my-tunnels.com/path/*")).toBe(
-    "https://{name}.my-tunnels.com/path",
-  );
   expect(serverUrlFromRoute("captun.example.com/*")).toBe("https://captun.example.com");
+  expect(() => serverUrlFromRoute("https://*.my-tunnels.com/path/*")).toThrow(
+    "Path-prefixed Captun routes are not supported yet",
+  );
 });
 
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {

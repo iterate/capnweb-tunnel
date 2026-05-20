@@ -11,6 +11,7 @@ export function usesFolderRouting(hostname: string) {
 
 /** Builds the public URL for a named tunnel from a configured server URL. */
 export function publicTunnelUrl(baseUrl: string, name: string) {
+  assertRootServerPath(baseUrl);
   if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
 
   const url = new URL(baseUrl);
@@ -35,7 +36,21 @@ export function serverUrlFromRoute(route: string) {
   if (!host) throw new Error(`Cannot infer server URL from route: ${route}`);
 
   const path = pathParts.join("/").replace(/\*.*$/, "").replace(/\/$/, "");
-  return `https://${host}${path ? `/${path}` : ""}`;
+  if (path) {
+    throw new Error(
+      `Path-prefixed Captun routes are not supported yet: ${route}. Use a host-root route like ${host}/* instead.`,
+    );
+  }
+  return `https://${host}`;
+}
+
+function assertRootServerPath(baseUrl: string) {
+  const parsedUrl = new URL(baseUrl.replaceAll("{name}", "captun"));
+  if (parsedUrl.pathname === "/") return;
+
+  throw new Error(
+    `Path-prefixed Captun server URLs are not supported yet: ${baseUrl}. Use a host-root server URL instead.`,
+  );
 }
 
 function removeTrailingSlash(url: string) {
