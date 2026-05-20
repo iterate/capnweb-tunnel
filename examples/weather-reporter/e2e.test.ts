@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 
-import { createCaptunTunnel } from "../../src/client.js";
+import { createCaptunTunnel } from "../../src/index.js";
 import { createMiniflareWorkerFixture } from "../../test/miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });

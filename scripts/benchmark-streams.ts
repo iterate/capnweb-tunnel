@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunTunnel } from "../src/index.js";
 
 // Stress the expensive path: many named tunnels, each returning a large streamed
 // binary response through Captun. This measures aggregate tunnel throughput,
@@ -126,7 +126,7 @@ async function runPool<T>(count: number, concurrency: number, task: (index: numb
 
 async function measure(index: number, mode: string): Promise<Measurement> {
   // Deterministic names make runs reproducible and let us intentionally spread
-  // or collide names across shards by changing NAME_PREFIX and CAPTUN_SHARDS.
+  // or collide names across shards by changing NAME_PREFIX and SHARD_COUNT.
   const url = tunnelUrl(`${namePrefix}-${index}`);
   const started = performance.now();
   const cpuStarted = process.cpuUsage();

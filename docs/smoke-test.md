@@ -96,7 +96,7 @@ curl -i "https://smoke-test.tunnels.templestein.com/"
 - One script waited on **tmux pane** text; wrangler output often landed in a different window than `capture-pane` read.
 - `deploy` had `.meta({ prompt: true })`, which **forced** prompts even when flags were passed.
 
-Fixes in `src/bin.ts`:
+Fixes in `src/cli/bin.ts`:
 
 - Deploy has no forced `prompt: true`.
 - `deploy --dry-run` skips upload and config write.

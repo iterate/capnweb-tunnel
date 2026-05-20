@@ -8,44 +8,28 @@
     "url": "https://github.com/iterate/captun.git"
   },
   "bin": {
-    "captun": "./src/bin.ts"
+    "captun": "./src/cli/bin.ts"
   },
   "files": [
     "dist",
     "README.md",
-    "wrangler.toml"
+    "wrangler.jsonc"
   ],
   "type": "module",
   "exports": {
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./client": {
-      "types": "./src/client.ts",
-      "import": "./src/client.ts"
-    },
-    "./server": {
-      "types": "./src/server.ts",
-      "import": "./src/server.ts"
     }
   },
   "publishConfig": {
     "bin": {
-      "captun": "./dist/bin.js"
+      "captun": "./dist/cli/bin.js"
     },
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
-      },
-      "./client": {
-        "types": "./dist/client.d.ts",
-        "import": "./dist/client.js"
-      },
-      "./server": {
-        "types": "./dist/server.d.ts",
-        "import": "./dist/server.js"
       }
     }
   },
@@ -62,7 +46,7 @@
     "dev": "wrangler dev",
     "test": "vitest run",
     "test:unit": "vitest run test/worker.test.ts",
-    "cli": "tsx src/bin.ts",
+    "cli": "tsx src/cli/bin.ts",
     "smoke": "./scripts/smoke-test.sh",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run test",
