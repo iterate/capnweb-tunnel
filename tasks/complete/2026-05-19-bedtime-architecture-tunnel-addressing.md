@@ -9,7 +9,7 @@ Summary: Done. Named tunnel addressing now lives behind a shared module used by 
 - [x] Add a named tunnel addressing module for folder/subdomain classification and public tunnel/connect URL construction. _Implemented in `src/tunnel-addressing.ts`._
 - [x] Move CLI tunnel URL construction to the addressing module instead of keeping private URL helpers in `src/bin.ts`. _`captun tunnel` now calls `publicTunnelUrl()` and `tunnelConnectUrl()`._
 - [x] Keep Worker route parsing behavior unchanged while making the shared classification explicit. _`captunRouteParts()` now imports `usesFolderRouting()` from the addressing module._
-- [x] Add focused unit coverage for public URL and connect URL construction, including folder, path-prefixed folder, `{name}` template, and subdomain-style hosts. _Added named tunnel addressing cases in `test/worker.test.ts`._
+- [x] Add focused unit coverage for public URL and connect URL construction, including folder, unsupported path-prefixed bases, `{name}` template, and subdomain-style hosts. _Added named tunnel addressing cases in `test/worker.test.ts`._
 - [x] Update the PR body with replacement compare branches for the open bedtime PR queue. _Pushed replacement branches for PRs #3-#9 and linked them in PR #10._
 - [x] Verify with typecheck and tests. _Ran `pnpm run typecheck` and `pnpm test` in the architecture worktree._
 
@@ -26,5 +26,6 @@ Why this one:
 ## Assumptions
 
 - This PR should avoid product-facing churn, but the shared classifier should align CLI URL construction with Worker subdomain routing. That intentionally fixes the concrete custom-subdomain connect URL case that previously drifted from Worker routing.
+- Path-prefixed Worker routes are not supported by Captun's current router, so the shared addressing API now fails fast for path-prefixed server URLs instead of generating connect URLs that cannot attach to a tunnel.
 - The new module can be source-level internal for now, exported only as needed inside the package.
 - Broader deploy planning and Durable Object lifecycle seams are valid later candidates, but less directly connected to tonight's queue.
