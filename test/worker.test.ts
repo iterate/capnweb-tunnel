@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/tunnel-health.js";
 import { captunRouteParts, captunShardName } from "../src/worker/routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";

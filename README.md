@@ -42,7 +42,7 @@ The deploy command will use `wrangler` under the hood to deploy an opinionated c
 You can use the worker you just deployed to create a tunnel from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
 
 ```ts
-import { createCaptunTunnel } from "captun/client";
+import { createCaptunTunnel } from "captun";
 
 const url = "https://captun.account.workers.dev/my-cool-tunnel";
 
@@ -72,7 +72,7 @@ The captun [worker.ts](./src/worker/worker.ts) implementation has useful opinion
 
 ```ts
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "captun/server";
+import { acceptCaptunTunnel } from "captun";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
@@ -124,7 +124,7 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker/worker.ts](./src/worker/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
+The core client/server pieces (`createCaptunTunnel`, `acceptCaptunTunnel`, and the `Fetcher` type) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a deployable Cloudflare Worker, also copy or adapt [src/worker/worker.ts](./src/worker/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
 
 ## Advanced CLI Usage
 
@@ -198,7 +198,7 @@ By default, all tunnel names live in one warm `CaptunServerShard` Durable Object
 npx captun deploy --shards 256
 ```
 
-You can import the public API from `captun`, or use subpath imports from `captun/client` and `captun/server`. The server package also exports `acceptCaptunTunnelFromSocket(socket)` for Workers that already performed the WebSocket upgrade.
+All of captun's public API (both the client `createCaptunTunnel` and the server-side `acceptCaptunTunnel`) is exported from the single `captun` entry point. `acceptCaptunTunnelFromSocket(socket)` is also exported for Workers that have already performed the WebSocket upgrade themselves.
 
 ## Performance
 
@@ -245,7 +245,7 @@ sequenceDiagram
   Server-->>HTTP: Response
 ```
 
-See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun/server` and has its own e2e tests.
+See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun` and has its own e2e tests.
 
 ## Development
 

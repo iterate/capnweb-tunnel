@@ -16,6 +16,7 @@ import {
   type CloudflareClient,
   type CloudflareZone,
 } from "./cloudflare-api.js";
+import type { RoutingMode } from "./routing.js";
 import {
   assertWranglerAuthenticated,
   getAuthToken,
@@ -42,6 +43,7 @@ export type DeployWizardResult = {
   shards?: number;
   secret: string;
   accountId?: string;
+  routingMode?: RoutingMode;
   certWait?: {
     client: CloudflareClient;
     zoneId: string;
@@ -91,6 +93,7 @@ export async function runDeployWizard(
   let route: string | undefined;
   let zone: string | undefined;
   let certWait: DeployWizardResult["certWait"];
+  let routingMode: RoutingMode = "workers-dev";
 
   if (useOwnDomain) {
     const { client, pickedZone } = await pickZoneFor(accountId, options.packageRoot);
@@ -113,6 +116,7 @@ export async function runDeployWizard(
       ],
     });
 
+    routingMode = subdomainChoice;
     let dnsRecordName: string;
     if (subdomainChoice === "first-level") {
       route = `*.${pickedZone.name}/*`;
@@ -209,7 +213,7 @@ export async function runDeployWizard(
     default: input.secret ?? randomSecret(),
   });
 
-  return { name, route, zone, shards, certWait, secret, accountId };
+  return { name, route, zone, shards, certWait, secret, accountId, routingMode };
 }
 
 async function pickAccount(packageRoot: string): Promise<string> {
@@ -505,6 +509,7 @@ export async function deployWorker(
     secret: string;
     shards?: number;
     accountId?: string;
+    routingMode?: RoutingMode;
     dryRun?: boolean;
   },
   options: { packageRoot: string },
@@ -536,6 +541,7 @@ export async function deployWorker(
     args.push("--config", deployConfig, "--secrets-file", secretsFile, "--keep-vars");
     if (input.route && !input.zone) args.push("--route", input.route);
     if (input.shards) args.push("--var", `CAPTUN_SHARDS:${input.shards}`);
+    if (input.routingMode) args.push("--var", `CAPTUN_ROUTING_MODE:${input.routingMode}`);
     if (input.dryRun) args.push("--dry-run");
 
     if (!input.dryRun) await assertWranglerAuthenticated({ cwd: packageRoot });
@@ -602,7 +608,7 @@ function randomSecret() {
 function parseJsonc(input: string): unknown {
   const withoutComments = input.replace(
     /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-    (match, str: string | undefined) => str ?? "",
+    (_match, str: string | undefined) => str ?? "",
   );
   const withoutTrailingCommas = withoutComments.replace(/,(\s*[}\]])/g, "$1");
   return JSON.parse(withoutTrailingCommas);

@@ -1,11 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "../server.js";
-import type { Fetcher } from "../types.js";
-import { captunRouteParts, captunShardName } from "./routing.js";
+import { acceptCaptunTunnel, type Fetcher } from "../index.js";
+import { captunRouteParts, captunShardName, parseRoutingMode } from "./routing.js";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
   CAPTUN_SHARDS?: string;
+  CAPTUN_ROUTING_MODE?: string;
 };
 
 /**
@@ -70,7 +70,7 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
 export default {
   fetch(request: Request, env: CaptunEnv) {
-    const route = captunRoute(request);
+    const route = captunRoute(request, env);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
     const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS || 1));
     return env.CaptunServerShard.getByName(shard).fetch(route.request);
@@ -78,9 +78,10 @@ export default {
 } satisfies ExportedHandler<CaptunEnv>;
 
 /** Turns an incoming Worker request into a Durable Object name and forwarded request. */
-function captunRoute(request: Request) {
+function captunRoute(request: Request, env: CaptunEnv) {
   const url = new URL(request.url);
-  const route = captunRouteParts(url.hostname, url.pathname);
+  const routingMode = parseRoutingMode(env.CAPTUN_ROUTING_MODE);
+  const route = captunRouteParts(url.hostname, url.pathname, { routingMode });
   if (!route) return undefined;
 
   url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;

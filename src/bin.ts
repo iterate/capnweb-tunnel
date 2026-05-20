@@ -12,7 +12,7 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { createCaptunTunnel } from "./client.js";
+import { createCaptunTunnel } from "./index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
 import {
@@ -149,6 +149,7 @@ const router = os.router({
           secret,
           shards: wizardResult.shards,
           accountId: wizardResult.accountId,
+          routingMode: wizardResult.routingMode,
           dryRun: input.dryRun,
         },
         { packageRoot },
@@ -351,7 +352,7 @@ function renderSuccessPage(opts: DeployedSummary): string {
     <pre>npx captun :5173 --name my-app</pre>
 
     <h2>Use it programmatically</h2>
-    <pre>import { createCaptunTunnel } from "captun/client";</pre>
+    <pre>import { createCaptunTunnel } from "captun";</pre>
     <p class="muted">See <a href="https://github.com/iterate/captun">the README</a> for the full API.</p>
   </main>
 </body>

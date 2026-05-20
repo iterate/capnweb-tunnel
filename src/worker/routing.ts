@@ -1,6 +1,20 @@
+/** Routing mode chosen at deploy time and baked into the Worker via CAPTUN_ROUTING_MODE. */
+export type RoutingMode = "workers-dev" | "first-level" | "deep-wildcard";
+
+const ROUTING_MODES: readonly RoutingMode[] = ["workers-dev", "first-level", "deep-wildcard"];
+
+export function parseRoutingMode(value: string | undefined): RoutingMode | undefined {
+  if (!value) return undefined;
+  return ROUTING_MODES.find((mode) => mode === value);
+}
+
 /** Extracts the tunnel name and forwarded path from just the hostname and path. */
-export function captunRouteParts(hostname: string, pathname: string) {
-  if (!usesFolderRouting(hostname)) {
+export function captunRouteParts(
+  hostname: string,
+  pathname: string,
+  options?: { routingMode?: RoutingMode },
+) {
+  if (!usesFolderRouting(hostname, options?.routingMode)) {
     const [name] = hostname.split(".");
     if (!name) return undefined;
     const decodedName = safeDecodeURIComponent(name);
@@ -23,8 +37,17 @@ export function captunShardName(tunnelName: string, shardCount: number) {
   return `tunnel-shard-${(hash >>> 0) % Math.floor(shardCount)}`;
 }
 
-/** Chooses folder routing for Worker preview hosts, apex domains, and local dev. */
-export function usesFolderRouting(hostname: string) {
+/**
+ * Decides folder vs subdomain routing.
+ *
+ * When `routingMode` is provided (read from CAPTUN_ROUTING_MODE on the Worker),
+ * it's authoritative — `workers-dev` means folder routing; `first-level` and
+ * `deep-wildcard` mean subdomain routing. Otherwise falls back to a hostname
+ * heuristic so older deploys (and the CLI's own URL synthesis) keep working.
+ */
+export function usesFolderRouting(hostname: string, routingMode?: RoutingMode) {
+  if (routingMode === "workers-dev") return true;
+  if (routingMode === "first-level" || routingMode === "deep-wildcard") return false;
   return (
     hostname === "localhost" ||
     /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
