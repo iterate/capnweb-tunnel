@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -17,6 +18,7 @@ import { createCaptunTunnel } from "./client.js";
 import {
   CloudflareApiError,
   createCloudflareClient,
+  isAuthError,
   waitForCertificateActive,
   type CloudflareClient,
   type CloudflareZone,
@@ -282,8 +284,10 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
   if (routingChoice === "first-level" || routingChoice === "deep-wildcard") {
     const { client, pickedZone } = await pickZoneFor(accountId);
     zone = pickedZone.name;
+    let dnsRecordName: string;
     if (routingChoice === "first-level") {
       route = `*.${pickedZone.name}/*`;
+      dnsRecordName = "*";
     } else {
       const subdomain = await prompts.input({
         message: `Subdomain prefix for tunnels (URLs will look like <tunnel>.<prefix>.${pickedZone.name})`,
@@ -295,6 +299,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
       });
       const fullSubdomain = `${subdomain}.${pickedZone.name}`;
       route = `*.${fullSubdomain}/*`;
+      dnsRecordName = `*.${subdomain}`;
       const acmEnabled = await withSpinner(
         `Checking Advanced Certificate Manager on ${pickedZone.name}`,
         () => client.isAdvancedCertificateManagerEnabled(pickedZone.id).catch(() => false),
@@ -316,6 +321,9 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
         `Ordering advanced certificate for ${hosts.join(", ")}`,
         () => client.orderAdvancedCertificate(pickedZone.id, hosts),
       ).catch((error: unknown) => {
+        if (isAuthError(error)) {
+          throw certManagerAuthError(accountId, pickedZone.name);
+        }
         if (error instanceof CloudflareApiError) {
           throw new CliFriendlyError(
             `Could not order the advanced certificate: ${error.message} (status ${error.status}${error.cloudflareCode ? `, code ${error.cloudflareCode}` : ""}).`,
@@ -326,6 +334,14 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
       certWait = { client, zoneId: pickedZone.id, zoneName: pickedZone.name, packId: pack.id };
       console.log(`  ${color.dim(`certificate pack ${pack.id} created (status: ${pack.status})`)}`);
     }
+
+    await ensureWildcardDns({
+      client,
+      accountId,
+      zoneId: pickedZone.id,
+      zoneName: pickedZone.name,
+      dnsRecordName,
+    });
   }
 
   const name = await prompts.input({
@@ -339,7 +355,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
 
   const shardsAnswer = await prompts.input({
     message:
-      "Durable Object shards (advanced — leave as 1 unless you need high concurrent throughput; see README §Sharding)",
+      "Durable Object shards (advanced — leave as 1 unless you need to create thousands of concurrent tunnels; see README)",
     default: String(input.shards ?? 1),
     validate: (value) => {
       if (!/^\d+$/.test(value)) return "Must be a positive integer";
@@ -399,6 +415,120 @@ async function pickZoneFor(accountId: string): Promise<{ client: CloudflareClien
   const pickedZone = zones.find((zone) => zone.id === zoneId);
   if (!pickedZone) throw new CliFriendlyError("Picked zone not found.");
   return { client, pickedZone };
+}
+
+async function ensureWildcardDns(opts: {
+  client: CloudflareClient;
+  accountId: string;
+  zoneId: string;
+  zoneName: string;
+  dnsRecordName: string;
+}) {
+  const fullDnsName = `${opts.dnsRecordName}.${opts.zoneName}`;
+  let existing;
+  try {
+    existing = await withSpinner(`Checking DNS for ${fullDnsName}`, () =>
+      opts.client.listDnsRecords(opts.zoneId, fullDnsName),
+    );
+  } catch (error) {
+    if (isAuthError(error)) {
+      throw dnsAuthError(opts.accountId, opts.zoneName, opts.dnsRecordName, "list");
+    }
+    throw error;
+  }
+
+  const proxied = existing.find((record) => record.proxied);
+  if (proxied) {
+    console.log(
+      `  ${color.dim(`existing proxied ${proxied.type} record found for ${fullDnsName} — leaving it alone`)}`,
+    );
+    return;
+  }
+
+  if (existing.length > 0) {
+    throw new CliFriendlyError(
+      [
+        `${fullDnsName} has DNS records but none of them are proxied through Cloudflare.`,
+        ``,
+        `Tunnel traffic won't reach the Worker without a proxied record. Either:`,
+        `  - Enable the orange-cloud proxy on the existing ${existing[0]?.type} record at`,
+        `    https://dash.cloudflare.com/${opts.accountId}/${opts.zoneName}/dns/records`,
+        `  - Or delete it and re-run \`captun deploy\` so we can create a proxied AAAA record.`,
+      ].join("\n"),
+    );
+  }
+
+  try {
+    await withSpinner(
+      `Creating wildcard DNS ${fullDnsName} → 100:: (proxied)`,
+      () =>
+        opts.client.createDnsRecord(opts.zoneId, {
+          type: "AAAA",
+          name: opts.dnsRecordName,
+          content: "100::",
+          proxied: true,
+          comment: "captun: wildcard route to Worker",
+        }),
+    );
+  } catch (error) {
+    if (isAuthError(error)) {
+      throw dnsAuthError(opts.accountId, opts.zoneName, opts.dnsRecordName, "create");
+    }
+    if (error instanceof CloudflareApiError) {
+      throw new CliFriendlyError(
+        `Could not create wildcard DNS record for ${fullDnsName}: ${error.message} (status ${error.status}${error.cloudflareCode ? `, code ${error.cloudflareCode}` : ""}).`,
+      );
+    }
+    throw error;
+  }
+}
+
+function dnsAuthError(
+  accountId: string,
+  zoneName: string,
+  dnsRecordName: string,
+  action: "list" | "create",
+) {
+  return new CliFriendlyError(
+    [
+      `Cannot ${action} DNS records via your current Cloudflare credentials.`,
+      ``,
+      `Wrangler's default OAuth scopes don't include DNS edit permission. Two options:`,
+      ``,
+      `${color.cyan("1.")} Add the wildcard DNS record manually:`,
+      `     ${color.cyan(`https://dash.cloudflare.com/${accountId}/${zoneName}/dns/records`)}`,
+      ``,
+      `     Type:    AAAA`,
+      `     Name:    ${dnsRecordName}`,
+      `     Target:  100::`,
+      `     Proxy:   ✓ enabled (orange cloud)`,
+      ``,
+      `   Then re-run ${color.cyan("captun deploy")}.`,
+      ``,
+      `${color.cyan("2.")} Use a Cloudflare API Token with ${color.cyan("Zone → DNS → Edit")} permission:`,
+      `     ${color.cyan("https://dash.cloudflare.com/profile/api-tokens")}`,
+      ``,
+      `     Then re-run with ${color.cyan("CLOUDFLARE_API_TOKEN=… npx captun deploy")}.`,
+    ].join("\n"),
+  );
+}
+
+function certManagerAuthError(accountId: string, zoneName: string) {
+  return new CliFriendlyError(
+    [
+      `Cannot order the Advanced Certificate via your current Cloudflare credentials.`,
+      ``,
+      `Wrangler's default OAuth scopes don't include edge SSL edit permission. Two options:`,
+      ``,
+      `${color.cyan("1.")} Order the certificate manually in the dashboard:`,
+      `     ${color.cyan(`https://dash.cloudflare.com/${accountId}/${zoneName}/ssl-tls/edge-certificates`)}`,
+      ``,
+      `${color.cyan("2.")} Use a Cloudflare API Token with ${color.cyan("Zone → SSL and Certificates → Edit")} permission:`,
+      `     ${color.cyan("https://dash.cloudflare.com/profile/api-tokens")}`,
+      ``,
+      `     Then re-run with ${color.cyan("CLOUDFLARE_API_TOKEN=… npx captun deploy")}.`,
+    ].join("\n"),
+  );
 }
 
 type Spinner = {
@@ -547,12 +677,36 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
   };
 
   printTunnelOpening(tunnel);
-  console.log(`\n${color.dim("Open the tunnel URL in your browser to confirm everything works.")}`);
+  console.log(
+    `\n${color.dim("Opening the tunnel URL in your browser to confirm everything works...")}`,
+  );
 
   try {
-    await runTunnelSession(tunnel);
+    await runTunnelSession(tunnel, {
+      retries: 6,
+      onReady: () => openInBrowser(tunnel.tunnel),
+    });
   } finally {
     await new Promise<void>((closeResolve) => server.close(() => closeResolve()));
+  }
+}
+
+function openInBrowser(url: string) {
+  const command =
+    process.platform === "darwin"
+      ? "open"
+      : process.platform === "win32"
+        ? "start"
+        : "xdg-open";
+  const args = process.platform === "win32" ? ["", url] : [url];
+  try {
+    const child = spawn(command, args, { detached: true, stdio: "ignore", shell: process.platform === "win32" });
+    child.on("error", () => {
+      // best-effort: ignore failures
+    });
+    child.unref();
+  } catch {
+    // best-effort: ignore failures
   }
 }
 
@@ -613,8 +767,15 @@ function renderSuccessPage(opts: DeployedSummary): string {
       line-height: 1.6;
       padding: 3rem 1.5rem;
     }
-    main { max-width: 720px; margin: 0 auto; }
-    h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 {
+      color: var(--accent);
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      margin: 0 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
     h2 { font-size: 1rem; margin: 2rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
     p { margin: 0.5rem 0; }
     .muted { color: var(--muted); }
@@ -629,7 +790,7 @@ function renderSuccessPage(opts: DeployedSummary): string {
 </head>
 <body>
   <main>
-    <h1>🎉 captun is working</h1>
+    <h1>🎉 captun self-test successful!</h1>
     <p class="muted">This page was served by a local HTTP server on your machine, tunneled through your freshly-deployed Cloudflare Worker, and back to your browser. The whole round-trip works.</p>
 
     <h2>Your deployment</h2>
@@ -767,55 +928,108 @@ function normalizeTarget(target: string) {
   return removeTrailingSlash(url.toString());
 }
 
-async function runTunnelSession(tunnel: ResolvedTunnel) {
+async function runTunnelSession(
+  tunnel: ResolvedTunnel,
+  opts: { retries?: number; onReady?: () => void } = {},
+) {
   const startedAt = performance.now();
   await assertLocalTargetAcceptingConnections(tunnel.target);
 
-  using _tunnelSession = await createCaptunTunnel({
-    url: `${tunnel.tunnel}/__captun-connect`,
-    headers: tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined,
-    fetch: async (request) => {
-      if (isCaptunHealthRequest(request)) return captunHealthResponse();
+  const session = await connectTunnelWithRetry(tunnel, opts.retries ?? 0);
+  try {
+    await confirmTunnelHealth(tunnel.tunnel);
+    console.log(`\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`);
+    console.log(color.cyan(tunnel.tunnel));
+    console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
+    console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
+    opts.onReady?.();
+    await waitForShutdown();
+  } finally {
+    session[Symbol.dispose]();
+  }
+}
 
-      const url = new URL(request.url);
-      const requestStartedAt = performance.now();
-      const rayId = request.headers.get("cf-ray") || "-";
-      try {
-        const response = await fetch(
-          new Request(`${tunnel.target}${url.pathname}${url.search}`, request),
-        );
-        logRequest(tunnel.requestLogs, {
-          method: request.method,
-          path: `${url.pathname}${url.search}`,
-          rayId,
-          status: response.status,
-          startedAt: requestStartedAt,
-        });
-        return response;
-      } catch {
-        const response = new Response(
-          `Request reached the captun cli, but ${tunnel.target} is not accepting connections\n`,
-          { status: 502 },
-        );
-        logRequest(tunnel.requestLogs, {
-          method: request.method,
-          path: `${url.pathname}${url.search}`,
-          rayId,
-          status: response.status,
-          startedAt: requestStartedAt,
-        });
-        return response;
+async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
+  const url = `${tunnel.tunnel}/__captun-connect`;
+  const headers = tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined;
+  const fetcher = makeTunnelFetcher(tunnel);
+
+  const maxAttempts = retries + 1;
+  let delay = 2000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const label =
+      attempt === 1
+        ? `Connecting to ${tunnel.tunnel}`
+        : `Connecting to ${tunnel.tunnel} (retry ${attempt - 1}/${retries})`;
+    try {
+      return await withSpinner(label, () => createCaptunTunnel({ url, headers, fetch: fetcher }));
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw tunnelConnectError(tunnel, error);
       }
-    },
-  });
+      await sleep(delay);
+      delay = Math.min(Math.round(delay * 1.5), 8000);
+    }
+  }
+  throw new Error("unreachable");
+}
 
-  await confirmTunnelHealth(tunnel.tunnel);
-  console.log(`\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`);
-  console.log(color.cyan(tunnel.tunnel));
-  console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
-  console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
+function makeTunnelFetcher(tunnel: ResolvedTunnel) {
+  return async (request: Request) => {
+    if (isCaptunHealthRequest(request)) return captunHealthResponse();
 
-  await waitForShutdown();
+    const url = new URL(request.url);
+    const requestStartedAt = performance.now();
+    const rayId = request.headers.get("cf-ray") || "-";
+    try {
+      const response = await fetch(
+        new Request(`${tunnel.target}${url.pathname}${url.search}`, request),
+      );
+      logRequest(tunnel.requestLogs, {
+        method: request.method,
+        path: `${url.pathname}${url.search}`,
+        rayId,
+        status: response.status,
+        startedAt: requestStartedAt,
+      });
+      return response;
+    } catch {
+      const response = new Response(
+        `Request reached the captun cli, but ${tunnel.target} is not accepting connections\n`,
+        { status: 502 },
+      );
+      logRequest(tunnel.requestLogs, {
+        method: request.method,
+        path: `${url.pathname}${url.search}`,
+        rayId,
+        status: response.status,
+        startedAt: requestStartedAt,
+      });
+      return response;
+    }
+  };
+}
+
+function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
+  const hostname = new URL(tunnel.tunnel).hostname;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new CliFriendlyError(
+    [
+      `Could not connect tunnel to ${color.cyan(tunnel.tunnel)} (${message}).`,
+      ``,
+      `Likely causes:`,
+      `  - DNS for ${color.cyan(hostname)} hasn't propagated yet — wait 30-60 seconds and re-run.`,
+      `  - There is no proxied wildcard DNS record on the zone for ${color.cyan(hostname)}.`,
+      `    Add an AAAA record with target ${color.cyan("100::")} and proxy enabled.`,
+      `  - Universal SSL hasn't issued a certificate covering ${color.cyan(hostname)} yet.`,
+      `    Fresh zones can take ~15 minutes; check the SSL/TLS → Edge Certificates dashboard.`,
+      `  - The Worker route ${color.cyan(`*.${hostname.split(".").slice(-2).join(".")}/*`)} is not set up — check Workers → Routes.`,
+    ].join("\n"),
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 function printTunnelOpening(tunnel: ResolvedTunnel) {

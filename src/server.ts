@@ -25,11 +25,13 @@ export function acceptCaptunTunnelFromSocket(
   socket: WebSocket,
   options: CaptunServerAcceptTunnelOptions = {},
 ): CaptunServerTunnel {
-  const remoteClient = newWebSocketRpcSession<CaptunClientRemoteFetcher>(socket);
-  remoteClient.onRpcBroken(() => options.onDisconnect?.());
+  // localFetcherFromClient is a capnweb stub of the "main object" that is is passed into 
+  // newWebSocketRpcSession(socket, new LocalFetcher({fetch: ...})) in client.ts
+  const localFetcherFromClient = newWebSocketRpcSession<CaptunClientRemoteFetcher>(socket);
+  localFetcherFromClient.onRpcBroken(() => options.onDisconnect?.());
 
   return {
-    fetch: (request) => remoteClient.fetch(request),
-    [Symbol.dispose]: () => remoteClient[Symbol.dispose](),
+    fetch: (request) => localFetcherFromClient.fetch(request),
+    [Symbol.dispose]: () => localFetcherFromClient[Symbol.dispose](),
   };
 }

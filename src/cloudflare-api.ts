@@ -14,8 +14,26 @@ export type CertificatePack = {
   hosts: string[];
 };
 
+export type DnsRecord = {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  proxied: boolean;
+};
+
+export type DnsRecordInput = {
+  type: "A" | "AAAA" | "CNAME";
+  name: string;
+  content: string;
+  proxied: boolean;
+  comment?: string;
+};
+
 export type CloudflareClient = {
   listZones(accountId: string): Promise<CloudflareZone[]>;
+  listDnsRecords(zoneId: string, name?: string): Promise<DnsRecord[]>;
+  createDnsRecord(zoneId: string, record: DnsRecordInput): Promise<DnsRecord>;
   isAdvancedCertificateManagerEnabled(zoneId: string): Promise<boolean>;
   orderAdvancedCertificate(zoneId: string, hosts: string[]): Promise<CertificatePack>;
   getCertificatePack(zoneId: string, packId: string): Promise<CertificatePack>;
@@ -52,6 +70,25 @@ export function createCloudflareClient(options: {
       return result.map((zone) => ({ id: zone.id, name: zone.name, status: zone.status }));
     },
 
+    async listDnsRecords(zoneId, name) {
+      const query = name ? `?name=${encodeURIComponent(name)}` : "";
+      const result = await request<DnsRecord[]>(`/zones/${zoneId}/dns_records${query}`);
+      return result.map((record) => ({
+        id: record.id,
+        type: record.type,
+        name: record.name,
+        content: record.content,
+        proxied: record.proxied,
+      }));
+    },
+
+    async createDnsRecord(zoneId, record) {
+      return request<DnsRecord>(`/zones/${zoneId}/dns_records`, {
+        method: "POST",
+        body: JSON.stringify(record),
+      });
+    },
+
     async isAdvancedCertificateManagerEnabled(zoneId) {
       try {
         const result = await request<{ rate_plan?: { id?: string }; component_values?: Array<{ name?: string }> }>(
@@ -67,7 +104,7 @@ export function createCloudflareClient(options: {
         if (ratePlanId.includes("advanced_certificate_manager")) return true;
         return false;
       } catch (error) {
-        if (error instanceof CloudflareApiError && (error.status === 404 || error.status === 403)) {
+        if (isAuthError(error) || (error instanceof CloudflareApiError && error.status === 404)) {
           return false;
         }
         throw error;
@@ -103,6 +140,11 @@ export class CloudflareApiError extends Error {
     this.status = status;
     this.cloudflareCode = cloudflareCode;
   }
+}
+
+export function isAuthError(error: unknown): boolean {
+  if (!(error instanceof CloudflareApiError)) return false;
+  return error.status === 401 || error.status === 403 || error.cloudflareCode === 10000;
 }
 
 export async function waitForCertificateActive(
