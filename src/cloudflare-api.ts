@@ -50,12 +50,16 @@ export function createCloudflareClient(options: {
   } as const;
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetchFn(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
+    const response = await fetchFn(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...headers, ...init?.headers },
+    });
     const body = (await response.json().catch(() => undefined)) as
       | { success?: boolean; result?: T; errors?: Array<{ code: number; message: string }> }
       | undefined;
     if (!response.ok || !body?.success) {
-      const message = body?.errors?.[0]?.message ?? `Cloudflare API request failed: ${response.status}`;
+      const message =
+        body?.errors?.[0]?.message ?? `Cloudflare API request failed: ${response.status}`;
       const code = body?.errors?.[0]?.code;
       throw new CloudflareApiError(message, response.status, code);
     }
@@ -91,13 +95,16 @@ export function createCloudflareClient(options: {
 
     async isAdvancedCertificateManagerEnabled(zoneId) {
       try {
-        const result = await request<{ rate_plan?: { id?: string }; component_values?: Array<{ name?: string }> }>(
-          `/zones/${zoneId}/subscription`,
-        );
+        const result = await request<{
+          rate_plan?: { id?: string };
+          component_values?: Array<{ name?: string }>;
+        }>(`/zones/${zoneId}/subscription`);
         const componentNames = (result.component_values ?? [])
           .map((entry) => entry.name)
           .filter((name): name is string => typeof name === "string");
-        if (componentNames.some((name) => name.toLowerCase().includes("advanced_certificate_manager"))) {
+        if (
+          componentNames.some((name) => name.toLowerCase().includes("advanced_certificate_manager"))
+        ) {
           return true;
         }
         const ratePlanId = result.rate_plan?.id?.toLowerCase() ?? "";
@@ -151,7 +158,11 @@ export async function waitForCertificateActive(
   client: CloudflareClient,
   zoneId: string,
   packId: string,
-  options: { timeoutMs?: number; intervalMs?: number; onPoll?: (pack: CertificatePack) => void } = {},
+  options: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    onPoll?: (pack: CertificatePack) => void;
+  } = {},
 ) {
   const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
   const intervalMs = options.intervalMs ?? 5000;

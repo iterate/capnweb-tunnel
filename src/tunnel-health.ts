@@ -39,7 +39,9 @@ export async function confirmTunnelHealth(
   }
 
   const suffix = lastError instanceof Error ? ` ${lastError.message}` : "";
-  throw new CliFriendlyError(`Tunnel opened, but health check failed after ${timeoutMs}ms.${suffix}`);
+  throw new CliFriendlyError(
+    `Tunnel opened, but health check failed after ${timeoutMs}ms.${suffix}`,
+  );
 }
 
 function removeTrailingSlash(url: string) {

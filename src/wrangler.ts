@@ -66,10 +66,12 @@ export async function listAccounts(options: {
     throw new CliFriendlyError("wrangler whoami --json did not return an accounts array");
   }
   return accounts
-    .filter((entry): entry is { id: string; name: string; type?: string } =>
-      typeof entry === "object" && entry !== null
-        && typeof (entry as { id?: unknown }).id === "string"
-        && typeof (entry as { name?: unknown }).name === "string"
+    .filter(
+      (entry): entry is { id: string; name: string; type?: string } =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as { id?: unknown }).id === "string" &&
+        typeof (entry as { name?: unknown }).name === "string",
     )
     .map((entry) => ({ id: entry.id, name: entry.name, type: entry.type }));
 }

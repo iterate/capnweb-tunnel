@@ -7,14 +7,10 @@
   "preview_urls": false,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   "durable_objects": {
-    "bindings": [
-      { "name": "CaptunServerShard", "class_name": "CaptunServerShard" }
-    ]
+    "bindings": [{ "name": "CaptunServerShard", "class_name": "CaptunServerShard" }],
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["CaptunServerShard"] }
-  ]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CaptunServerShard"] }],
 }

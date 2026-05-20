@@ -17,7 +17,7 @@ export async function createCaptunTunnel(
   },
 ): Promise<Disposable> {
   const socket = createWebSocket(options);
-  // tunnelTargetFetcher is the "main object" that comes out on the other side in server.ts 
+  // tunnelTargetFetcher is the "main object" that comes out on the other side in server.ts
   // as a capnweb rpc stub that the server can just call fetch on
   const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);

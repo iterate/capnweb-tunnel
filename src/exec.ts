@@ -35,7 +35,8 @@ export class ExecError extends Error {
 }
 
 export function exec(command: string, args: string[], options: ExecOptions) {
-  const spawnConfig = options.tty && process.stdin.isTTY ? pseudoTtyCommand(command, args) : { command, args };
+  const spawnConfig =
+    options.tty && process.stdin.isTTY ? pseudoTtyCommand(command, args) : { command, args };
   const child = spawn(spawnConfig.command, spawnConfig.args, {
     cwd: options.cwd,
     stdio: [options.tty ? "inherit" : "ignore", "pipe", "pipe"],

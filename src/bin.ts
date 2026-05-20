@@ -59,9 +59,18 @@ type ResolvedTunnel = {
   tunnel: string;
 };
 
-const adjectives = "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(" ");
-const speeds = "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(" ");
-const things = "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(" ");
+const adjectives =
+  "apple amber bright cedar copper daisy ember forest ginger harbor indigo jolly kiwi lemon maple nova olive pearl quartz ruby".split(
+    " ",
+  );
+const speeds =
+  "fast swift quick rapid zippy brisk fleet nimble snappy speedy lively eager sharp ready active bold crisp fresh keen spry".split(
+    " ",
+  );
+const things =
+  "tree river stone cloud field bridge spark meadow tower trail garden island planet signal anchor valley window canyon summit harvest".split(
+    " ",
+  );
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const xdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -134,7 +143,10 @@ const router = os.router({
           .min(1)
           .optional()
           .describe("Number of Durable Object shards to spread tunnel names across"),
-        dryRun: z.boolean().optional().describe("Compile and validate the deploy without uploading"),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe("Compile and validate the deploy without uploading"),
       }),
     )
     .handler(async ({ input }) => {
@@ -195,7 +207,6 @@ const router = os.router({
     }),
 });
 
-
 type DeployInput = {
   name?: string;
   route?: string;
@@ -230,7 +241,9 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
     };
   }
 
-  console.log(`\n${color.dim("Configuring captun deploy. See")} ${color.cyan(CUSTOM_DOMAINS_DOC_URL)}\n`);
+  console.log(
+    `\n${color.dim("Configuring captun deploy. See")} ${color.cyan(CUSTOM_DOMAINS_DOC_URL)}\n`,
+  );
 
   const accountId = await pickAccount();
 
@@ -241,7 +254,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
         name: "<tunnel>.<account>.workers.dev/<tunnel-name>",
         value: "workers-dev" as const,
         description:
-          "Free, instant. Caveat: tunneled apps run under a path prefix, which breaks apps that assume they live at \"/\" (absolute redirects, OAuth callbacks, cookies scoped to /).",
+          'Free, instant. Caveat: tunneled apps run under a path prefix, which breaks apps that assume they live at "/" (absolute redirects, OAuth callbacks, cookies scoped to /).',
       },
       {
         name: "<tunnel>.your-domain.com  (pick an existing Cloudflare zone)",
@@ -274,7 +287,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
         "To use a dedicated domain for tunnels:",
         "  1. Register a domain (Cloudflare Registrar or any third-party registrar).",
         "  2. Add it to this Cloudflare account and wait for the zone to become active.",
-        "  3. Re-run `captun deploy` and choose \"<tunnel>.your-domain.com\" for that new zone.",
+        '  3. Re-run `captun deploy` and choose "<tunnel>.your-domain.com" for that new zone.',
         "",
         `See ${CUSTOM_DOMAINS_DOC_URL} for the full walkthrough.`,
       ].join("\n"),
@@ -317,9 +330,8 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
         );
       }
       const hosts = [`*.${fullSubdomain}`, fullSubdomain];
-      const pack = await withSpinner(
-        `Ordering advanced certificate for ${hosts.join(", ")}`,
-        () => client.orderAdvancedCertificate(pickedZone.id, hosts),
+      const pack = await withSpinner(`Ordering advanced certificate for ${hosts.join(", ")}`, () =>
+        client.orderAdvancedCertificate(pickedZone.id, hosts),
       ).catch((error: unknown) => {
         if (isAuthError(error)) {
           throw certManagerAuthError(accountId, pickedZone.name);
@@ -365,8 +377,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
   const shards = Number(shardsAnswer);
 
   const secret = await prompts.input({
-    message:
-      "Tunnel secret (leave empty to allow anyone to create tunnels on your captun server)",
+    message: "Tunnel secret (leave empty to allow anyone to create tunnels on your captun server)",
     default: input.secret ?? randomSecret(),
   });
 
@@ -396,7 +407,9 @@ async function pickAccount(): Promise<string> {
   });
 }
 
-async function pickZoneFor(accountId: string): Promise<{ client: CloudflareClient; pickedZone: CloudflareZone }> {
+async function pickZoneFor(
+  accountId: string,
+): Promise<{ client: CloudflareClient; pickedZone: CloudflareZone }> {
   const { client, zones } = await withSpinner("Loading Cloudflare zones", async () => {
     const auth = await getAuthToken({ cwd: packageRoot });
     const cloudflare = createCloudflareClient({ token: auth.token });
@@ -506,26 +519,16 @@ async function manualDnsRecoveryFlow(opts: {
   console.log("");
   console.log(`${color.yellow("!")} ${color.yellow("Manual DNS step needed.")}`);
   if (hasUnproxied) {
-    console.log(
-      `  ${opts.fullDnsName} has DNS records but none are proxied through Cloudflare.`,
-    );
-    console.log(
-      `  Tunnel traffic only reaches the Worker via proxied records (orange cloud).`,
-    );
+    console.log(`  ${opts.fullDnsName} has DNS records but none are proxied through Cloudflare.`);
+    console.log(`  Tunnel traffic only reaches the Worker via proxied records (orange cloud).`);
   } else if (!opts.canRead) {
     console.log(
       `  Wrangler's OAuth token can't read DNS records on this zone, so I can't tell you`,
     );
-    console.log(
-      `  if a wildcard record already exists. Please make sure one is in place.`,
-    );
+    console.log(`  if a wildcard record already exists. Please make sure one is in place.`);
   } else {
-    console.log(
-      `  No wildcard DNS record exists for ${opts.fullDnsName}, and wrangler's default`,
-    );
-    console.log(
-      `  OAuth scopes don't include DNS edit permission, so I can't create it for you.`,
-    );
+    console.log(`  No wildcard DNS record exists for ${opts.fullDnsName}, and wrangler's default`);
+    console.log(`  OAuth scopes don't include DNS edit permission, so I can't create it for you.`);
   }
   console.log("");
   console.log(`  ${color.dim("Add (or fix) this record in the Cloudflare dashboard:")}`);
@@ -631,7 +634,9 @@ function startSpinner(initial: string): Spinner {
   let label = initial;
   let frame = 0;
   const render = () => {
-    process.stdout.write(`\r${color.cyan(SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? "")} ${label}\x1b[K`);
+    process.stdout.write(
+      `\r${color.cyan(SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? "")} ${label}\x1b[K`,
+    );
     frame += 1;
   };
   render();
@@ -675,7 +680,10 @@ async function deployWorker(input: {
     await writeFile(secretsFile, JSON.stringify({ CAPTUN_SECRET: input.secret }), { mode: 0o600 });
 
     const baseConfigPath = resolve(packageRoot, "wrangler.jsonc");
-    const baseConfig = JSON.parse(await readFile(baseConfigPath, "utf8")) as Record<string, unknown>;
+    const baseConfig = JSON.parse(await readFile(baseConfigPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
     const worker = resolve(packageRoot, "dist/worker.js");
     baseConfig.main = worker;
     if (input.name) baseConfig.name = input.name;
@@ -697,7 +705,9 @@ async function deployWorker(input: {
 
     const output = await runWrangler(args, { cwd: packageRoot, tty: !input.dryRun });
     if (input.dryRun) {
-      return input.route ? serverUrlFromRoute(input.route) : "https://captun.<your-account>.workers.dev";
+      return input.route
+        ? serverUrlFromRoute(input.route)
+        : "https://captun.<your-account>.workers.dev";
     }
 
     const serverUrl = input.route
@@ -742,7 +752,9 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
   const port = portOf(server);
   const target = `http://127.0.0.1:${port}`;
 
-  console.log(`\n${color.dim("Starting test server at")} ${color.cyan(target)} ${color.dim("for tunnel self-test")}\n`);
+  console.log(
+    `\n${color.dim("Starting test server at")} ${color.cyan(target)} ${color.dim("for tunnel self-test")}\n`,
+  );
 
   const name = randomName();
   const tunnel: ResolvedTunnel = {
@@ -771,14 +783,14 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
 
 function openInBrowser(url: string) {
   const command =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "start"
-        : "xdg-open";
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   const args = process.platform === "win32" ? ["", url] : [url];
   try {
-    const child = spawn(command, args, { detached: true, stdio: "ignore", shell: process.platform === "win32" });
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+      shell: process.platform === "win32",
+    });
     child.on("error", () => {
       // best-effort: ignore failures
     });
@@ -975,9 +987,7 @@ function colorStatus(status: number) {
 function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
   const serverUrl = input.serverUrl ?? config?.serverUrl;
   if (!serverUrl) {
-    throw new Error(
-      `No tunnel server configured. Run "captun deploy" first or pass --server-url.`,
-    );
+    throw new Error(`No tunnel server configured. Run "captun deploy" first or pass --server-url.`);
   }
 
   const name = input.name ?? randomName();
@@ -1016,7 +1026,9 @@ async function runTunnelSession(
   const session = await connectTunnelWithRetry(tunnel, opts.retries ?? 0);
   try {
     await confirmTunnelHealth(tunnel.tunnel);
-    console.log(`\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`);
+    console.log(
+      `\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`,
+    );
     console.log(color.cyan(tunnel.tunnel));
     console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
     console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
@@ -1162,6 +1174,6 @@ const cli = createCli({
 await cli.run({
   prompts,
   logger: yamlTableConsoleLogger,
-  formatError: (error) => (error instanceof CliFriendlyError ? `\n${error.message}\n` : inspect(error)),
+  formatError: (error) =>
+    error instanceof CliFriendlyError ? `\n${error.message}\n` : inspect(error),
 });
-
