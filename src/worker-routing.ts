@@ -24,7 +24,7 @@ export function captunShardName(tunnelName: string, shardCount: number) {
 }
 
 /** Chooses folder routing for Worker preview hosts, apex domains, and local dev. */
-function usesFolderRouting(hostname: string) {
+export function usesFolderRouting(hostname: string) {
   return (
     hostname === "localhost" ||
     /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||

@@ -29,6 +29,7 @@ import {
   confirmTunnelHealth,
   isCaptunHealthRequest,
 } from "./tunnel-health.js";
+import { usesFolderRouting } from "./worker-routing.js";
 import {
   assertWranglerAuthenticated,
   getAuthToken,
@@ -158,6 +159,7 @@ const router = os.router({
         zone: wizardResult.zone,
         secret,
         shards: wizardResult.shards,
+        accountId: wizardResult.accountId,
         dryRun: input.dryRun,
       });
       if (input.dryRun) {
@@ -165,6 +167,11 @@ const router = os.router({
         console.log(`Expected server URL pattern: ${serverUrl}`);
         return { serverUrl, dryRun: true };
       }
+
+      // Worker is live now — persist config before anything that can fail later
+      // (e.g. cert provisioning can time out, but the deploy is already complete).
+      await writeConfig({ serverUrl, secret });
+
       if (wizardResult.certWait) {
         const certWait = wizardResult.certWait;
         const spinner = startSpinner(
@@ -181,10 +188,15 @@ const router = os.router({
           spinner.stop(true);
         } catch (error) {
           spinner.stop(false);
-          throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          console.log(
+            `\n${color.yellow("!")} Certificate provisioning is still pending: ${message}`,
+          );
+          console.log(
+            `  ${color.dim("Config has been saved. Re-run `captun deploy` later (or check the Cloudflare dashboard) once the cert is active.")}`,
+          );
         }
       }
-      await writeConfig({ serverUrl, secret });
 
       printDeploySummary({
         serverUrl,
@@ -194,14 +206,16 @@ const router = os.router({
         shards: wizardResult.shards ?? 1,
       });
 
-      await postDeploySelfTest({
-        serverUrl,
-        secret,
-        workerName: wizardResult.name ?? "captun",
-        route: wizardResult.route,
-        zone: wizardResult.zone,
-        shards: wizardResult.shards ?? 1,
-      });
+      if (process.stdin.isTTY) {
+        await postDeploySelfTest({
+          serverUrl,
+          secret,
+          workerName: wizardResult.name ?? "captun",
+          route: wizardResult.route,
+          zone: wizardResult.zone,
+          shards: wizardResult.shards ?? 1,
+        });
+      }
 
       return { serverUrl, configPath };
     }),
@@ -222,6 +236,7 @@ type DeployWizardResult = {
   zone?: string;
   shards?: number;
   secret: string;
+  accountId?: string;
   certWait?: {
     client: CloudflareClient;
     zoneId: string;
@@ -247,32 +262,20 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
 
   const accountId = await pickAccount();
 
-  const routingChoice = await prompts.select({
+  const useOwnDomain = await prompts.select({
     message: "Where should tunnel URLs live?",
     choices: [
       {
-        name: "<tunnel>.<account>.workers.dev/<tunnel-name>",
-        value: "workers-dev" as const,
+        name: "workers.dev domain  (free, instant)",
+        value: false,
         description:
-          'Free, instant. Caveat: tunneled apps run under a path prefix, which breaks apps that assume they live at "/" (absolute redirects, OAuth callbacks, cookies scoped to /).',
+          'Tunnel URLs look like <tunnel>.<account>.workers.dev/<tunnel-name>. Caveat: tunneled apps run under a path prefix, which breaks apps that assume they live at "/" (absolute redirects, OAuth callbacks, cookies scoped to /).',
       },
       {
-        name: "<tunnel>.your-domain.com  (pick an existing Cloudflare zone)",
-        value: "first-level" as const,
+        name: "Use my own domain  (pick an existing Cloudflare zone)",
+        value: true,
         description:
-          "Free, instant. Caveat: the route *.your-domain.com/* will catch every otherwise-unrouted subdomain on the zone — only use this on a domain you've set aside for tunnels.",
-      },
-      {
-        name: "<tunnel>.captun.your-domain.com  (pick an existing zone)",
-        value: "deep-wildcard" as const,
-        description:
-          "Requires Advanced Certificate Manager ($10/month per zone). Wizard orders the cert pack for you. You can change the captun.* subdomain prefix in the next step.",
-      },
-      {
-        name: "Use a dedicated domain (~$9/year to register)",
-        value: "dedicated" as const,
-        description:
-          "Best if you want clean naming without ACM. Requires registering a domain and adding it to Cloudflare first.",
+          "Tunnels get clean URLs on your own domain. Requires a domain already added to this Cloudflare account.",
       },
     ],
   });
@@ -281,26 +284,37 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
   let zone: string | undefined;
   let certWait: DeployWizardResult["certWait"];
 
-  if (routingChoice === "dedicated") {
-    throw new CliFriendlyError(
-      [
-        "To use a dedicated domain for tunnels:",
-        "  1. Register a domain (Cloudflare Registrar or any third-party registrar).",
-        "  2. Add it to this Cloudflare account and wait for the zone to become active.",
-        '  3. Re-run `captun deploy` and choose "<tunnel>.your-domain.com" for that new zone.',
-        "",
-        `See ${CUSTOM_DOMAINS_DOC_URL} for the full walkthrough.`,
-      ].join("\n"),
-    );
-  }
-
-  if (routingChoice === "first-level" || routingChoice === "deep-wildcard") {
+  if (useOwnDomain) {
     const { client, pickedZone } = await pickZoneFor(accountId);
     zone = pickedZone.name;
+
+    const subdomainChoice = await prompts.select({
+      message: `How should tunnels map to ${pickedZone.name}?`,
+      choices: [
+        {
+          name: `<tunnel>.${pickedZone.name}  (free, instant)`,
+          value: "first-level" as const,
+          description: `Caveat: the route *.${pickedZone.name}/* will catch every otherwise-unrouted subdomain on the zone — only use this on a domain you've set aside for tunnels.`,
+        },
+        {
+          name: `<tunnel>.captun.${pickedZone.name}  (configurable prefix)`,
+          value: "deep-wildcard" as const,
+          description:
+            "Requires Advanced Certificate Manager ($10/month per zone). Wizard orders the cert pack for you. (You can configure the captun.* subdomain.)",
+        },
+      ],
+    });
+
     let dnsRecordName: string;
-    if (routingChoice === "first-level") {
+    if (subdomainChoice === "first-level") {
       route = `*.${pickedZone.name}/*`;
       dnsRecordName = "*";
+      await confirmRoutingPlan({
+        accountId,
+        zoneName: pickedZone.name,
+        choice: subdomainChoice,
+        fullSubdomain: pickedZone.name,
+      });
     } else {
       const subdomain = await prompts.input({
         message: `Subdomain prefix for tunnels (URLs will look like <tunnel>.<prefix>.${pickedZone.name})`,
@@ -313,9 +327,15 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
       const fullSubdomain = `${subdomain}.${pickedZone.name}`;
       route = `*.${fullSubdomain}/*`;
       dnsRecordName = `*.${subdomain}`;
+      await confirmRoutingPlan({
+        accountId,
+        zoneName: pickedZone.name,
+        choice: subdomainChoice,
+        fullSubdomain,
+      });
       const acmEnabled = await withSpinner(
         `Checking Advanced Certificate Manager on ${pickedZone.name}`,
-        () => client.isAdvancedCertificateManagerEnabled(pickedZone.id).catch(() => false),
+        () => client.isAdvancedCertificateManagerEnabled(pickedZone.id),
       );
       if (!acmEnabled) {
         throw new CliFriendlyError(
@@ -381,7 +401,7 @@ async function runDeployWizard(input: DeployInput): Promise<DeployWizardResult> 
     default: input.secret ?? randomSecret(),
   });
 
-  return { name, route, zone, shards, certWait, secret };
+  return { name, route, zone, shards, certWait, secret, accountId };
 }
 
 async function pickAccount(): Promise<string> {
@@ -418,7 +438,16 @@ async function pickZoneFor(
   });
   if (zones.length === 0) {
     throw new CliFriendlyError(
-      `No active Cloudflare zones found on this account. Add a domain to Cloudflare and try again.`,
+      [
+        "No active Cloudflare zones found on this account.",
+        "",
+        "To use your own domain for tunnels:",
+        "  1. Register a domain (Cloudflare Registrar or any third-party registrar).",
+        "  2. Add it to this Cloudflare account and wait for the zone to become active.",
+        "  3. Re-run `captun deploy`.",
+        "",
+        `See ${CUSTOM_DOMAINS_DOC_URL} for the full walkthrough.`,
+      ].join("\n"),
     );
   }
   const zoneId = await prompts.select({
@@ -428,6 +457,53 @@ async function pickZoneFor(
   const pickedZone = zones.find((zone) => zone.id === zoneId);
   if (!pickedZone) throw new CliFriendlyError("Picked zone not found.");
   return { client, pickedZone };
+}
+
+type RoutingPlan = {
+  accountId: string;
+  zoneName: string;
+  choice: "first-level" | "deep-wildcard";
+  fullSubdomain: string;
+};
+
+async function confirmRoutingPlan(plan: RoutingPlan) {
+  const steps = [
+    `Add a proxied wildcard AAAA DNS record for *.${plan.fullSubdomain} (target 100::) on ${plan.zoneName}`,
+    `Deploy a Cloudflare Worker with the route *.${plan.fullSubdomain}/*`,
+  ];
+  if (plan.choice === "deep-wildcard") {
+    steps.unshift(
+      `Check Advanced Certificate Manager is enabled on ${plan.zoneName}`,
+      `Order an advanced certificate pack covering *.${plan.fullSubdomain} and ${plan.fullSubdomain}`,
+    );
+  }
+
+  const agentPrompt =
+    plan.choice === "first-level"
+      ? `Walk me through setting up *.${plan.zoneName} on Cloudflare so that all subdomains route to a single Cloudflare Worker. I want a proxied AAAA wildcard DNS record (target 100::) and a Worker route *.${plan.zoneName}/*. Universal SSL should cover the first-level wildcard — no ACM needed. Walk me through each dashboard step.`
+      : `Walk me through setting up *.${plan.fullSubdomain} on Cloudflare so that all subdomains under ${plan.fullSubdomain} route to a single Cloudflare Worker. This is a deep wildcard so I need Advanced Certificate Manager ($10/month) and an advanced certificate pack covering *.${plan.fullSubdomain} and ${plan.fullSubdomain}. I also need a proxied AAAA wildcard DNS record (target 100::) and a Worker route *.${plan.fullSubdomain}/*. Walk me through each dashboard step.`;
+
+  console.log("");
+  console.log(
+    `${color.dim("About to make these changes on")} ${color.cyan(plan.zoneName)}${color.dim(":")}`,
+  );
+  for (const step of steps) console.log(`  ${color.dim("-")} ${step}`);
+  console.log("");
+  console.log(
+    `  ${color.dim("Prefer to drive this yourself? Paste this into your favorite AI agent:")}`,
+  );
+  console.log(`  ${color.dim(">")} ${color.cyan(agentPrompt)}`);
+  console.log("");
+
+  const proceed = await prompts.confirm({
+    message: "Proceed with automatic setup?",
+    default: true,
+  });
+  if (!proceed) {
+    throw new CliFriendlyError(
+      "Cancelled. Re-run `captun deploy` once you've set things up manually (or with help from an agent).",
+    );
+  }
 }
 
 async function ensureWildcardDns(opts: {
@@ -672,6 +748,7 @@ async function deployWorker(input: {
   zone?: string;
   secret: string;
   shards?: number;
+  accountId?: string;
   dryRun?: boolean;
 }) {
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
@@ -687,6 +764,7 @@ async function deployWorker(input: {
     const worker = resolve(packageRoot, "dist/worker.js");
     baseConfig.main = worker;
     if (input.name) baseConfig.name = input.name;
+    if (input.accountId) baseConfig.account_id = input.accountId;
     if (input.route && input.zone) {
       const existingRoutes = Array.isArray(baseConfig.routes) ? baseConfig.routes : [];
       baseConfig.routes = [...existingRoutes, { pattern: input.route, zone_name: input.zone }];
@@ -926,10 +1004,10 @@ function tunnelUrl(baseUrl: string, name: string) {
   if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
 
   const url = new URL(baseUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) {
-    url.pathname = "/";
-  } else {
+  if (usesFolderRouting(url.hostname)) {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
+  } else {
+    url.pathname = "/";
   }
   return removeTrailingSlash(url.toString());
 }
