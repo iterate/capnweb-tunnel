@@ -8,6 +8,9 @@ type CaptunEnv = Env & {
   CUSTOM_HOSTNAME?: string;
 };
 
+/** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
+const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
+
 /**
  * A shard Durable Object owns many named tunnels.
  *
@@ -19,53 +22,33 @@ type CaptunEnv = Env & {
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
   private readonly tunnels = new Map<string, Fetcher & Disposable>();
 
-  async fetch(request: Request) {
-    // The top-level Worker normalizes incoming requests so the DO always sees
-    // `/<encoded-name><forwarded-path>`. Decode the name and recover the path.
-    const url = new URL(request.url);
-    const [encodedName, ...rest] = url.pathname.split("/").filter(Boolean);
-    if (!encodedName) return new Response("Missing tunnel name\n", { status: 404 });
-    const name = decodeURIComponent(encodedName);
-    const forwardedPath = `/${rest.join("/")}`;
+  // The DO's `fetch` only handles the WebSocket upgrade. Cloudflare's RPC
+  // transport doesn't carry a 101+webSocket Response, so the upgrade must go
+  // through `stub.fetch(request)`. Tunnel name rides in a header.
+  async fetch(request: Request): Promise<Response> {
+    const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
+    if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
-    let routedRequest = request;
-    if (url.pathname !== forwardedPath) {
-      url.pathname = forwardedPath;
-      routedRequest = new Request(url, request);
+    const expected = this.env.CAPTUN_SECRET ? `Bearer ${this.env.CAPTUN_SECRET}` : undefined;
+    if (expected && !timingSafeEqual(request.headers.get("authorization") ?? "", expected)) {
+      return new Response("Unauthorized\n", { status: 401 });
     }
 
-    if (forwardedPath === "/__captun-connect") {
-      const expectedAuthorization = this.env.CAPTUN_SECRET
-        ? `Bearer ${this.env.CAPTUN_SECRET}`
-        : undefined;
-      const actualAuthorization = new TextEncoder().encode(
-        routedRequest.headers.get("authorization") || "",
-      );
-      const encodedExpectedAuthorization = new TextEncoder().encode(expectedAuthorization || "");
-      if (
-        expectedAuthorization &&
-        (actualAuthorization.length !== encodedExpectedAuthorization.length ||
-          !crypto.subtle.timingSafeEqual(actualAuthorization, encodedExpectedAuthorization))
-      ) {
-        return new Response("Unauthorized\n", { status: 401 });
-      }
+    this.tunnels.get(tunnelName)?.[Symbol.dispose]();
+    const { response, tunnel } = acceptCaptunTunnel({
+      onDisconnect: () => {
+        if (this.tunnels.get(tunnelName) === tunnel) this.tunnels.delete(tunnelName);
+      },
+    });
+    this.tunnels.set(tunnelName, tunnel);
+    return response;
+  }
 
-      this.tunnels.get(name)?.[Symbol.dispose]();
-      const { response, tunnel } = acceptCaptunTunnel({
-        onDisconnect: () => {
-          if (this.tunnels.get(name) === tunnel) {
-            this.tunnels.delete(name);
-          }
-        },
-      });
-      this.tunnels.set(name, tunnel);
-      return response;
-    }
-
-    const tunnel = this.tunnels.get(name);
+  async forward(tunnelName: string, request: Request): Promise<Response> {
+    const tunnel = this.tunnels.get(tunnelName);
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
-      return await tunnel.fetch(routedRequest);
+      return await tunnel.fetch(request);
     } catch {
       return new Response("Tunnel fetch failed\n", { status: 502 });
     }
@@ -73,23 +56,30 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 }
 
 export default {
-  fetch(request: Request, env: CaptunEnv) {
-    const url = new URL(request.url);
-    const name = getTunnelNameFromUrl({ customHostname: env.CUSTOM_HOSTNAME, url: request.url });
-    if (!name) return new Response("Missing tunnel name\n", { status: 404 });
+  fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+    const tunnelName = getTunnelNameFromUrl({
+      customHostname: env.CUSTOM_HOSTNAME,
+      url: request.url,
+    });
+    if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
     // In folder mode the first path segment IS the tunnel name; strip it so the
-    // DO and the tunnel client see the real forwarded path. In subdomain mode
-    // the path is already the forwarded path.
+    // tunnel client sees the real forwarded path. In subdomain mode the path
+    // is already the forwarded path.
+    const url = new URL(request.url);
     const forwardedPath = env.CUSTOM_HOSTNAME ? url.pathname : stripFirstPathSegment(url.pathname);
+    url.pathname = forwardedPath;
 
-    // Pass through to the DO using the `/<encoded-name><path>` convention so
-    // the DO knows which tunnel to dispatch to.
-    url.pathname = `/${encodeURIComponent(name)}${forwardedPath}`;
-    const forwardedRequest = new Request(url, request);
+    const shard = env.CaptunServerShard.getByName(
+      captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
+    );
 
-    const shard = captunShardName(name, Number(env.SHARD_COUNT || 1));
-    return env.CaptunServerShard.getByName(shard).fetch(forwardedRequest);
+    if (forwardedPath === "/__captun-connect") {
+      const headers = new Headers(request.headers);
+      headers.set(TUNNEL_NAME_HEADER, tunnelName);
+      return shard.fetch(new Request(url, { ...request, headers }));
+    }
+    return shard.forward(tunnelName, new Request(url, request));
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
@@ -97,4 +87,10 @@ export default {
 function stripFirstPathSegment(pathname: string): string {
   const match = pathname.match(/^\/[^/]+(\/.*)?$/);
   return match?.[1] ?? "/";
+}
+
+function timingSafeEqual(actual: string, expected: string): boolean {
+  const a = new TextEncoder().encode(actual);
+  const b = new TextEncoder().encode(expected);
+  return a.length === b.length && crypto.subtle.timingSafeEqual(a, b);
 }
