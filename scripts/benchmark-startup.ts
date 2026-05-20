@@ -196,11 +196,7 @@ function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string):
       processOptions,
     );
   }
-  return spawn(
-    "ngrok",
-    ["http", originUrl, "--log=stdout", "--log-format=json"],
-    processOptions,
-  );
+  return    spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], processOptions);
 }
 
 async function waitForDns(url: URL, started: number) {
@@ -277,11 +273,15 @@ function stop(child: ChildProcess) {
   if (process.platform !== "win32" && child.pid) {
     try {
       process.kill(-child.pid, "SIGTERM");
-    } catch {}
+    } catch {
+      // meh
+    }
     setTimeout(() => {
       try {
         process.kill(-child.pid!, "SIGKILL");
-      } catch {}
+      } catch {
+        // meh
+      }
     }, 2_000).unref();
     return;
   }
