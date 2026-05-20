@@ -62,6 +62,9 @@ export async function runDeployWizard(
       zone: input.zone,
       shards: input.shards,
       secret: input.secret ?? randomSecret(),
+      // Without this, non-interactive `--route` deploys fall through to folder
+      // routing while serverUrlFromRoute still hands out subdomain URLs.
+      customHostname: input.route ? customHostnameFromRoute(input.route) : undefined,
     };
   }
 
@@ -541,7 +544,9 @@ export async function deployWorker(
     args.push("--config", deployConfig, "--secrets-file", secretsFile, "--keep-vars");
     if (input.route && !input.zone) args.push("--route", input.route);
     if (input.shards) args.push("--var", `SHARD_COUNT:${input.shards}`);
-    if (input.customHostname) args.push("--var", `CUSTOM_HOSTNAME:${input.customHostname}`);
+    // Always set CUSTOM_HOSTNAME (empty string = folder routing) so `--keep-vars`
+    // doesn't leave a stale value behind when switching modes on redeploy.
+    args.push("--var", `CUSTOM_HOSTNAME:${input.customHostname ?? ""}`);
     if (input.dryRun) args.push("--dry-run");
 
     if (!input.dryRun) await assertWranglerAuthenticated({ cwd: packageRoot });
@@ -594,6 +599,13 @@ function serverUrlFromRoute(route: string) {
 
   const path = pathParts.join("/").replace(/\*.*$/, "").replace(/\/$/, "");
   return `https://${host}${path ? `/${path}` : ""}`;
+}
+
+/** `*.captun.example.com/*` -> `captun.example.com`; `*.example.com/*` -> `example.com`. */
+function customHostnameFromRoute(route: string): string | undefined {
+  const host = route.replace(/^https?:\/\//, "").split("/")[0];
+  if (!host?.startsWith("*.")) return undefined;
+  return host.slice(2);
 }
 
 function serverUrlFromWranglerOutput(output: string) {

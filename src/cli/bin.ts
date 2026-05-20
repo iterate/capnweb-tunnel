@@ -553,9 +553,12 @@ function makeTunnelFetcher(tunnel: ResolvedTunnel, advertisedUrl: { current: str
 function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
   const hostname = new URL(tunnel.tunnel).hostname;
   const message = cause instanceof Error ? cause.message : String(cause);
-  return new CliFriendlyError(
-    [
-      `Could not connect tunnel to ${color.cyan(tunnel.tunnel)} (${message}).`,
+  const lines = [`Could not connect tunnel to ${color.cyan(tunnel.tunnel)} (${message}).`];
+  if (!hostname.endsWith(".workers.dev")) {
+    // Dropping the leftmost label gives the zone-side wildcard parent —
+    // `tunnel.mispwoso.com` -> `mispwoso.com`, `t.captun.example.com` -> `captun.example.com`.
+    const wildcardParent = hostname.split(".").slice(1).join(".");
+    lines.push(
       ``,
       `Likely causes:`,
       `  - DNS for ${color.cyan(hostname)} hasn't propagated yet — wait 30-60 seconds and re-run.`,
@@ -563,9 +566,10 @@ function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
       `    Add an AAAA record with target ${color.cyan("100::")} and proxy enabled.`,
       `  - Universal SSL hasn't issued a certificate covering ${color.cyan(hostname)} yet.`,
       `    Fresh zones can take ~15 minutes; check the SSL/TLS → Edge Certificates dashboard.`,
-      `  - The Worker route ${color.cyan(`*.${hostname.split(".").slice(-2).join(".")}/*`)} is not set up — check Workers → Routes.`,
-    ].join("\n"),
-  );
+      `  - The Worker route ${color.cyan(`*.${wildcardParent}/*`)} is not set up — check Workers → Routes.`,
+    );
+  }
+  return new CliFriendlyError(lines.join("\n"));
 }
 
 function sleep(ms: number) {

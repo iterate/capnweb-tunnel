@@ -38,8 +38,13 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
     const expected = this.env.CAPTUN_SECRET ? `Bearer ${this.env.CAPTUN_SECRET}` : undefined;
-    if (expected && !timingSafeEqual(request.headers.get("authorization") ?? "", expected)) {
-      return new Response("Unauthorized\n", { status: 401 });
+    if (expected) {
+      // Constant-time comparison to avoid leaking the secret via timing.
+      const actual = new TextEncoder().encode(request.headers.get("authorization") ?? "");
+      const want = new TextEncoder().encode(expected);
+      if (actual.length !== want.length || !crypto.subtle.timingSafeEqual(actual, want)) {
+        return new Response("Unauthorized\n", { status: 401 });
+      }
     }
 
     this.tunnels.get(tunnelName)?.[Symbol.dispose]();
@@ -75,7 +80,9 @@ export default {
     // tunnel client sees the real forwarded path. In subdomain mode the path
     // is already the forwarded path.
     const url = new URL(request.url);
-    const forwardedPath = env.CUSTOM_HOSTNAME ? url.pathname : stripFirstPathSegment(url.pathname);
+    const forwardedPath = env.CUSTOM_HOSTNAME
+      ? url.pathname
+      : (url.pathname.match(/^\/[^/]+(\/.*)?$/)?.[1] ?? "/");
     url.pathname = forwardedPath;
 
     const shard = env.CaptunServerShard.getByName(
@@ -102,15 +109,3 @@ export default {
     return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
-
-/** `/foo/bar/baz` -> `/bar/baz`; `/foo` -> `/`. */
-function stripFirstPathSegment(pathname: string): string {
-  const match = pathname.match(/^\/[^/]+(\/.*)?$/);
-  return match?.[1] ?? "/";
-}
-
-function timingSafeEqual(actual: string, expected: string): boolean {
-  const a = new TextEncoder().encode(actual);
-  const b = new TextEncoder().encode(expected);
-  return a.length === b.length && crypto.subtle.timingSafeEqual(a, b);
-}
