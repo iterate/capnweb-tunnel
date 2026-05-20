@@ -14,8 +14,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: corepack enable
       - run: pnpm install
-      - run: pnpm run lint --fix
-      - run: pnpm run format
+      - run: pnpm format
+      - run: pnpm lint --fix
       - run: git diff
       - uses: autofix-ci/action@551dded8c6cc8a1054039c8bc0b8b48c51dfc6ef
         if: always()
