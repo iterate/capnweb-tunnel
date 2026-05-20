@@ -19,7 +19,7 @@ type CaptunEnv = Env & {
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
   private readonly tunnels = new Map<string, CaptunServerTunnel>();
 
-  fetch(request: Request) {
+  async fetch(request: Request) {
     const route = captunRouteParts("localhost", new URL(request.url).pathname);
     if (!route) return new Response("Missing tunnel name\n", { status: 404 });
 
@@ -60,7 +60,11 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
     const tunnel = this.tunnels.get(route.name);
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
-    return tunnel.fetch(routedRequest);
+    try {
+      return await tunnel.fetch(routedRequest);
+    } catch {
+      return new Response("Tunnel fetch failed\n", { status: 502 });
+    }
   }
 }
 

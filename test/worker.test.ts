@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/client.js";
+import { captunHealthResponse, isCaptunHealthRequest } from "../src/tunnel-health.js";
 import { captunRouteParts, captunShardName } from "../src/worker-routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
@@ -17,9 +18,9 @@ const routeCases: Array<
   ["captun.account.workers.dev", "/", undefined, undefined],
   ["localhost", "/my-test/hello", "my-test", "/hello"],
   ["my-tunnels.com", "/my-test/hello", "my-test", "/hello"],
-  ["tunnels.example.com", "/my-test/hello", "my-test", "/hello"],
-  ["tunnels.example.com", "/my-test/__captun-connect", "my-test", "/__captun-connect"],
-  ["my-test.tunnels.example.com", "/hello", "my-test", "/hello"],
+  ["captun.example.com", "/my-test/hello", "my-test", "/hello"],
+  ["captun.example.com", "/my-test/__captun-connect", "my-test", "/__captun-connect"],
+  ["my-test.captun.example.com", "/hello", "my-test", "/hello"],
   ["my-test.my-tunnels.com", "/hello", "my-test", "/hello"],
   ["my-test.my-tunnels.com", "/__captun-connect", "my-test", "/__captun-connect"],
   ["my-test.mysubdomain.mydomain.com", "/hello", "my-test", "/hello"],
@@ -67,6 +68,37 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
   });
 });
 
+test("Captun Worker verifies health through a connected tunnel client", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+  using _tunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: (request) => {
+      if (isCaptunHealthRequest(request)) return captunHealthResponse();
+      return new Response("unexpected\n", { status: 500 });
+    },
+  });
+
+  const response = await fetch(`${fixture.origin}/demo/__captun/health`);
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true });
+});
+
+test("Captun Worker returns 502 when the tunnel client fetch throws", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+  using _tunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: () => {
+      throw new Error("local target unavailable");
+    },
+  });
+
+  const response = await fetch(`${fixture.origin}/demo/hello`);
+
+  expect(response.status).toBe(502);
+  expect(await response.text()).toBe("Tunnel fetch failed\n");
+});
+
 test("Captun Worker returns 503 when a named tunnel has no connected client", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
@@ -79,7 +111,7 @@ test("Captun Worker returns 503 when a named tunnel has no connected client", as
 test("Captun Worker routes subdomain tunnel requests", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
-  const response = await fixture.worker.fetch("http://demo.tunnels.example.com/hello");
+  const response = await fixture.worker.fetch("http://demo.captun.example.com/hello");
 
   expect(response.status).toBe(503);
   expect(await response.text()).toBe("No tunnel client connected\n");

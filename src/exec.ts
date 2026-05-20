@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 
 export type ExecOptions = {
   cwd: string;
+  silent?: boolean;
+  tty?: boolean;
 };
 
 export type ExecResult = {
@@ -33,9 +35,10 @@ export class ExecError extends Error {
 }
 
 export function exec(command: string, args: string[], options: ExecOptions) {
-  const child = spawn(command, args, {
+  const spawnConfig = options.tty && process.stdin.isTTY ? pseudoTtyCommand(command, args) : { command, args };
+  const child = spawn(spawnConfig.command, spawnConfig.args, {
     cwd: options.cwd,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [options.tty ? "inherit" : "ignore", "pipe", "pipe"],
   });
 
   let stdout = "";
@@ -43,17 +46,17 @@ export function exec(command: string, args: string[], options: ExecOptions) {
 
   child.stdout?.on("data", (chunk: Buffer) => {
     stdout += chunk;
-    process.stdout.write(chunk);
+    if (!options.silent) process.stdout.write(chunk);
   });
   child.stderr?.on("data", (chunk: Buffer) => {
     stderr += chunk;
-    process.stderr.write(chunk);
+    if (!options.silent) process.stderr.write(chunk);
   });
 
   return new Promise<ExecResult>((resolvePromise, reject) => {
     child.on("error", (error) => {
       if ("code" in error && error.code === "ENOENT") {
-        reject(new CommandNotFoundError(command));
+        reject(new CommandNotFoundError(spawnConfig.command));
         return;
       }
       reject(error);
@@ -61,8 +64,8 @@ export function exec(command: string, args: string[], options: ExecOptions) {
     child.on("close", (code) => {
       const exitCode = code === null ? 1 : code;
       const result = {
-        command,
-        args,
+        command: spawnConfig.command,
+        args: spawnConfig.args,
         cwd: options.cwd,
         stdout,
         stderr,
@@ -76,4 +79,19 @@ export function exec(command: string, args: string[], options: ExecOptions) {
       reject(new ExecError(result));
     });
   });
+}
+
+function pseudoTtyCommand(command: string, args: string[]) {
+  if (process.platform === "win32") return { command, args };
+  if (process.platform === "darwin" || process.platform === "freebsd") {
+    return { command: "script", args: ["-q", "/dev/null", command, ...args] };
+  }
+  return {
+    command: "script",
+    args: ["-q", "-e", "-c", [command, ...args].map(shellQuote).join(" "), "/dev/null"],
+  };
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

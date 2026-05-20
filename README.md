@@ -6,6 +6,8 @@ Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare T
 
 First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
 
+`deploy` expects Cloudflare auth to already be available. Run `npx wrangler login` once, or set `CLOUDFLARE_API_TOKEN` for CI and other non-interactive shells.
+
 ```bash
 npx captun deploy
 ```
@@ -120,7 +122,7 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.toml](./wrangler.toml).
+The core client/server pieces are small TypeScript modules around [Cap'n Web](https://github.com/cloudflare/capnweb): [src/client.ts](./src/client.ts), [src/server.ts](./src/server.ts), and [src/types.ts](./src/types.ts). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
 
 ## Advanced CLI Usage
 
@@ -138,15 +140,53 @@ npx captun 3000 --name my-very-serious-tunnel-name
 
 By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my-tunnel", and becomes a corresponding HTTP request with pathname `/foo/bar` when it reaches your client.
 
-### Custom hostnames
+### Custom domains
 
-Some proxy targets behave better with a naked hostname than with a path prefix. In that case, route `*.my-tunnels.com/*` to the Worker and call `https://demo.my-tunnels.com/`; buying a throwaway domain like `my-tunnels.com`. The built-in router uses folder routing on `workers.dev`, `tunnels.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`.
+Running `npx captun deploy` interactively walks you through where the tunnel URLs should live. There are four options, and which one is best for you depends on the kind of apps you want to tunnel to and whether you already have a domain on Cloudflare.
+
+The built-in router uses folder routing on `workers.dev`, `captun.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`.
+
+#### 1. `<tunnel>.<account>.workers.dev/<tunnel-name>` (default)
+
+Free, instant, no DNS setup. The tunnel URLs look like `https://captun.<account>.workers.dev/demo` and your app runs under the `/demo` path prefix.
+
+**Pick this if:** you want the fastest possible setup, and the apps you're tunneling to are happy under a path prefix.
+
+**Caveat:** apps that assume they live at `/` will misbehave — absolute redirects to `/login`, OAuth callbacks hardcoded to a root URL, cookies scoped to `Path=/`, and similar. If you hit any of those, pick one of the options below.
+
+#### 2. `<tunnel>.your-domain.com` (free wildcard on an existing zone)
+
+Free, instant. Tunnel URLs become `https://demo.your-domain.com/` — apps see a naked hostname, so path-prefix issues from option 1 disappear. Universal SSL covers first-level subdomains so no cert work is needed.
 
 ```bash
-npx captun deploy --route '*.tunnels.example.com/*' --zone example.com
+npx captun deploy --route '*.your-domain.com/*' --zone your-domain.com
 ```
 
-If you prefer `*.tunnels.example.com/*`, Cloudflare's [Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) covers the apex and first-level subdomains, so deeper wildcard hostnames normally need [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) or another certificate option.
+**Pick this if:** you have a Cloudflare-managed domain you can dedicate to tunnels.
+
+**Caveat:** the worker route `*.your-domain.com/*` will catch every otherwise-unrouted subdomain on this zone, which means you should only use this on a domain you've actually set aside for tunnels. Don't point it at your main production domain.
+
+#### 3. `<tunnel>.captun.your-domain.com` (requires Advanced Certificate Manager)
+
+Tunnels are namespaced under `captun.` on your existing domain (or whatever subdomain prefix you pick in the wizard), so the rest of the zone is unaffected.
+
+```bash
+npx captun deploy --route '*.captun.your-domain.com/*' --zone your-domain.com
+```
+
+[Universal SSL](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/) only covers the apex and first-level subdomains, so `*.captun.your-domain.com` (a second-level wildcard) needs a separately-ordered certificate. The wizard handles this by ordering an [Advanced Certificate Manager](https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/) certificate pack for `*.captun.your-domain.com` + `captun.your-domain.com` and waiting for it to become active.
+
+**Pick this if:** you want clean naming on an existing domain without the foot-gun of option 2.
+
+**Caveat:** ACM is $10/month per zone. The wizard checks whether ACM is already enabled and bails with a link to the dashboard if it isn't — there's no way to subscribe to ACM via API.
+
+#### 4. Dedicated tunnel domain
+
+If you don't have a suitable Cloudflare-managed domain, registering a throwaway one (e.g. `my-tunnels.com`) and using it with option 2 ends up cheaper than enabling ACM for option 3 (~$9/year versus $10/month).
+
+1. Register a domain via [Cloudflare Registrar](https://developers.cloudflare.com/registrar/) or any third-party registrar.
+2. [Add the domain to your Cloudflare account](https://developers.cloudflare.com/dns/zone-setups/full-setup/) and wait for the zone to become active.
+3. Re-run `captun deploy` and pick option 2 for the new zone.
 
 ### Sharding
 
@@ -207,7 +247,7 @@ See [examples/weather-reporter](./examples/weather-reporter) for a small workspa
 
 ## Development
 
-The Worker needs the `CaptunServerShard` Durable Object binding and migration from [wrangler.toml](./wrangler.toml). For local development:
+The Worker needs the `CaptunServerShard` Durable Object binding and migration from [wrangler.jsonc](./wrangler.jsonc). For local development:
 
 ```bash
 pnpm install

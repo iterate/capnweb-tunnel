@@ -29,7 +29,7 @@ function usesFolderRouting(hostname: string) {
     hostname === "localhost" ||
     /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
     hostname.endsWith(".workers.dev") ||
-    hostname.startsWith("tunnels.") ||
+    hostname.startsWith("captun.") ||
     hostname.split(".").length < 3
   );
 }

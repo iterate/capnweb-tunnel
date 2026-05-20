@@ -13,7 +13,7 @@
   "files": [
     "dist",
     "README.md",
-    "wrangler.toml"
+    "wrangler.jsonc"
   ],
   "type": "module",
   "exports": {
