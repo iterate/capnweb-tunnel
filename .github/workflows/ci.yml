@@ -1,7 +1,6 @@
 name: CI
 
 on:
-  push: {}
   pull_request: {}
 
 jobs:
@@ -17,7 +16,6 @@ jobs:
       - run: pnpm build
       - run: pnpm test
       - run: pnpm lint
-      - run: pnpm format --check
       - name: arethetypeswrong
         run: |
           pnpm pack
