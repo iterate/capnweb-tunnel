@@ -53,6 +53,34 @@ export function getTunnelNameFromUrl({
   return decoded && isValidTunnelName(decoded) ? decoded : null;
 }
 
+/**
+ * Inverse of `getTunnelNameFromUrl`: builds the canonical public URL for a
+ * tunnel. `reqUrl` is any URL that hits the same Worker — we only use its
+ * protocol (and, in folder mode, its host).
+ *
+ * The Worker calls this and advertises the result back to the tunnel client
+ * via the `x-captun-tunnel-url` header on each forwarded request, so the CLI
+ * doesn't have to know the routing convention to print the right URL.
+ */
+export function getTunnelUrl({
+  reqUrl,
+  customHostname,
+  tunnelName,
+}: {
+  reqUrl: string;
+  customHostname?: string;
+  tunnelName: string;
+}): string {
+  const parsed = new URL(reqUrl);
+  if (customHostname) {
+    return `${parsed.protocol}//${tunnelName}.${customHostname}`;
+  }
+  return `${parsed.protocol}//${parsed.host}/${encodeURIComponent(tunnelName)}`;
+}
+
+/** Header used by the Worker to advertise a tunnel's canonical URL to its client. */
+export const TUNNEL_URL_HEADER = "x-captun-tunnel-url";
+
 /** Reserved path used by tunnel clients to open the WebSocket; not a tunnel name. */
 const CONNECT_PATH_SEGMENT = "__captun-connect";
 

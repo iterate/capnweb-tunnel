@@ -1,7 +1,12 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
-import { captunShardName, getTunnelNameFromUrl } from "../src/routing.js";
+import {
+  captunShardName,
+  getTunnelNameFromUrl,
+  getTunnelUrl,
+  TUNNEL_URL_HEADER,
+} from "../src/routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
 const tunnelNameCases: Array<
@@ -46,6 +51,58 @@ test.each(tunnelNameCases)(
   },
 );
 
+const tunnelUrlCases: Array<
+  [reqUrl: string, customHostname: string | undefined, tunnelName: string, expected: string]
+> = [
+  // Folder mode: protocol + host from reqUrl, name appended as a path segment.
+  [
+    "https://captun.acct.workers.dev/banana/__captun-connect",
+    undefined,
+    "banana",
+    "https://captun.acct.workers.dev/banana",
+  ],
+  ["http://localhost:8787/x/y", undefined, "my-test", "http://localhost:8787/my-test"],
+  ["http://localhost:8787/x/y", undefined, "my test", "http://localhost:8787/my%20test"],
+  // Subdomain mode: customHostname dictates the host; reqUrl only supplies the protocol.
+  [
+    "https://banana.tunnels.mydomain.com/x",
+    "tunnels.mydomain.com",
+    "banana",
+    "https://banana.tunnels.mydomain.com",
+  ],
+  // Nested wildcard: canonical pick is always `<name>.<customHostname>`, dropping any deeper labels.
+  [
+    "https://some.banana.tunnels.mydomain.com/x",
+    "tunnels.mydomain.com",
+    "banana",
+    "https://banana.tunnels.mydomain.com",
+  ],
+  [
+    "https://some.banana.tunnels.mydomain.com/x",
+    "banana.tunnels.mydomain.com",
+    "some",
+    "https://some.banana.tunnels.mydomain.com",
+  ],
+];
+
+test.each(tunnelUrlCases)(
+  "getTunnelUrl(reqUrl=%s, customHostname=%s, tunnelName=%s) -> %s",
+  (reqUrl, customHostname, tunnelName, expected) => {
+    expect(getTunnelUrl({ reqUrl, customHostname, tunnelName })).toBe(expected);
+  },
+);
+
+test("getTunnelUrl and getTunnelNameFromUrl round-trip", () => {
+  for (const [, customHostname, tunnelName] of tunnelUrlCases) {
+    const url = getTunnelUrl({
+      reqUrl: "https://placeholder.example.com/",
+      customHostname,
+      tunnelName,
+    });
+    expect(getTunnelNameFromUrl({ url: `${url}/some/path`, customHostname })).toBe(tunnelName);
+  }
+});
+
 test("Captun Worker uses one warm shard by default", () => {
   expect(captunShardName("alpha", 1)).toBe("tunnel-shard-0");
   expect(captunShardName("beta", 0)).toBe("tunnel-shard-0");
@@ -64,6 +121,7 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
       const url = new URL(request.url);
       return Response.json({
         path: url.pathname,
+        tunnelUrl: request.headers.get(TUNNEL_URL_HEADER),
         body: `You said: ${await request.text()}`,
       });
     },
@@ -76,6 +134,7 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
 
   expect(await response.json()).toMatchObject({
     path: "/hello",
+    tunnelUrl: `${fixture.origin}/demo`,
     body: "You said: hello through miniflare",
   });
 });

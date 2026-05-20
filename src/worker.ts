@@ -1,6 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel, type Fetcher } from "./index.js";
-import { captunShardName, getTunnelNameFromUrl } from "./routing.js";
+import {
+  captunShardName,
+  getTunnelNameFromUrl,
+  getTunnelUrl,
+  TUNNEL_URL_HEADER,
+} from "./routing.js";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
@@ -77,12 +82,24 @@ export default {
       captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
     );
 
+    const forwarded = new Request(url, request);
+
     if (forwardedPath === "/__captun-connect") {
-      const headers = new Headers(request.headers);
+      const headers = new Headers(forwarded.headers);
       headers.set(TUNNEL_NAME_HEADER, tunnelName);
-      return shard.fetch(new Request(url, { ...request, headers }));
+      return shard.fetch(new Request(forwarded, { headers }));
     }
-    return shard.forward(tunnelName, new Request(url, request));
+
+    // Advertise the canonical tunnel URL back to the tunnel client. The CLI
+    // reads this so it doesn't have to mirror the Worker's routing convention.
+    const tunnelUrl = getTunnelUrl({
+      reqUrl: request.url,
+      customHostname: env.CUSTOM_HOSTNAME,
+      tunnelName,
+    });
+    const headers = new Headers(forwarded.headers);
+    headers.set(TUNNEL_URL_HEADER, tunnelUrl);
+    return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
 

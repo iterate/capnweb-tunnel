@@ -15,6 +15,7 @@ import { CliFriendlyError } from "./cli-error.js";
 import { createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
+import { TUNNEL_URL_HEADER } from "../routing.js";
 import {
   captunHealthResponse,
   confirmTunnelHealth,
@@ -461,13 +462,17 @@ async function runTunnelSession(
   const startedAt = performance.now();
   await assertLocalTargetAcceptingConnections(tunnel.target);
 
-  const session = await connectTunnelWithRetry(tunnel, opts.retries ?? 0);
+  // Filled in from the `x-captun-tunnel-url` header on the first forwarded
+  // request — the Worker is the source of truth for the public URL.
+  const advertisedUrl: { current: string | undefined } = { current: undefined };
+  const session = await connectTunnelWithRetry(tunnel, opts.retries ?? 0, advertisedUrl);
   try {
     await confirmTunnelHealth(tunnel.tunnel);
+    const tunnelUrlForDisplay = advertisedUrl.current ?? tunnel.tunnel;
     console.log(
       `\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`,
     );
-    console.log(color.cyan(tunnel.tunnel));
+    console.log(color.cyan(tunnelUrlForDisplay));
     console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
     console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
     opts.onReady?.();
@@ -477,10 +482,14 @@ async function runTunnelSession(
   }
 }
 
-async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
+async function connectTunnelWithRetry(
+  tunnel: ResolvedTunnel,
+  retries: number,
+  advertisedUrl: { current: string | undefined },
+) {
   const url = `${tunnel.tunnel}/__captun-connect`;
   const headers = tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined;
-  const fetcher = makeTunnelFetcher(tunnel);
+  const fetcher = makeTunnelFetcher(tunnel, advertisedUrl);
 
   const maxAttempts = retries + 1;
   let delay = 2000;
@@ -502,8 +511,11 @@ async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
   throw new Error("unreachable");
 }
 
-function makeTunnelFetcher(tunnel: ResolvedTunnel) {
+function makeTunnelFetcher(tunnel: ResolvedTunnel, advertisedUrl: { current: string | undefined }) {
   return async (request: Request) => {
+    const advertised = request.headers.get(TUNNEL_URL_HEADER);
+    if (advertised) advertisedUrl.current = advertised;
+
     if (isCaptunHealthRequest(request)) return captunHealthResponse();
 
     const url = new URL(request.url);
