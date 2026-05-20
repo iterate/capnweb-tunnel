@@ -196,7 +196,7 @@ function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string):
       processOptions,
     );
   }
-  return    spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], processOptions);
+  return spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], processOptions);
 }
 
 async function waitForDns(url: URL, started: number) {
