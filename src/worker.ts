@@ -22,9 +22,12 @@ const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
   private readonly tunnels = new Map<string, Fetcher & Disposable>();
 
-  // The DO's `fetch` only handles the WebSocket upgrade. Cloudflare's RPC
-  // transport doesn't carry a 101+webSocket Response, so the upgrade must go
-  // through `stub.fetch(request)`. Tunnel name rides in a header.
+  // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
+  // is special-cased by the Workers runtime around `stub.fetch(...)` — a 101
+  // Response with an attached `webSocket` does NOT survive a DO RPC method
+  // return (verified empirically: the client side errors with "WebSocket
+  // connection failed"). So connect goes through fetch with the tunnel name
+  // in a header; everything else uses the `forward` RPC below.
   async fetch(request: Request): Promise<Response> {
     const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
