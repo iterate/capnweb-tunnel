@@ -1,5 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from "./types.js";
+import type { Fetcher } from "./types.js";
 
 /** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
@@ -11,10 +11,16 @@ import type { CaptunClientCreateTunnelOptions, CaptunClientRemoteFetcher } from 
  * https://github.com/cloudflare/capnweb#websocket-client
  */
 export async function createCaptunTunnel(
-  options: CaptunClientCreateTunnelOptions,
+  options: Fetcher & {
+    url: string | URL;
+    headers?: Record<string, string>;
+  },
 ): Promise<Disposable> {
   const socket = createWebSocket(options);
-  const session = newWebSocketRpcSession(socket, new LocalFetcher(options));
+  // tunnelTargetFetcher is the "main object" that comes out on the other side in server.ts 
+  // as a capnweb rpc stub that the server can just call fetch on
+  const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
+  const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
   await waitUntilOpen(socket);
 
   return {
@@ -22,20 +28,20 @@ export async function createCaptunTunnel(
   };
 }
 
-class LocalFetcher extends RpcTarget implements CaptunClientRemoteFetcher {
-  private options: CaptunClientCreateTunnelOptions;
+class TunnelTargetFetcher extends RpcTarget implements Fetcher {
+  private fetcher: Fetcher;
 
-  constructor(options: CaptunClientCreateTunnelOptions) {
+  constructor(fetcher: Fetcher) {
     super();
-    this.options = options;
+    this.fetcher = fetcher;
   }
 
   fetch(request: Request) {
-    return this.options.fetch(request);
+    return this.fetcher.fetch(request);
   }
 }
 
-function createWebSocket(options: CaptunClientCreateTunnelOptions) {
+function createWebSocket(options: { url: string | URL; headers?: Record<string, string> }) {
   const connectUrl = new URL(options.url);
   connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
   // TypeScript sees the standard DOM/Workers constructor here, where the second

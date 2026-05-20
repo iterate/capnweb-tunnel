@@ -1,26 +1,11 @@
-import type { RpcTarget } from "capnweb";
-
-/** Something that can handle a Fetch API request. */
+/** Fetch is all you need!
+ * 
+ * Cap'n Web let us pass this fetcher from the 
+ * tunnel client to the server via fetch (via websockets)
+ * Then the server can just fetch into the client like normal.
+ * This is all possible because Cap'n Web can pass Request and Response object
+ * across the websocket RPC boundary transparently
+ **/
 export interface Fetcher {
   fetch(request: Request): Response | Promise<Response>;
 }
-
-/** Options for opening a local process to public Captun tunnel connection. */
-export interface CaptunClientCreateTunnelOptions extends Fetcher {
-  /** Exact WebSocket-capable connect URL, including the app's connect route. */
-  url: string | URL;
-  /** Headers sent on the WebSocket upgrade request, for auth or routing metadata. */
-  headers?: Record<string, string>;
-}
-
-/** Client-side fetcher exposed to the server over the WebSocket RPC session. */
-export interface CaptunClientRemoteFetcher extends Fetcher, RpcTarget {}
-
-/** Options for accepting a client WebSocket as a server-side tunnel. */
-export interface CaptunServerAcceptTunnelOptions {
-  /** Called when the underlying RPC connection breaks. */
-  onDisconnect?: () => void;
-}
-
-/** Server-side handle for forwarding HTTP requests through an accepted tunnel. */
-export interface CaptunServerTunnel extends Fetcher, Disposable {}

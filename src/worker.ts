@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel } from "./server.js";
-import type { CaptunServerTunnel } from "./types.js";
+import type { Fetcher } from "./types.js";
 import { captunRouteParts, captunShardName } from "./worker-routing.js";
 
 type CaptunEnv = Env & {
@@ -17,7 +17,7 @@ type CaptunEnv = Env & {
  * aggregate throughput for lots of concurrent large responses.
  */
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
-  private readonly tunnels = new Map<string, CaptunServerTunnel>();
+  private readonly tunnels = new Map<string, Fetcher & Disposable>();
 
   async fetch(request: Request) {
     const route = captunRouteParts("localhost", new URL(request.url).pathname);
