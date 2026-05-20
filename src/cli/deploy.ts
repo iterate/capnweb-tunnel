@@ -16,7 +16,6 @@ import {
   type CloudflareClient,
   type CloudflareZone,
 } from "./cloudflare-api.js";
-import type { RoutingMode } from "../routing.js";
 import {
   assertWranglerAuthenticated,
   getAuthToken,
@@ -43,7 +42,7 @@ export type DeployWizardResult = {
   shards?: number;
   secret: string;
   accountId?: string;
-  routingMode?: RoutingMode;
+  customHostname?: string;
   certWait?: {
     client: CloudflareClient;
     zoneId: string;
@@ -93,7 +92,7 @@ export async function runDeployWizard(
   let route: string | undefined;
   let zone: string | undefined;
   let certWait: DeployWizardResult["certWait"];
-  let routingMode: RoutingMode = "workers-dev";
+  let customHostname: string | undefined;
 
   if (useOwnDomain) {
     const { client, pickedZone } = await pickZoneFor(accountId, options.packageRoot);
@@ -116,11 +115,11 @@ export async function runDeployWizard(
       ],
     });
 
-    routingMode = subdomainChoice;
     let dnsRecordName: string;
     if (subdomainChoice === "first-level") {
       route = `*.${pickedZone.name}/*`;
       dnsRecordName = "*";
+      customHostname = pickedZone.name;
       await confirmRoutingPlan({
         accountId,
         zoneName: pickedZone.name,
@@ -139,6 +138,7 @@ export async function runDeployWizard(
       const fullSubdomain = `${subdomain}.${pickedZone.name}`;
       route = `*.${fullSubdomain}/*`;
       dnsRecordName = `*.${subdomain}`;
+      customHostname = fullSubdomain;
       await confirmRoutingPlan({
         accountId,
         zoneName: pickedZone.name,
@@ -213,7 +213,7 @@ export async function runDeployWizard(
     default: input.secret ?? randomSecret(),
   });
 
-  return { name, route, zone, shards, certWait, secret, accountId, routingMode };
+  return { name, route, zone, shards, certWait, secret, accountId, customHostname };
 }
 
 async function pickAccount(packageRoot: string): Promise<string> {
@@ -509,7 +509,7 @@ export async function deployWorker(
     secret: string;
     shards?: number;
     accountId?: string;
-    routingMode?: RoutingMode;
+    customHostname?: string;
     dryRun?: boolean;
   },
   options: { packageRoot: string },
@@ -540,8 +540,8 @@ export async function deployWorker(
     const args = ["--cwd", packageRoot, "deploy"];
     args.push("--config", deployConfig, "--secrets-file", secretsFile, "--keep-vars");
     if (input.route && !input.zone) args.push("--route", input.route);
-    if (input.shards) args.push("--var", `CAPTUN_SHARDS:${input.shards}`);
-    if (input.routingMode) args.push("--var", `CAPTUN_ROUTING_MODE:${input.routingMode}`);
+    if (input.shards) args.push("--var", `SHARD_COUNT:${input.shards}`);
+    if (input.customHostname) args.push("--var", `CUSTOM_HOSTNAME:${input.customHostname}`);
     if (input.dryRun) args.push("--dry-run");
 
     if (!input.dryRun) await assertWranglerAuthenticated({ cwd: packageRoot });

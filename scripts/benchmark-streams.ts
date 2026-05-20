@@ -126,7 +126,7 @@ async function runPool<T>(count: number, concurrency: number, task: (index: numb
 
 async function measure(index: number, mode: string): Promise<Measurement> {
   // Deterministic names make runs reproducible and let us intentionally spread
-  // or collide names across shards by changing NAME_PREFIX and CAPTUN_SHARDS.
+  // or collide names across shards by changing NAME_PREFIX and SHARD_COUNT.
   const url = tunnelUrl(`${namePrefix}-${index}`);
   const started = performance.now();
   const cpuStarted = process.cpuUsage();

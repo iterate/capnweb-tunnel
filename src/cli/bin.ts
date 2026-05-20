@@ -21,7 +21,6 @@ import {
   isCaptunHealthRequest,
 } from "./tunnel-health.js";
 import { deployWorker, openInBrowser, runDeployWizard, waitForCertWithSpinner } from "./deploy.js";
-import { usesFolderRouting } from "../routing.js";
 
 type Config = {
   serverUrl: string;
@@ -144,7 +143,7 @@ const router = os.router({
           secret,
           shards: wizardResult.shards,
           accountId: wizardResult.accountId,
-          routingMode: wizardResult.routingMode,
+          customHostname: wizardResult.customHostname,
           dryRun: input.dryRun,
         },
         { packageRoot },
@@ -378,14 +377,12 @@ async function writeConfig(config: Config) {
 }
 
 function tunnelUrl(baseUrl: string, name: string) {
+  // The wizard writes serverUrl with a `{name}` placeholder when the Worker is
+  // on a custom hostname (subdomain routing). Plain URLs (workers.dev or local
+  // wrangler dev) use folder routing — append the tunnel name as a path segment.
   if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
-
   const url = new URL(baseUrl);
-  if (usesFolderRouting(url.hostname)) {
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
-  } else {
-    url.pathname = "/";
-  }
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
   return removeTrailingSlash(url.toString());
 }
 

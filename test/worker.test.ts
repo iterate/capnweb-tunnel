@@ -1,38 +1,50 @@
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
-import { captunRouteParts, captunShardName } from "../src/routing.js";
+import { captunShardName, getTunnelNameFromUrl } from "../src/routing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
-const routeCases: Array<
-  [
-    hostname: string,
-    path: string,
-    tunnelName: string | undefined,
-    forwardedPath: string | undefined,
-  ]
+const tunnelNameCases: Array<
+  [url: string, customHostname: string | undefined, name: string | null]
 > = [
-  ["captun.account.workers.dev", "/my-test/hello", "my-test", "/hello"],
-  ["captun.account.workers.dev", "/my-test/__captun-connect", "my-test", "/__captun-connect"],
-  ["captun.account.workers.dev", "/__captun-connect", undefined, undefined],
-  ["captun.account.workers.dev", "/", undefined, undefined],
-  ["localhost", "/my-test/hello", "my-test", "/hello"],
-  ["my-tunnels.com", "/my-test/hello", "my-test", "/hello"],
-  ["captun.example.com", "/my-test/hello", "my-test", "/hello"],
-  ["captun.example.com", "/my-test/__captun-connect", "my-test", "/__captun-connect"],
-  ["my-test.captun.example.com", "/hello", "my-test", "/hello"],
-  ["my-test.my-tunnels.com", "/hello", "my-test", "/hello"],
-  ["my-test.my-tunnels.com", "/__captun-connect", "my-test", "/__captun-connect"],
-  ["my-test.mysubdomain.mydomain.com", "/hello", "my-test", "/hello"],
-  ["some-tunnel.example.com", "/some-path", "some-tunnel", "/some-path"],
-  ["captun.account.workers.dev", "/bad%/hello", undefined, undefined],
+  // Folder routing (no customHostname): first path segment is the tunnel name.
+  ["https://captun.account.workers.dev/my-test/hello", undefined, "my-test"],
+  ["https://captun.account.workers.dev/my-test/__captun-connect", undefined, "my-test"],
+  ["https://captun.account.workers.dev/__captun-connect", undefined, null],
+  ["https://captun.account.workers.dev/", undefined, null],
+  ["http://localhost:8787/my-test/hello", undefined, "my-test"],
+  ["https://captun.account.workers.dev/bad%/hello", undefined, null],
+
+  // Subdomain routing: tunnel name is the last label before customHostname.
+  ["https://my-test.captun.example.com/hello", "captun.example.com", "my-test"],
+  ["https://my-test.my-tunnels.com/hello", "my-tunnels.com", "my-test"],
+  ["https://my-test.my-tunnels.com/__captun-connect", "my-tunnels.com", "my-test"],
+  ["https://my-test.mysubdomain.mydomain.com/hello", "mysubdomain.mydomain.com", "my-test"],
+
+  // Nested wildcard: the *last* label before customHostname wins. Anything to
+  // the left is ignored, so a deeper wildcard cert lets every subdomain land
+  // in one tunnel.
+  ["https://some-subdomain.banana.tunnels.mydomain.com/hello", "tunnels.mydomain.com", "banana"],
+  [
+    "https://some-subdomain.banana.tunnels.mydomain.com/hello",
+    "banana.tunnels.mydomain.com",
+    "some-subdomain",
+  ],
+  ["https://a.b.c.banana.tunnels.mydomain.com/hello", "tunnels.mydomain.com", "banana"],
+
+  // Hostname must be a subdomain of customHostname.
+  ["https://tunnels.mydomain.com/anything", "tunnels.mydomain.com", null],
+  ["https://other-zone.com/anything", "tunnels.mydomain.com", null],
+  // Substring-but-not-subdomain (no leading dot before customHostname) doesn't match.
+  ["https://eviltunnels.mydomain.com/anything", "tunnels.mydomain.com", null],
 ];
 
-test.each(routeCases)("%s%s -> %s %s", (hostname, path, tunnelName, forwardedPath) => {
-  expect(captunRouteParts(hostname, path)).toEqual(
-    tunnelName ? { name: tunnelName, path: forwardedPath } : undefined,
-  );
-});
+test.each(tunnelNameCases)(
+  "getTunnelNameFromUrl(%s, customHostname=%s) -> %s",
+  (url, customHostname, name) => {
+    expect(getTunnelNameFromUrl({ url, customHostname })).toBe(name);
+  },
+);
 
 test("Captun Worker uses one warm shard by default", () => {
   expect(captunShardName("alpha", 1)).toBe("tunnel-shard-0");
@@ -108,8 +120,8 @@ test("Captun Worker returns 503 when a named tunnel has no connected client", as
   expect(await response.text()).toBe("No tunnel client connected\n");
 });
 
-test("Captun Worker routes subdomain tunnel requests", async () => {
-  await using fixture = await createCaptunWorkerFixture({});
+test("Captun Worker routes subdomain tunnel requests when CUSTOM_HOSTNAME is set", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.example.com" });
 
   const response = await fixture.worker.fetch("http://demo.captun.example.com/hello");
 

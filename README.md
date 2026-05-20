@@ -146,7 +146,7 @@ By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my
 
 Running `npx captun deploy` interactively walks you through where the tunnel URLs should live. There are four options, and which one is best for you depends on the kind of apps you want to tunnel to and whether you already have a domain on Cloudflare.
 
-The built-in router uses folder routing on `workers.dev`, `captun.*`, and apex-style hosts, and subdomain routing for wildcard hosts like `demo.my-tunnels.com`.
+Routing is controlled by a single Worker env var, `CUSTOM_HOSTNAME`. When unset (workers.dev deploys), tunnels use folder routing: the first path segment is the tunnel name. When set (custom-domain deploys), tunnels use subdomain routing — the _last_ DNS label before `CUSTOM_HOSTNAME` is the tunnel name, and anything to the left of it is ignored. The deploy wizard sets `CUSTOM_HOSTNAME` for you; the parsing logic lives in `getTunnelNameFromUrl` in [src/routing.ts](./src/routing.ts).
 
 #### 1. `<tunnel>.<account>.workers.dev/<tunnel-name>` (default)
 

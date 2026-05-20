@@ -1,18 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel, type Fetcher } from "./index.js";
-import { captunRouteParts, captunShardName, parseRoutingMode } from "./routing.js";
+import { captunShardName, getTunnelNameFromUrl } from "./routing.js";
 
 type CaptunEnv = Env & {
   CAPTUN_SECRET?: string;
-  CAPTUN_SHARDS?: string;
-  CAPTUN_ROUTING_MODE?: string;
+  SHARD_COUNT?: string;
+  CUSTOM_HOSTNAME?: string;
 };
 
 /**
  * A shard Durable Object owns many named tunnels.
  *
- * `CAPTUN_SHARDS=1` keeps every tunnel in one warm object, which gives the
- * lowest connection latency. Raising `CAPTUN_SHARDS` spreads tunnel names over
+ * `SHARD_COUNT=1` keeps every tunnel in one warm object, which gives the
+ * lowest connection latency. Raising `SHARD_COUNT` spreads tunnel names over
  * more objects, which adds cold starts when new shards wake up but gives better
  * aggregate throughput for lots of concurrent large responses.
  */
@@ -20,17 +20,21 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
   private readonly tunnels = new Map<string, Fetcher & Disposable>();
 
   async fetch(request: Request) {
-    const route = captunRouteParts("localhost", new URL(request.url).pathname);
-    if (!route) return new Response("Missing tunnel name\n", { status: 404 });
+    // The top-level Worker normalizes incoming requests so the DO always sees
+    // `/<encoded-name><forwarded-path>`. Decode the name and recover the path.
+    const url = new URL(request.url);
+    const [encodedName, ...rest] = url.pathname.split("/").filter(Boolean);
+    if (!encodedName) return new Response("Missing tunnel name\n", { status: 404 });
+    const name = decodeURIComponent(encodedName);
+    const forwardedPath = `/${rest.join("/")}`;
 
     let routedRequest = request;
-    const routedUrl = new URL(request.url);
-    if (routedUrl.pathname !== route.path) {
-      routedUrl.pathname = route.path;
-      routedRequest = new Request(routedUrl, request);
+    if (url.pathname !== forwardedPath) {
+      url.pathname = forwardedPath;
+      routedRequest = new Request(url, request);
     }
 
-    if (route.path === "/__captun-connect") {
+    if (forwardedPath === "/__captun-connect") {
       const expectedAuthorization = this.env.CAPTUN_SECRET
         ? `Bearer ${this.env.CAPTUN_SECRET}`
         : undefined;
@@ -46,19 +50,19 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
         return new Response("Unauthorized\n", { status: 401 });
       }
 
-      this.tunnels.get(route.name)?.[Symbol.dispose]();
+      this.tunnels.get(name)?.[Symbol.dispose]();
       const { response, tunnel } = acceptCaptunTunnel({
         onDisconnect: () => {
-          if (this.tunnels.get(route.name) === tunnel) {
-            this.tunnels.delete(route.name);
+          if (this.tunnels.get(name) === tunnel) {
+            this.tunnels.delete(name);
           }
         },
       });
-      this.tunnels.set(route.name, tunnel);
+      this.tunnels.set(name, tunnel);
       return response;
     }
 
-    const tunnel = this.tunnels.get(route.name);
+    const tunnel = this.tunnels.get(name);
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
       return await tunnel.fetch(routedRequest);
@@ -70,20 +74,27 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
 export default {
   fetch(request: Request, env: CaptunEnv) {
-    const route = captunRoute(request, env);
-    if (!route) return new Response("Missing tunnel name\n", { status: 404 });
-    const shard = captunShardName(route.tunnelName, Number(env.CAPTUN_SHARDS || 1));
-    return env.CaptunServerShard.getByName(shard).fetch(route.request);
+    const url = new URL(request.url);
+    const name = getTunnelNameFromUrl({ customHostname: env.CUSTOM_HOSTNAME, url: request.url });
+    if (!name) return new Response("Missing tunnel name\n", { status: 404 });
+
+    // In folder mode the first path segment IS the tunnel name; strip it so the
+    // DO and the tunnel client see the real forwarded path. In subdomain mode
+    // the path is already the forwarded path.
+    const forwardedPath = env.CUSTOM_HOSTNAME ? url.pathname : stripFirstPathSegment(url.pathname);
+
+    // Pass through to the DO using the `/<encoded-name><path>` convention so
+    // the DO knows which tunnel to dispatch to.
+    url.pathname = `/${encodeURIComponent(name)}${forwardedPath}`;
+    const forwardedRequest = new Request(url, request);
+
+    const shard = captunShardName(name, Number(env.SHARD_COUNT || 1));
+    return env.CaptunServerShard.getByName(shard).fetch(forwardedRequest);
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
-/** Turns an incoming Worker request into a Durable Object name and forwarded request. */
-function captunRoute(request: Request, env: CaptunEnv) {
-  const url = new URL(request.url);
-  const routingMode = parseRoutingMode(env.CAPTUN_ROUTING_MODE);
-  const route = captunRouteParts(url.hostname, url.pathname, { routingMode });
-  if (!route) return undefined;
-
-  url.pathname = `/${encodeURIComponent(route.name)}${route.path}`;
-  return { tunnelName: route.name, request: new Request(url, request) };
+/** `/foo/bar/baz` -> `/bar/baz`; `/foo` -> `/`. */
+function stripFirstPathSegment(pathname: string): string {
+  const match = pathname.match(/^\/[^/]+(\/.*)?$/);
+  return match?.[1] ?? "/";
 }
