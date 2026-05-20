@@ -1,4 +1,4 @@
-import { CliFriendlyError } from "./cli-error.js";
+import { CliFriendlyError } from "../cli-error.js";
 
 const API_BASE = "https://api.cloudflare.com/client/v4";
 

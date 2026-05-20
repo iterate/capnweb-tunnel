@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 
-import { CliFriendlyError } from "./cli-error.js";
-import { CommandNotFoundError, ExecError, exec, type ExecResult } from "./exec.js";
+import { CliFriendlyError } from "../cli-error.js";
+import { CommandNotFoundError, ExecError, exec, type ExecResult } from "../exec.js";
 
 const require = createRequire(import.meta.url);
 
