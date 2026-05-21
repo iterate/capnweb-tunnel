@@ -15,7 +15,7 @@ Steps (run in order for local smoke):
 
   step-0-build                    pnpm build
   step-1-deploy-dry-run-workers   captun deploy --dry-run
-  step-2-deploy-dry-run-wildcard  captun deploy --dry-run --route '*.tunnels.example.com/*'
+  step-2-deploy-dry-run-wildcard  captun deploy --dry-run --route '*.captun.example.com/*'
   step-3-wrangler-dev             background wrangler dev (:8787)
   step-4-http-origin              background python http.server (:3456)
   step-5-tunnel-local             captun + curl via local wrangler dev

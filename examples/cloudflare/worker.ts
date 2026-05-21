@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { CaptunServerTunnel } from "captun";
-import { acceptCaptunTunnel } from "captun/server";
+import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;

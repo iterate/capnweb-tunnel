@@ -2,9 +2,13 @@ import type { CaptunServerTunnel } from "captun";
 import { createCaptunBunTunnelHandler } from "captun/bun";
 
 let egressTunnel: CaptunServerTunnel | undefined;
-const egressFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+const egressFetch = async (
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) => {
   if (egressTunnel) {
-    const request = input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
+    const request =
+      input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
     return egressTunnel.fetch(request);
   }
   return fetch(input, init);

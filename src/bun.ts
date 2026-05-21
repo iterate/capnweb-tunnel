@@ -8,7 +8,11 @@ export function createCaptunBunTunnelHandler() {
   const capnweb = newBunWebSocketRpcHandler(() => undefined);
 
   return {
-    accept(request: Request, server: { upgrade: Function }, options: CaptunServerAcceptTunnelOptions = {}) {
+    accept(
+      request: Request,
+      server: { upgrade: Function },
+      options: CaptunServerAcceptTunnelOptions = {},
+    ) {
       const pendingTunnel = createPendingCaptunBunTunnel(options);
       const upgraded = server.upgrade(request, { data: { captunTunnel: pendingTunnel } });
       if (!upgraded) {

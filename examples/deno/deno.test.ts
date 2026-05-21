@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test, vi } from "vitest";
 
-import { createCaptunTunnel } from "../../src/client.js";
+import { createCaptunTunnel } from "../../src/index.js";
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -66,7 +66,9 @@ async function createDenoWeatherReporterFixture() {
     };
   } catch (error) {
     await stopProcess(server);
-    throw new Error(formatFixtureFailure(error instanceof Error ? error.message : String(error), output.logs()));
+    throw new Error(
+      formatFixtureFailure(error instanceof Error ? error.message : String(error), output.logs()),
+    );
   }
 }
 
@@ -97,7 +99,9 @@ async function waitForTcp(port: number, server: ServerProcess, output: CapturedP
     const error = output.error();
     if (error) throw error;
     if (server.exitCode !== null || server.signalCode) {
-      throw new Error(`Deno server exited before port ${port} accepted connections\n\n${output.logs().trim() || "(none)"}`);
+      throw new Error(
+        `Deno server exited before port ${port} accepted connections\n\n${output.logs().trim() || "(none)"}`,
+      );
     }
 
     if (await canConnect(port)) return;

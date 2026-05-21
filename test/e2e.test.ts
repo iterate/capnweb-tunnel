@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { expect, test, vi } from "vitest";
 
-import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunTunnel } from "../src/index.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -34,7 +34,7 @@ test.concurrent("streams a binary response", async ({ task }) => {
   });
 
   const response = await fetch(tunnel.url);
-  expect(response.status).toBe(200);
+  expect(response).toMatchObject({ status: 200 });
 
   if (!response.body) throw new Error("Response has no body");
   let bytes = 0;
@@ -93,7 +93,7 @@ test.concurrent("streams response chunks before the local fetcher finishes", asy
   expect(new TextDecoder().decode(second.value)).toBe("second\n");
 
   const done = await reader.read();
-  expect(done.done).toBe(true);
+  expect(done).toMatchObject({ done: true });
 });
 
 test.concurrent("uploads a raw file body", async ({ task }) => {

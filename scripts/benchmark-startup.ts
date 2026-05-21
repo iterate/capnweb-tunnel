@@ -1,17 +1,17 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
-import { createCaptunTunnel } from "../src/client.js";
+import { createCaptunTunnel } from "../src/index.js";
 
 // Measures time from "start creating a tunnel" to the first successful public
 // HTTP fetch through that tunnel. It can compare this project with cloudflared
 // quick tunnels and ngrok, but only Captun is intended for high-concurrency
 // runs here.
 
-type Provider = "captun" | "cloudflared" | "ngrok";
+type Provider = "captun" | "cloudflared" | "ngrok" | "wrangler-tunnel";
 
 type Measurement = {
   index: number;
@@ -43,6 +43,10 @@ const out =
   process.env.OUT ??
   `docs/performance/startup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
 const timeoutMs = Number(process.env.TIMEOUT_MS ?? 60_000);
+const processOptions: SpawnOptions = {
+  stdio: ["ignore", "pipe", "pipe"],
+  detached: process.platform !== "win32",
+};
 
 const origin = createServer((request, response) => {
   response.writeHead(200, { "content-type": "text/plain" });
@@ -145,14 +149,15 @@ async function measureProcess(
       );
       const read = (chunk: Buffer) => {
         output += chunk.toString();
-        const parsed = provider === "ngrok" ? parseNgrokUrl(output) : parseCloudflaredUrl(output);
+        const parsed =
+          provider === "ngrok" ? parseNgrokUrl(output) : parseCloudflareTunnelUrl(output);
         if (parsed) {
           clearTimeout(timer);
           resolve(parsed);
         }
       };
-      child.stdout.on("data", read);
-      child.stderr.on("data", read);
+      child.stdout?.on("data", read);
+      child.stderr?.on("data", read);
       child.on("exit", (code) => {
         clearTimeout(timer);
         reject(new Error(`${provider} exited with ${code}: ${lastLines(output)}`));
@@ -160,7 +165,9 @@ async function measureProcess(
       child.on("error", reject);
     });
 
-    if (provider === "cloudflared") await waitForDns(url, started);
+    if (provider === "cloudflared" || provider === "wrangler-tunnel") {
+      await waitForDns(url, started);
+    }
     await waitForFetch(url, started);
     return { index, ok: true, ms: performance.now() - started, url: url.toString() };
   } catch (error) {
@@ -174,19 +181,22 @@ async function measureProcess(
   }
 }
 
-function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string) {
+function spawnProcess(provider: Exclude<Provider, "captun">, originUrl: string): ChildProcess {
   if (provider === "cloudflared") {
     return spawn(
       "cloudflared",
       ["tunnel", "--url", originUrl, "--no-autoupdate", "--metrics", "localhost:0"],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+      processOptions,
     );
   }
-  return spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  if (provider === "wrangler-tunnel") {
+    return spawn(
+      "wrangler",
+      ["tunnel", "quick-start", originUrl, "--log-level", "info"],
+      processOptions,
+    );
+  }
+  return spawn("ngrok", ["http", originUrl, "--log=stdout", "--log-format=json"], processOptions);
 }
 
 async function waitForDns(url: URL, started: number) {
@@ -224,7 +234,7 @@ function tunnelUrl(base: string, name: string) {
   return url.toString().replace(/\/$/, "");
 }
 
-function parseCloudflaredUrl(output: string) {
+function parseCloudflareTunnelUrl(output: string) {
   const match = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
   return match ? new URL(match[0]) : undefined;
 }
@@ -235,7 +245,9 @@ function parseNgrokUrl(output: string) {
       const parsed = JSON.parse(line) as { msg?: string; url?: string };
       if (parsed.msg === "started tunnel" && parsed.url?.startsWith("https://"))
         return new URL(parsed.url);
-    } catch {}
+    } catch {
+      // skip non-JSON lines
+    }
   }
   return undefined;
 }
@@ -258,9 +270,24 @@ function lastLines(value: string) {
 }
 
 function stop(child: ChildProcess) {
+  if (process.platform !== "win32" && child.pid) {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      // meh
+    }
+    setTimeout(() => {
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        // meh
+      }
+    }, 2_000).unref();
+    return;
+  }
   if (child.exitCode !== null || child.killed) return;
   child.kill("SIGTERM");
   setTimeout(() => {
-    if (child.exitCode === null && !child.killed) child.kill("SIGKILL");
+    if (child.exitCode === null) child.kill("SIGKILL");
   }, 2_000).unref();
 }

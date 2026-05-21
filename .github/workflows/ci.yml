@@ -1,11 +1,12 @@
 name: CI
 
 on:
-  push: {}
+  push:
+    branches: [main]
   pull_request: {}
 
 jobs:
-  build-test-types:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +19,11 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: 2.7.11
-      - run: npm install -g corepack@0.31.0
       - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm run test
+      - run: pnpm install
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm lint
       - name: arethetypeswrong
         run: |
           pnpm pack

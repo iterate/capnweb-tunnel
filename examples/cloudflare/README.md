@@ -4,7 +4,7 @@ Tiny example app that uses Captun to mock outbound network egress in an e2e test
 The app fetches live weather from the free, no-key `wttr.in` API.
 
 This variant runs on a Cloudflare Worker plus a Durable Object, using
-`captun/server`.
+the root `captun` Worker helper.
 
 ## Run Locally
 

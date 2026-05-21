@@ -21,15 +21,15 @@ Logs and PIDs: `/tmp/captun-smoke/` (override with `CAPTUN_SMOKE_DIR`).
 
 ## Local path (no Cloudflare account needed)
 
-| Step | Command | What it proves |
-|------|---------|----------------|
-| 0 | `./scripts/smoke-test.sh step-0-build` | CLI builds |
-| 1 | `./scripts/smoke-test.sh step-1-deploy-dry-run-workers` | `captun deploy --dry-run` (workers.dev) |
-| 2 | `./scripts/smoke-test.sh step-2-deploy-dry-run-wildcard` | `captun deploy --dry-run --route '*.tunnels.example.com/*'` |
-| 3 | `./scripts/smoke-test.sh step-3-wrangler-dev` | Local Worker on `:8787` (background) |
-| 4 | `./scripts/smoke-test.sh step-4-http-origin` | Local app on `:3456` (background) |
-| 5 | `./scripts/smoke-test.sh step-5-tunnel-local` | `captun 3456` + `curl` through wrangler dev |
-| stop | `./scripts/smoke-test.sh stop` | Kills background processes |
+| Step | Command                                                  | What it proves                                              |
+| ---- | -------------------------------------------------------- | ----------------------------------------------------------- |
+| 0    | `./scripts/smoke-test.sh step-0-build`                   | CLI builds                                                  |
+| 1    | `./scripts/smoke-test.sh step-1-deploy-dry-run-workers`  | `captun deploy --dry-run` (workers.dev)                     |
+| 2    | `./scripts/smoke-test.sh step-2-deploy-dry-run-wildcard` | `captun deploy --dry-run --route '*.tunnels.example.com/*'` |
+| 3    | `./scripts/smoke-test.sh step-3-wrangler-dev`            | Local Worker on `:8787` (background)                        |
+| 4    | `./scripts/smoke-test.sh step-4-http-origin`             | Local app on `:3456` (background)                           |
+| 5    | `./scripts/smoke-test.sh step-5-tunnel-local`            | `captun 3456` + `curl` through wrangler dev                 |
+| stop | `./scripts/smoke-test.sh stop`                           | Kills background processes                                  |
 
 All local steps:
 
@@ -96,7 +96,7 @@ curl -i "https://smoke-test.tunnels.templestein.com/"
 - One script waited on **tmux pane** text; wrangler output often landed in a different window than `capture-pane` read.
 - `deploy` had `.meta({ prompt: true })`, which **forced** prompts even when flags were passed.
 
-Fixes in `src/bin.ts`:
+Fixes in `src/cli/bin.ts`:
 
 - Deploy has no forced `prompt: true`.
 - `deploy --dry-run` skips upload and config write.
@@ -131,12 +131,12 @@ curl https://banana.tunnels.templestein.com/
 
 ## Recorded results (2026-05-18)
 
-| Step | Result |
-|------|--------|
-| step-0 build | PASS |
-| step-1 workers.dev dry-run | PASS (~1s) |
-| step-2 wildcard dry-run | PASS (~1s) |
-| step-3 wrangler dev | PASS (~10s) |
-| step-4 http origin | PASS |
-| step-5 local tunnel + curl | PASS (`curl http://127.0.0.1:8787/smoke-test/` → 200) |
-| templestein deploy + banana tunnel | PASS |
+| Step                               | Result                                                |
+| ---------------------------------- | ----------------------------------------------------- |
+| step-0 build                       | PASS                                                  |
+| step-1 workers.dev dry-run         | PASS (~1s)                                            |
+| step-2 wildcard dry-run            | PASS (~1s)                                            |
+| step-3 wrangler dev                | PASS (~10s)                                           |
+| step-4 http origin                 | PASS                                                  |
+| step-5 local tunnel + curl         | PASS (`curl http://127.0.0.1:8787/smoke-test/` → 200) |
+| templestein deploy + banana tunnel | PASS                                                  |
