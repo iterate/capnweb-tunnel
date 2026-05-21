@@ -1,5 +1,4 @@
 import { acceptCaptunTunnelFromSocket } from "./server-core.js";
-import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
 /** A type `import('ws').WebSocket` conforms to. This will be cast internally before passing to `capnweb` */
 export interface WSWebSocketLike {
@@ -11,7 +10,7 @@ export interface WSWebSocketLike {
 
 export function acceptCaptunNodeTunnel(
   socket: WSWebSocketLike,
-  options: CaptunServerAcceptTunnelOptions = {},
-): CaptunServerTunnel {
+  options: { onDisconnect?: () => void } = {},
+) {
   return acceptCaptunTunnelFromSocket(socket as unknown as WebSocket, options);
 }

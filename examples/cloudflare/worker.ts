@@ -1,12 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel, type CaptunServerTunnel } from "captun";
+import { acceptCaptunTunnel } from "captun";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
 };
 
 export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
-  private egressTunnel: CaptunServerTunnel | undefined;
+  private egressTunnel: ReturnType<typeof acceptCaptunTunnel>["tunnel"] | undefined;
   private readonly egressFetch: typeof fetch = async (input, init) => {
     if (this.egressTunnel) return this.egressTunnel.fetch(new Request(input, init));
     return fetch(input, init);

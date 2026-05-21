@@ -1,11 +1,9 @@
-import type { CaptunServerTunnel } from "captun";
 import { createCaptunBunTunnelHandler } from "captun/bun";
 
-let egressTunnel: CaptunServerTunnel | undefined;
-const egressFetch = async (
-  input: Parameters<typeof fetch>[0],
-  init?: Parameters<typeof fetch>[1],
-) => {
+const captun = createCaptunBunTunnelHandler();
+
+let egressTunnel: ReturnType<typeof captun.accept>;
+const egressFetch = async (input: string | URL | Request, init?: RequestInit) => {
   if (egressTunnel) {
     const request =
       input instanceof Request ? new Request(input, init) : new Request(input.toString(), init);
@@ -13,7 +11,6 @@ const egressFetch = async (
   }
   return fetch(input, init);
 };
-const captun = createCaptunBunTunnelHandler();
 
 const server = Bun.serve({
   hostname: "127.0.0.1",

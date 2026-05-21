@@ -1,7 +1,6 @@
-import type { CaptunServerTunnel } from "captun";
 import { acceptCaptunDenoTunnel } from "captun/deno";
 
-let egressTunnel: CaptunServerTunnel | undefined;
+let egressTunnel: ReturnType<typeof acceptCaptunDenoTunnel> | undefined;
 const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);

@@ -1,9 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "paths": {
-      "captun": ["../../src/types.ts"]
-    },
     "types": ["bun"]
   },
   "include": ["server.ts"],

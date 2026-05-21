@@ -1,9 +1,8 @@
 import { acceptCaptunTunnelFromSocket } from "./server-core.js";
-import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
 export function acceptCaptunDenoTunnel(
   socket: WebSocket,
-  options: CaptunServerAcceptTunnelOptions = {},
-): CaptunServerTunnel {
+  options: { onDisconnect?: () => void } = {},
+) {
   return acceptCaptunTunnelFromSocket(socket, options);
 }

@@ -1,11 +1,10 @@
 import http from "node:http";
 
 import { createServerAdapter } from "@whatwg-node/server";
-import type { CaptunServerTunnel } from "captun";
 import { acceptCaptunNodeTunnel } from "captun/node";
 import { WebSocketServer } from "ws";
 
-let egressTunnel: CaptunServerTunnel | undefined;
+let egressTunnel: ReturnType<typeof acceptCaptunNodeTunnel> | undefined;
 const egressFetch: typeof fetch = async (input, init) => {
   if (egressTunnel) return egressTunnel.fetch(new Request(input, init));
   return fetch(input, init);

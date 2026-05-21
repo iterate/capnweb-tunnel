@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel, type Fetcher } from "./index.js";
+import { acceptCaptunTunnel } from "./index.js";
 import {
   captunShardName,
   getTunnelNameFromUrl,
@@ -25,7 +25,7 @@ const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
  * aggregate throughput for lots of concurrent large responses.
  */
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
-  private tunnels = new Map<string, Fetcher & Disposable>();
+  private tunnels = new Map<string, ReturnType<typeof acceptCaptunTunnel>["tunnel"]>();
 
   // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
   // is special-cased by the Workers runtime around `stub.fetch(...)`: a 101

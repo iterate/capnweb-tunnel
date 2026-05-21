@@ -1,5 +1,4 @@
 import { captunTunnelFromRemoteClient, type CaptunRemoteClient } from "./server-core.js";
-import type { CaptunServerAcceptTunnelOptions, CaptunServerTunnel } from "./types.js";
 
 // @ts-ignore -- capnweb exports separate types for bun but this lib is built from node. it'll work at runtime though.
 import { newBunWebSocketRpcHandler } from "capnweb";
@@ -11,7 +10,7 @@ export function createCaptunBunTunnelHandler() {
     accept(
       request: Request,
       server: { upgrade: Function },
-      options: CaptunServerAcceptTunnelOptions = {},
+      options: { onDisconnect?: () => void } = {},
     ) {
       const pendingTunnel = createPendingCaptunBunTunnel(options);
       const upgraded = server.upgrade(request, { data: { captunTunnel: pendingTunnel } });
@@ -47,19 +46,21 @@ export function createCaptunBunTunnelHandler() {
  * Creates a tunnel handle *before* Bun gives us the actual socket, because `server.upgrade(...)` just returns a boolean. The WebSocket arrives later in `open(...)`.
  * So we need to pass this "pending tunnel" reference to `server.upgrade(...)` via `data`, to be fished out later.
  */
-function createPendingCaptunBunTunnel(options: CaptunServerAcceptTunnelOptions) {
-  let connectedTunnel: CaptunServerTunnel | undefined;
-  let connectTunnel: (tunnel: CaptunServerTunnel) => void = () => {};
+function createPendingCaptunBunTunnel(options: { onDisconnect?: () => void }) {
+  let connectedTunnel: ReturnType<typeof captunTunnelFromRemoteClient> | undefined;
+  let connectTunnel: (tunnel: ReturnType<typeof captunTunnelFromRemoteClient>) => void = () => {};
   let rejectTunnel: (error: Error) => void = () => {};
   let closed = false;
-  const tunnelReady = new Promise<CaptunServerTunnel>((resolve, reject) => {
-    connectTunnel = resolve;
-    rejectTunnel = reject;
-  });
+  const tunnelReady = new Promise<ReturnType<typeof captunTunnelFromRemoteClient>>(
+    (resolve, reject) => {
+      connectTunnel = resolve;
+      rejectTunnel = reject;
+    },
+  );
   tunnelReady.catch(() => undefined);
 
-  const tunnel: CaptunServerTunnel = {
-    async fetch(request) {
+  const tunnel = {
+    async fetch(request: Request) {
       if (closed) throw new Error("Captun Bun tunnel is closed");
       const connected = await tunnelReady;
       if (closed) throw new Error("Captun Bun tunnel is closed");

@@ -1,17 +1,17 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import { acceptCaptunTunnelFromSocket } from "./server-core.js";
-import type {
-  CaptunClientCreateTunnelOptions,
-  CaptunClientRemoteFetcher,
-  CaptunServerAcceptTunnelOptions,
-} from "./types.js";
 
-export type {
-  CaptunClientCreateTunnelOptions,
-  CaptunServerAcceptTunnelOptions,
-  CaptunServerTunnel,
-  Fetcher,
-} from "./types.js";
+/** Fetch is all you need!
+ *
+ * Cap'n Web let us pass this fetcher from the
+ * tunnel client to the server via fetch (via websockets)
+ * Then the server can just fetch into the client like normal.
+ * This is all possible because Cap'n Web can pass Request and Response object
+ * across the websocket RPC boundary transparently
+ **/
+export interface Fetcher {
+  fetch(request: Request): Response | Promise<Response>;
+}
 
 /** Creates a tunnel from a public Worker URL to a local fetch implementation.
  *
@@ -23,10 +23,13 @@ export type {
  * https://github.com/cloudflare/capnweb#websocket-client
  */
 export async function createCaptunTunnel(
-  options: CaptunClientCreateTunnelOptions,
+  options: Fetcher & {
+    url: string | URL;
+    headers?: Record<string, string>;
+  },
 ): Promise<Disposable> {
   const socket = createWebSocket(options);
-  const session = newWebSocketRpcSession(socket, new LocalFetcher(options));
+  const session = newWebSocketRpcSession(socket, new TunnelTargetFetcher({ fetch: options.fetch }));
   await waitUntilOpen(socket);
 
   return {
@@ -34,20 +37,20 @@ export async function createCaptunTunnel(
   };
 }
 
-class LocalFetcher extends RpcTarget implements CaptunClientRemoteFetcher {
-  private options: CaptunClientCreateTunnelOptions;
+class TunnelTargetFetcher extends RpcTarget implements Fetcher {
+  private fetcher: Fetcher;
 
-  constructor(options: CaptunClientCreateTunnelOptions) {
+  constructor(fetcher: Fetcher) {
     super();
-    this.options = options;
+    this.fetcher = fetcher;
   }
 
   fetch(request: Request) {
-    return this.options.fetch(request);
+    return this.fetcher.fetch(request);
   }
 }
 
-function createWebSocket(options: CaptunClientCreateTunnelOptions) {
+function createWebSocket(options: { url: string | URL; headers?: Record<string, string> }) {
   const connectUrl = new URL(options.url);
   connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
   // TypeScript sees the standard DOM/Workers constructor here, where the second
@@ -93,7 +96,7 @@ async function waitUntilOpen(socket: WebSocket) {
 }
 
 /** Creates a Worker WebSocket upgrade response and matching tunnel handle. */
-export function acceptCaptunTunnel(options: CaptunServerAcceptTunnelOptions = {}) {
+export function acceptCaptunTunnel(options: { onDisconnect?: () => void } = {}) {
   const pair = new WebSocketPair();
   const clientSocket = pair[0];
   const serverSocket = pair[1];
