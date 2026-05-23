@@ -12,7 +12,7 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { createCaptunTunnel } from "../index.js";
+import { CaptunTunnelConnectError, createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
 import {
@@ -570,6 +570,14 @@ function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
   const hostname = new URL(tunnel.tunnel).hostname;
   const message = cause instanceof Error ? cause.message : String(cause);
   const lines = [`Could not connect tunnel to ${color.cyan(tunnel.tunnel)} (${message}).`];
+  if (isActiveTunnelConflict(cause)) {
+    lines.push(
+      ``,
+      `The tunnel name appears to be in use by another active anonymous client.`,
+      `Pick a different ${color.cyan("--name")} or stop the existing tunnel and retry.`,
+    );
+    return new CliFriendlyError(lines.join("\n"));
+  }
   if (!hostname.endsWith(".workers.dev")) {
     // Dropping the leftmost label gives the zone-side wildcard parent —
     // `tunnel.mispwoso.com` -> `mispwoso.com`, `t.captun.example.com` -> `captun.example.com`.
@@ -586,6 +594,12 @@ function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
     );
   }
   return new CliFriendlyError(lines.join("\n"));
+}
+
+function isActiveTunnelConflict(cause: unknown) {
+  if (cause instanceof CaptunTunnelConnectError && cause.response?.status === 409) return true;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /tunnel name is already connected|tunnel name .*in use/i.test(message);
 }
 
 function sleep(ms: number) {

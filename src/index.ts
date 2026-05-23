@@ -36,6 +36,19 @@ export type CaptunTunnel = Disposable & {
   ownerToken: string;
 };
 
+export class CaptunTunnelConnectError extends Error {
+  response: { status: number; statusText: string; body: string } | undefined;
+
+  constructor(
+    message: string,
+    response: { status: number; statusText: string; body: string } | undefined,
+  ) {
+    super(message);
+    this.name = "CaptunTunnelConnectError";
+    this.response = response;
+  }
+}
+
 export async function createCaptunTunnel(
   options: Fetcher & {
     url?: string | URL;
@@ -56,7 +69,12 @@ export async function createCaptunTunnel(
   // as a capnweb rpc stub that the server can just call fetch on
   const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
-  await waitUntilOpen(socket);
+  try {
+    await waitUntilOpen(socket, { connectUrl: ownership.connectUrl, headers: options.headers });
+  } catch (error) {
+    session[Symbol.dispose]();
+    throw error;
+  }
 
   return {
     url: endpoint.publicUrl,
@@ -154,7 +172,10 @@ function createWebSocket(options: { url: string | URL; headers?: Record<string, 
   );
 }
 
-async function waitUntilOpen(socket: WebSocket) {
+async function waitUntilOpen(
+  socket: WebSocket,
+  options: { connectUrl: string; headers: Record<string, string> | undefined },
+) {
   if (socket.readyState === WebSocket.OPEN) return;
   if (socket.readyState !== WebSocket.CONNECTING) {
     throw new Error("WebSocket closed before opening");
@@ -169,7 +190,10 @@ async function waitUntilOpen(socket: WebSocket) {
     socket.addEventListener("open", () => settle(resolve), { signal: listeners.signal });
     socket.addEventListener(
       "error",
-      () => settle(() => reject(new Error("WebSocket connection failed"))),
+      () =>
+        settle(() => {
+          void webSocketConnectionFailedError(options).then(reject);
+        }),
       { signal: listeners.signal },
     );
     socket.addEventListener(
@@ -181,6 +205,36 @@ async function waitUntilOpen(socket: WebSocket) {
       { signal: listeners.signal },
     );
   });
+}
+
+async function webSocketConnectionFailedError(options: {
+  connectUrl: string;
+  headers: Record<string, string> | undefined;
+}) {
+  const response = await readWebSocketRejection(options);
+  if (!response) return new CaptunTunnelConnectError("WebSocket connection failed", undefined);
+  return new CaptunTunnelConnectError(
+    `WebSocket connection failed: ${response.status} ${response.statusText}: ${response.body}`.trim(),
+    response,
+  );
+}
+
+async function readWebSocketRejection(options: {
+  connectUrl: string;
+  headers: Record<string, string> | undefined;
+}) {
+  try {
+    const response = await fetch(options.connectUrl, { headers: options.headers });
+    if (response.ok) return undefined;
+    const body = (await response.text()).trim();
+    return {
+      status: response.status,
+      statusText: response.statusText || "Rejected",
+      body: body || "No response body",
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

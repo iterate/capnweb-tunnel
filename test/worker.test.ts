@@ -608,6 +608,20 @@ test("Captun clients can reuse a returned anonymous ownership token", async () =
   ]);
 });
 
+test("createCaptunTunnel surfaces rejected WebSocket upgrade response details", async () => {
+  await using rejection = await createRejectedWebSocketUpgradeServer({
+    status: 409,
+    body: "Tunnel name is already connected\n",
+  });
+
+  await expect(
+    createCaptunTunnel({
+      url: `${rejection.origin}/demo/__captun-connect`,
+      fetch: () => new Response("unused\n"),
+    }),
+  ).rejects.toThrow(/409 Conflict: Tunnel name is already connected/);
+});
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
@@ -675,6 +689,48 @@ async function createWebSocketUpgradeRecorder() {
     origin: `http://127.0.0.1:${address.port}`,
     upgradeUrl,
     upgradeUrls,
+    async [Symbol.asyncDispose]() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    },
+  };
+}
+
+async function createRejectedWebSocketUpgradeServer(options: { status: number; body: string }) {
+  const sockets = new Set<{ destroy: () => void }>();
+  const statusText = options.status === 409 ? "Conflict" : "Rejected";
+  const server = createServer((_request, response) => {
+    response.writeHead(options.status, {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    response.end(options.body);
+  });
+  server.on("upgrade", (_request, socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.write(
+      [
+        `HTTP/1.1 ${options.status} ${statusText}`,
+        "Content-Type: text/plain; charset=utf-8",
+        "Cache-Control: no-store",
+        `Content-Length: ${Buffer.byteLength(options.body)}`,
+        "Connection: close",
+        "",
+        options.body,
+      ].join("\r\n"),
+    );
+    socket.destroy();
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not start test server");
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
     async [Symbol.asyncDispose]() {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
