@@ -6,6 +6,8 @@ import {
   getTunnelNameFromUrl,
   getTunnelUrl,
   RESERVED_HOSTED_SUBDOMAINS,
+  TUNNEL_OWNER_TOKEN_HEADER,
+  TUNNEL_OWNER_TOKEN_QUERY_PARAM,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
@@ -41,6 +43,11 @@ type HostedRateLimitBucket = {
   resetAt: number;
 };
 
+type ActiveTunnel = {
+  fetcher: Fetcher & Disposable;
+  ownerToken?: string;
+};
+
 /**
  * A shard Durable Object owns many named tunnels.
  *
@@ -50,7 +57,7 @@ type HostedRateLimitBucket = {
  * aggregate throughput for lots of concurrent large responses.
  */
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
-  private readonly tunnels = new Map<string, Fetcher & Disposable>();
+  private readonly tunnels = new Map<string, ActiveTunnel>();
 
   // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
   // is special-cased by the Workers runtime around `stub.fetch(...)` — a 101
@@ -72,18 +79,32 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       }
     }
 
-    this.tunnels.get(tunnelName)?.[Symbol.dispose]();
+    const ownerToken = hostedAnonymousOwnerToken(request, this.env);
+    if (ownerToken instanceof Response) return ownerToken;
+
+    const activeTunnel = this.tunnels.get(tunnelName);
+    if (activeTunnel?.ownerToken && activeTunnel.ownerToken !== ownerToken) {
+      return new Response("Tunnel name is already connected\n", {
+        status: 409,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
+
+    activeTunnel?.fetcher[Symbol.dispose]();
     const { response, tunnel } = acceptCaptunTunnel({
       onDisconnect: () => {
-        if (this.tunnels.get(tunnelName) === tunnel) this.tunnels.delete(tunnelName);
+        if (this.tunnels.get(tunnelName)?.fetcher === tunnel) this.tunnels.delete(tunnelName);
       },
     });
-    this.tunnels.set(tunnelName, tunnel);
+    this.tunnels.set(tunnelName, { fetcher: tunnel, ownerToken });
     return response;
   }
 
   async forward(tunnelName: string, request: Request): Promise<Response> {
-    const tunnel = this.tunnels.get(tunnelName);
+    const tunnel = this.tunnels.get(tunnelName)?.fetcher;
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
       return await tunnel.fetch(request);
@@ -215,6 +236,39 @@ async function hostedRateLimitResponse(input: {
   }
 
   return undefined;
+}
+
+function hostedAnonymousOwnerToken(
+  request: Request,
+  env: CaptunEnv,
+): string | Response | undefined {
+  if (env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  if (env.CAPTUN_SECRET) return undefined;
+
+  const token =
+    request.headers.get(TUNNEL_OWNER_TOKEN_HEADER) ||
+    new URL(request.url).searchParams.get(TUNNEL_OWNER_TOKEN_QUERY_PARAM) ||
+    "";
+  if (!token) {
+    return new Response("Missing tunnel ownership token\n", {
+      status: 400,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+  if (!/^[a-zA-Z0-9._~-]{1,128}$/.test(token)) {
+    return new Response("Invalid tunnel ownership token\n", {
+      status: 400,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  return token;
 }
 
 function hostedRateLimitedResponse(result: Extract<HostedRateLimitResult, { ok: false }>) {
@@ -536,8 +590,9 @@ const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "h
 
 export async function createCaptunTunnel(options) {
   const tunnelName = options.name || randomTunnelName();
+  const ownerToken = randomOwnershipToken();
   const publicUrl = "https://" + tunnelName + ".captun.sh";
-  const socket = new WebSocket("wss://" + tunnelName + ".captun.sh/__captun-connect");
+  const socket = new WebSocket("wss://" + tunnelName + ".captun.sh/__captun-connect?captun-owner-token=" + ownerToken);
   const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch);
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
   await waitUntilOpen(socket);
@@ -578,6 +633,12 @@ function waitUntilOpen(socket) {
 
 function randomTunnelName() {
   const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomOwnershipToken() {
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

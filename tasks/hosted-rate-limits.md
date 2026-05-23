@@ -5,7 +5,7 @@ size: medium
 
 # Hosted captun.sh rate limits
 
-Status summary: First hosted throttling slice is implemented and locally verified. It adds hosted-only connect and forwarded-request limits with configurable Worker vars; ownership, paid/custom names, and deeper abuse controls remain follow-up work.
+Status summary: First hosted throttling slice is implemented and locally verified. It adds hosted-only connect and forwarded-request limits with configurable Worker vars; this stacked branch also covers anonymous active-tunnel ownership, while paid/custom names and deeper abuse controls remain follow-up work.
 
 ## First hosted throttling slice
 
@@ -19,7 +19,7 @@ Status summary: First hosted throttling slice is implemented and locally verifie
 
 ## Follow-up safety work
 
-- [ ] Add tunnel ownership tokens so a different anonymous client cannot evict an active tunnel. _This should return `409` for conflicting reconnects rather than silently replacing the active client._
+- [x] Add tunnel ownership tokens so a different anonymous client cannot evict an active tunnel. _The stacked hosted-ownership-tokens PR returns `409` for a conflicting active token while allowing same-token replacement._
 - [ ] Add active tunnel caps and reconnect-churn limits. _Likely needs a global-ish Durable Object keyed separately from the shard count._
 - [ ] Add request body, response, and in-flight request caps. _Protect against tunnels used for bulk transfer or resource exhaustion._
 - [ ] Add Cloudflare-native Rate Limiting bindings where available. _Use edge throttles for cheaper rejection before Durable Objects wake up._

@@ -1,5 +1,10 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import { getTunnelUrlFromServerUrl, HOSTED_CAPTUN_SERVER_URL } from "./routing.js";
+import {
+  getTunnelUrlFromServerUrl,
+  HOSTED_CAPTUN_SERVER_URL,
+  TUNNEL_OWNER_TOKEN_HEADER,
+  TUNNEL_OWNER_TOKEN_QUERY_PARAM,
+} from "./routing.js";
 
 /** Fetch is all you need!
  *
@@ -39,7 +44,11 @@ export async function createCaptunTunnel(
   },
 ): Promise<CaptunTunnel> {
   const endpoint = resolveTunnelEndpoint(options);
-  const socket = createWebSocket({ url: endpoint.connectUrl, headers: options.headers });
+  const connectUrl = withAnonymousOwnershipToken({
+    connectUrl: endpoint.connectUrl,
+    headers: options.headers,
+  });
+  const socket = createWebSocket({ url: connectUrl, headers: options.headers });
   // tunnelTargetFetcher is the "main object" that comes out on the other side in acceptCaptunTunnel
   // as a capnweb rpc stub that the server can just call fetch on
   const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
@@ -71,11 +80,38 @@ function resolveTunnelEndpoint(options: {
 function publicUrlFromConnectUrl(connectUrl: URL) {
   const publicUrl = new URL(connectUrl);
   publicUrl.pathname = publicUrl.pathname.replace(/\/__captun-connect\/?$/, "") || "/";
+  publicUrl.search = "";
+  publicUrl.hash = "";
   return publicUrl.toString().replace(/\/$/, "");
+}
+
+function withAnonymousOwnershipToken(options: {
+  connectUrl: string;
+  headers: Record<string, string> | undefined;
+}) {
+  if (hasHeader(options.headers, TUNNEL_OWNER_TOKEN_HEADER)) return options.connectUrl;
+
+  const connectUrl = new URL(options.connectUrl);
+  if (!connectUrl.searchParams.has(TUNNEL_OWNER_TOKEN_QUERY_PARAM)) {
+    connectUrl.searchParams.set(TUNNEL_OWNER_TOKEN_QUERY_PARAM, randomOwnershipToken());
+  }
+  return connectUrl.toString();
+}
+
+function hasHeader(headers: Record<string, string> | undefined, name: string) {
+  if (!headers) return false;
+  const lowerName = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lowerName);
 }
 
 function randomTunnelName() {
   const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomOwnershipToken() {
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

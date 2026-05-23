@@ -1,4 +1,7 @@
 import { expect, test } from "vitest";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import { createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
 import {
@@ -139,6 +142,23 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
   });
 });
 
+test("Captun Worker still lets self-hosted tunnels replace a name without ownership", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+  using _firstTunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: () => new Response("first\n"),
+  });
+  using _secondTunnel = await createCaptunTunnel({
+    url: `${fixture.origin}/demo/__captun-connect`,
+    fetch: () => new Response("second\n"),
+  });
+
+  const response = await fetch(`${fixture.origin}/demo/hello`);
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.text()).toBe("second\n");
+});
+
 test("Captun Worker verifies health through a connected tunnel client", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
@@ -231,7 +251,10 @@ test("Hosted Captun serves the browser demo module on www", async () => {
 
   expect(response).toMatchObject({ status: 200 });
   expect(response.headers.get("content-type")).toContain("application/javascript");
-  expect(await response.text()).toEqual(expect.stringContaining("createCaptunTunnel"));
+  const source = await response.text();
+
+  expect(source).toEqual(expect.stringContaining("createCaptunTunnel"));
+  expect(source).toEqual(expect.stringContaining("captun-owner-token"));
 });
 
 test("Hosted Captun landing page includes an in-browser tunnel demo", async () => {
@@ -459,6 +482,107 @@ test("Hosted Captun does not trust spoofable forwarded IP headers for rate limit
   expect(second).toMatchObject({ status: 429 });
 });
 
+test("Hosted Captun rejects a different ownership token while a tunnel is active", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _ownerTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "owner a\n",
+    clientIp: "203.0.113.70",
+  });
+
+  const conflict = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
+    { headers: { "cf-connecting-ip": "203.0.113.71" } },
+  );
+  const stillOwned = await fixture.worker.fetch("https://demo.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.72" },
+  });
+
+  expect(conflict).toMatchObject({ status: 409 });
+  expect(await conflict.text()).toBe("Tunnel name is already connected\n");
+  expect(stillOwned).toMatchObject({ status: 200 });
+  expect(await stillOwned.text()).toBe("owner a\n");
+});
+
+test("Hosted Captun lets the same ownership token replace its active tunnel", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _firstTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "first\n",
+    clientIp: "203.0.113.80",
+  });
+  using _secondTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "second\n",
+    clientIp: "203.0.113.81",
+  });
+
+  const response = await fixture.worker.fetch("https://demo.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.82" },
+  });
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.text()).toBe("second\n");
+});
+
+test("Hosted Captun accepts an ownership token header", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _tunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://header.captun.sh/__captun-connect",
+    responseText: "header token\n",
+    clientIp: "203.0.113.85",
+    headers: { "x-captun-owner-token": "owner-from-header" },
+  });
+
+  const response = await fixture.worker.fetch("https://header.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.86" },
+  });
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.text()).toBe("header token\n");
+});
+
+test("Hosted Captun requires anonymous ownership tokens for public hosted connections", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+
+  const response = await fixture.worker.fetch("https://demo.captun.sh/__captun-connect", {
+    headers: { "cf-connecting-ip": "203.0.113.90" },
+  });
+
+  expect(response).toMatchObject({ status: 400 });
+  expect(await response.text()).toBe("Missing tunnel ownership token\n");
+});
+
+test("Captun clients send an anonymous ownership token on the tunnel WebSocket URL", async () => {
+  await using recorder = await createWebSocketUpgradeRecorder();
+
+  using _tunnel = await createCaptunTunnel({
+    url: `${recorder.origin}/demo/__captun-connect`,
+    fetch: () => new Response("ok\n"),
+  });
+
+  const upgradeUrl = new URL(recorder.upgradeUrl.current || "", recorder.origin);
+
+  expect(upgradeUrl).toMatchObject({ pathname: "/demo/__captun-connect" });
+  expect(upgradeUrl.searchParams.get("captun-owner-token")).toMatch(/^[a-f0-9]{32}$/);
+});
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
@@ -485,3 +609,87 @@ test("Captun Worker requires the configured secret before accepting a tunnel cli
   expect(response).toMatchObject({ status: 401 });
   expect(await response.text()).toBe("Unauthorized\n");
 });
+
+async function createWebSocketUpgradeRecorder() {
+  const upgradeUrl = { current: "" };
+  const sockets = new Set<{ destroy: () => void }>();
+  const server = createServer();
+  server.on("upgrade", (request, socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    upgradeUrl.current = request.url || "";
+    const key = request.headers["sec-websocket-key"];
+    if (typeof key !== "string") {
+      socket.destroy();
+      return;
+    }
+    const accept = createHash("sha1")
+      .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest("base64");
+    socket.write(
+      [
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Accept: ${accept}`,
+        "",
+        "",
+      ].join("\r\n"),
+    );
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not start test server");
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    upgradeUrl,
+    async [Symbol.asyncDispose]() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    },
+  };
+}
+
+async function createDirectWorkerTunnel(options: {
+  fixture: any;
+  url: string;
+  responseText: string;
+  clientIp: string;
+  headers?: Record<string, string>;
+}) {
+  const response = await options.fixture.worker.fetch(options.url, {
+    headers: {
+      upgrade: "websocket",
+      "cf-connecting-ip": options.clientIp,
+      ...options.headers,
+    },
+  });
+  expect(response).toMatchObject({ status: 101 });
+
+  const socket = response.webSocket;
+  socket.accept();
+  const session = newWebSocketRpcSession(socket, new TestTunnelFetcher(options.responseText));
+
+  return {
+    [Symbol.dispose]() {
+      session[Symbol.dispose]();
+    },
+  };
+}
+
+class TestTunnelFetcher extends RpcTarget {
+  private responseText: string;
+
+  constructor(responseText: string) {
+    super();
+    this.responseText = responseText;
+  }
+
+  fetch() {
+    return new Response(this.responseText);
+  }
+}

@@ -5,7 +5,7 @@ size: medium
 
 # Hosted captun.sh
 
-Status summary: Initial hosted deployment is live on `captun.sh`. The CLI, library, and browser landing-page demo can create hosted random tunnels; the main missing work is a proper free/paid control plane, tunnel ownership, and throttling.
+Status summary: Initial hosted deployment is live on `captun.sh`. The CLI, library, and browser landing-page demo can create hosted random tunnels; the main missing work is a proper free/paid control plane, deeper resource caps, and observability.
 
 ## Initial public-hosted slice
 
@@ -21,7 +21,7 @@ Status summary: Initial hosted deployment is live on `captun.sh`. The CLI, libra
 ## Safety and product follow-up
 
 - [ ] Use cryptographic random names for free hosted tunnels and keep friendly/custom subdomains behind auth or a paid reservation model.
-- [ ] Add per-session tunnel ownership: first client claims a tunnel name, the same token can reconnect, and a different token gets `409` instead of evicting the active tunnel.
+- [x] Add per-session tunnel ownership: first client claims a tunnel name, the same token can reconnect, and a different token gets `409` instead of evicting the active tunnel. _The stacked hosted-ownership-tokens PR stores anonymous active-owner tokens in `CaptunServerShard` and sends generated connect tokens from CLI/API/browser clients._
 - [ ] Add Cloudflare Rate Limiting bindings for cheap edge throttles on connect attempts and forwarded requests.
 - [ ] Add Durable Object backed global-ish limits for active tunnels, concurrent tunnels per IP/account, and suspicious reconnect churn.
 - [ ] Add basic resource caps: max tunnel lifetime, idle timeout, in-flight request cap, request body size limit, and response streaming guardrails.

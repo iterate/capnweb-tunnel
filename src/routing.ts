@@ -113,6 +113,10 @@ export function getTunnelUrlFromServerUrl(serverUrl: string, tunnelName: string)
 /** Header used by the Worker to advertise a tunnel's canonical URL to its client. */
 export const TUNNEL_URL_HEADER = "x-captun-tunnel-url";
 
+/** Anonymous hosted clients use this token to prove they own an active tunnel name. */
+export const TUNNEL_OWNER_TOKEN_QUERY_PARAM = "captun-owner-token";
+export const TUNNEL_OWNER_TOKEN_HEADER = "x-captun-owner-token";
+
 /** Reserved path used by tunnel clients to open the WebSocket; not a tunnel name. */
 const CONNECT_PATH_SEGMENT = "__captun-connect";
 
