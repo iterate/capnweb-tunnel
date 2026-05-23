@@ -1,12 +1,23 @@
 export const HOSTED_CAPTUN_HOSTNAME = "captun.sh";
 export const HOSTED_CAPTUN_SERVER_URL = "https://{name}.captun.sh";
 export const RESERVED_HOSTED_SUBDOMAINS = [
+  "account",
+  "accounts",
+  "admin",
+  "api",
   "app",
+  "auth",
+  "billing",
   "captun",
   "dash",
   "dashboard",
+  "docs",
   "iterate",
   "login",
+  "payment",
+  "payments",
+  "status",
+  "support",
   "tunnel",
   "www",
 ];
