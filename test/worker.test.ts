@@ -188,6 +188,39 @@ test("Captun Worker routes subdomain tunnel requests when CUSTOM_HOSTNAME is set
   expect(await response.text()).toBe("No tunnel client connected\n");
 });
 
+test("Hosted Captun redirects the apex hostname to www", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
+
+  const response = await fixture.worker.fetch("https://captun.sh/docs?x=1", {
+    redirect: "manual",
+  });
+
+  expect(response).toMatchObject({ status: 308 });
+  expect(response.headers.get("location")).toBe("https://www.captun.sh/docs?x=1");
+});
+
+test("Hosted Captun serves a static landing page on www", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
+
+  const response = await fixture.worker.fetch("https://www.captun.sh/");
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(response.headers.get("content-type")).toContain("text/html");
+  expect(await response.text()).toContain("npx captun 3000");
+});
+
+test.each(["app", "login", "dash", "dashboard", "captun", "tunnel", "iterate"])(
+  "Hosted Captun reserves %s.captun.sh",
+  async (subdomain) => {
+    await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
+
+    const response = await fixture.worker.fetch(`https://${subdomain}.captun.sh/`);
+
+    expect(response).toMatchObject({ status: 404 });
+    expect(await response.text()).toBe("Reserved captun.sh subdomain\n");
+  },
+);
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 

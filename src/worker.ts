@@ -2,8 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 import { acceptCaptunTunnel, type Fetcher } from "./index.js";
 import {
   captunShardName,
+  HOSTED_CAPTUN_HOSTNAME,
   getTunnelNameFromUrl,
   getTunnelUrl,
+  RESERVED_HOSTED_SUBDOMAINS,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
@@ -71,6 +73,9 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
 export default {
   fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+    const hostedResponse = hostedCaptunResponse(request, env);
+    if (hostedResponse) return hostedResponse;
+
     const tunnelName = getTunnelNameFromUrl({
       customHostname: env.CUSTOM_HOSTNAME,
       url: request.url,
@@ -110,3 +115,67 @@ export default {
     return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
+
+function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | undefined {
+  if (env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+
+  const url = new URL(request.url);
+  if (url.hostname === HOSTED_CAPTUN_HOSTNAME) {
+    return Response.redirect(
+      `https://www.${HOSTED_CAPTUN_HOSTNAME}${url.pathname}${url.search}`,
+      308,
+    );
+  }
+
+  const suffix = `.${HOSTED_CAPTUN_HOSTNAME}`;
+  if (!url.hostname.endsWith(suffix)) return undefined;
+
+  const labels = url.hostname.slice(0, -suffix.length).split(".");
+  const subdomain = labels[labels.length - 1] || "";
+  if (subdomain === "www") {
+    return new Response(WWW_LANDING_PAGE, {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+  if (RESERVED_HOSTED_SUBDOMAINS.includes(subdomain)) {
+    return new Response("Reserved captun.sh subdomain\n", { status: 404 });
+  }
+}
+
+const WWW_LANDING_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>captun</title>
+  <style>
+    body { max-width: 720px; margin: 64px auto; padding: 0 20px; font: 16px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #111; background: #fff; }
+    h1 { font-size: 28px; margin: 0 0 24px; }
+    h2 { font-size: 16px; margin: 28px 0 8px; }
+    pre { padding: 12px 14px; overflow-x: auto; background: #f4f4f4; border: 1px solid #ddd; }
+    a { color: #0645ad; }
+  </style>
+</head>
+<body>
+  <h1>captun</h1>
+  <p>A tiny public tunnel for local HTTP servers.</p>
+  <p>Run this in a project with something listening on port 3000:</p>
+  <pre>npx captun 3000</pre>
+  <p>You get a URL like:</p>
+  <pre>https://abc123.captun.sh</pre>
+  <p>Requests to that URL are forwarded to your local server until you stop the process.</p>
+
+  <h2>From code</h2>
+  <pre>import { createCaptunTunnel } from "captun";
+
+const tunnel = await createCaptunTunnel({
+  fetch: () => new Response("hello from my machine"),
+});
+
+console.log(tunnel.url);</pre>
+
+  <h2>Bring your own Cloudflare account</h2>
+  <pre>npx captun deploy</pre>
+  <p>Source: <a href="https://github.com/iterate/captun">github.com/iterate/captun</a></p>
+</body>
+</html>`;

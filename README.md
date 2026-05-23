@@ -4,18 +4,20 @@ Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare T
 
 ## Quick start
 
-First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
+Expose a local HTTP server with the hosted `captun.sh` tunnel service:
+
+```bash
+npx captun 3000
+```
+
+That prints a public URL like `https://abc123.captun.sh` and forwards requests to `localhost:3000`.
+
+If you want your own tunnel server, deploy a captun Worker to your Cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
 
 `deploy` expects Cloudflare auth to already be available. Run `npx wrangler login` once, or set `CLOUDFLARE_API_TOKEN` for CI and other non-interactive shells.
 
 ```bash
 npx captun deploy
-```
-
-Then tunnel to it:
-
-```bash
-npx captun 3000
 ```
 
 <!-- # https://captun.my-account.workers.dev/funny-banana-wall
@@ -39,15 +41,12 @@ The deploy command will use `wrangler` under the hood to deploy an opinionated c
 
 ### Programmatic usage
 
-You can use the worker you just deployed to create a tunnel from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
+You can use the hosted service from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
 
 ```ts
 import { createCaptunTunnel } from "captun";
 
-const url = "https://captun.account.workers.dev/my-cool-tunnel";
-
 const tunnel = await createCaptunTunnel({
-  url: `${url}/__captun-connect`, // creates a tunnel named "my-tunnel". choose any slug-safe string here
   fetch: async (request) => {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/webhook")) {
@@ -59,7 +58,7 @@ const tunnel = await createCaptunTunnel({
   },
 });
 
-console.log(`Listening to webhooks on ${url}/webhook`);
+console.log(`Listening to webhooks on ${tunnel.url}/webhook`);
 
 await new Promise(() => {}); // stay alive until killed
 ```
@@ -128,7 +127,7 @@ The core client/server pieces (`createCaptunTunnel`, `acceptCaptunTunnel`, and t
 
 ## Advanced CLI Usage
 
-The CLI is mostly focused on ngrok-style use-cases with our opinionated worker deployment. Once you have run `npx captun deploy`, further commands will pick up the server URL and connection secret from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
+The CLI is mostly focused on ngrok-style use-cases. Without local config it uses the hosted `captun.sh` service. Once you have run `npx captun deploy`, further commands will pick up your self-hosted server URL and connection secret from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
 
 ```bash
 npx captun 3000 --server-url 'https://abc123.captun.youraccount.workers.dev' --secret abc123

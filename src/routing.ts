@@ -1,3 +1,16 @@
+export const HOSTED_CAPTUN_HOSTNAME = "captun.sh";
+export const HOSTED_CAPTUN_SERVER_URL = "https://{name}.captun.sh";
+export const RESERVED_HOSTED_SUBDOMAINS = [
+  "app",
+  "captun",
+  "dash",
+  "dashboard",
+  "iterate",
+  "login",
+  "tunnel",
+  "www",
+];
+
 /**
  * Extracts a tunnel name from an incoming request URL.
  *
@@ -78,6 +91,14 @@ export function getTunnelUrl({
   return `${parsed.protocol}//${parsed.host}/${encodeURIComponent(tunnelName)}`;
 }
 
+export function getTunnelUrlFromServerUrl(serverUrl: string, tunnelName: string): string {
+  if (serverUrl.includes("{name}"))
+    return removeTrailingSlash(serverUrl.replaceAll("{name}", tunnelName));
+  const url = new URL(serverUrl);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(tunnelName)}`;
+  return removeTrailingSlash(url.toString());
+}
+
 /** Header used by the Worker to advertise a tunnel's canonical URL to its client. */
 export const TUNNEL_URL_HEADER = "x-captun-tunnel-url";
 
@@ -107,4 +128,8 @@ function safeDecodeURIComponent(value: string) {
   } catch {
     return undefined;
   }
+}
+
+function removeTrailingSlash(url: string) {
+  return url.replace(/\/$/, "");
 }

@@ -513,6 +513,7 @@ export async function deployWorker(
     shards?: number;
     accountId?: string;
     customHostname?: string;
+    additionalRoutes?: string[];
     dryRun?: boolean;
   },
   options: { packageRoot: string },
@@ -534,7 +535,11 @@ export async function deployWorker(
     if (input.accountId) baseConfig.account_id = input.accountId;
     if (input.route && input.zone) {
       const existingRoutes = Array.isArray(baseConfig.routes) ? baseConfig.routes : [];
-      baseConfig.routes = [...existingRoutes, { pattern: input.route, zone_name: input.zone }];
+      const routes = [input.route, ...(input.additionalRoutes || [])];
+      baseConfig.routes = [
+        ...existingRoutes,
+        ...routes.map((route) => ({ pattern: route, zone_name: input.zone })),
+      ];
       baseConfig.workers_dev = false;
     }
     const deployConfig = resolve(tempDir, "wrangler.json");

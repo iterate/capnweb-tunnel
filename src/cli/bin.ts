@@ -15,7 +15,11 @@ import { CliFriendlyError } from "./cli-error.js";
 import { createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
-import { TUNNEL_URL_HEADER } from "../routing.js";
+import {
+  getTunnelUrlFromServerUrl,
+  HOSTED_CAPTUN_SERVER_URL,
+  TUNNEL_URL_HEADER,
+} from "../routing.js";
 import {
   captunHealthResponse,
   confirmTunnelHealth,
@@ -23,7 +27,7 @@ import {
 } from "./tunnel-health.js";
 import { deployWorker, openInBrowser, runDeployWizard, waitForCertWithSpinner } from "./deploy.js";
 
-type Config = {
+export type Config = {
   serverUrl: string;
   secret?: string;
 };
@@ -36,13 +40,25 @@ type TunnelCliInput = {
   requestLogs: boolean;
 };
 
-type ResolvedTunnel = {
+export type ResolvedTunnel = {
   name: string;
   serverUrl: string;
   target: string;
   secret?: string;
   requestLogs: boolean;
   tunnel: string;
+};
+
+export type TunnelReady = {
+  url: string;
+  tunnel: ResolvedTunnel;
+};
+
+export type CaptunCliRouterOptions = {
+  readConfig?: () => Promise<Config | undefined>;
+  writeConfig?: (config: Config) => Promise<void>;
+  waitForShutdown?: () => Promise<void>;
+  onTunnelReady?: (ready: TunnelReady) => void | Promise<void>;
 };
 
 const adjectives =
@@ -62,139 +78,148 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const xdgConfigHome = process.env.XDG_CONFIG_HOME;
 const configPath = resolve(xdgConfigHome || resolve(homedir(), ".config"), "captun", "config.json");
 
-const router = os.router({
-  tunnel: os
-    .meta({
-      default: true,
-      description: "Expose a local HTTP server through your Captun tunnel Worker.",
-      examples: ["captun 3000", "captun 0.0.0.0:5173 --name my-app"],
-    })
-    .input(
-      z.object({
-        target: z
-          .string()
-          .trim()
-          .min(1)
-          .default("3000")
-          .describe("Local target to expose, as a port, host:port, or URL")
-          .meta({ positional: true }),
-        name: z.string().optional().describe("Tunnel name"),
-        serverUrl: z.url().optional().describe("Tunnel Worker base URL"),
-        secret: z.string().optional().describe("Tunnel connection secret"),
-        requestLogs: z.boolean().default(true).describe("Print basic request logs"),
+export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
+  const readCliConfig = options.readConfig || readConfig;
+  const writeCliConfig = options.writeConfig || writeConfig;
+  return os.router({
+    tunnel: os
+      .meta({
+        default: true,
+        description: "Expose a local HTTP server through your Captun tunnel Worker.",
+        examples: ["captun 3000", "captun 0.0.0.0:5173 --name my-app"],
+      })
+      .input(
+        z.object({
+          target: z
+            .string()
+            .trim()
+            .min(1)
+            .default("3000")
+            .describe("Local target to expose, as a port, host:port, or URL")
+            .meta({ positional: true }),
+          name: z.string().optional().describe("Tunnel name"),
+          serverUrl: z.url().optional().describe("Tunnel Worker base URL"),
+          secret: z.string().optional().describe("Tunnel connection secret"),
+          requestLogs: z.boolean().default(true).describe("Print basic request logs"),
+        }),
+      )
+      .handler(async ({ input }) => {
+        const config = await readCliConfig();
+        if (config) console.log(`${color.dim("Using")} ${color.cyan(configPath)}\n`);
+
+        const tunnel = resolveTunnel(input, config);
+        printTunnelOpening(tunnel);
+        await runTunnelSession(tunnel, {
+          waitForShutdown: options.waitForShutdown,
+          onReady: options.onTunnelReady,
+        });
       }),
-    )
-    .handler(async ({ input }) => {
-      const config = await readConfig();
-      if (config) console.log(`${color.dim("Using")} ${color.cyan(configPath)}\n`);
 
-      const tunnel = resolveTunnel(input, config);
-      printTunnelOpening(tunnel);
-      await runTunnelSession(tunnel);
-    }),
-
-  deploy: os
-    .meta({
-      description: "Deploy the Captun tunnel Worker with Wrangler and save local CLI config.",
-      prompt: false,
-      examples: [
-        "captun deploy",
-        "captun deploy --route '*.captun.example.com/*'",
-        "captun deploy --shards 16",
-      ],
-    })
-    .input(
-      z.object({
-        name: z
-          .string()
-          .optional()
-          .describe("Worker name (defaults to the value in wrangler.jsonc, which is 'captun')"),
-        route: z
-          .string()
-          .optional()
-          .describe("Optional Worker route, for example *.captun.example.com/*"),
-        zone: z
-          .string()
-          .optional()
-          .describe("Cloudflare zone name for the route, for example example.com"),
-        secret: z
-          .string()
-          .optional()
-          .describe("Secret required by tunnel clients; generated when omitted"),
-        shards: z
-          .number()
-          .int()
-          .min(1)
-          .optional()
-          .describe("Number of Durable Object shards to spread tunnel names across"),
-        dryRun: z
-          .boolean()
-          .optional()
-          .describe("Compile and validate the deploy without uploading"),
-      }),
-    )
-    .handler(async ({ input }) => {
-      const wizardResult = await runDeployWizard(input, { packageRoot });
-      const secret = wizardResult.secret;
-      const serverUrl = await deployWorker(
-        {
-          name: wizardResult.name,
-          route: wizardResult.route,
-          zone: wizardResult.zone,
-          secret,
-          shards: wizardResult.shards,
-          accountId: wizardResult.accountId,
-          customHostname: wizardResult.customHostname,
-          dryRun: input.dryRun,
-        },
-        { packageRoot },
-      );
-      if (input.dryRun) {
-        console.log("\nDry run complete (no upload, config not written).");
-        console.log(`Expected server URL pattern: ${serverUrl}`);
-        return { serverUrl, dryRun: true };
-      }
-
-      // Worker is live now — persist config before anything that can fail later
-      // (e.g. cert provisioning can time out, but the deploy is already complete).
-      await writeConfig({ serverUrl, secret });
-
-      if (wizardResult.certWait) {
-        try {
-          await waitForCertWithSpinner(wizardResult.certWait);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.log(
-            `\n${color.yellow("!")} Certificate provisioning is still pending: ${message}`,
-          );
-          console.log(
-            `  ${color.dim("Config has been saved. Re-run `captun deploy` later (or check the Cloudflare dashboard) once the cert is active.")}`,
-          );
+    deploy: os
+      .meta({
+        description: "Deploy the Captun tunnel Worker with Wrangler and save local CLI config.",
+        prompt: false,
+        examples: [
+          "captun deploy",
+          "captun deploy --route '*.captun.example.com/*'",
+          "captun deploy --shards 16",
+        ],
+      })
+      .input(
+        z.object({
+          name: z
+            .string()
+            .optional()
+            .describe("Worker name (defaults to the value in wrangler.jsonc, which is 'captun')"),
+          route: z
+            .string()
+            .optional()
+            .describe("Optional Worker route, for example *.captun.example.com/*"),
+          zone: z
+            .string()
+            .optional()
+            .describe("Cloudflare zone name for the route, for example example.com"),
+          secret: z
+            .string()
+            .optional()
+            .describe("Secret required by tunnel clients; generated when omitted"),
+          shards: z
+            .number()
+            .int()
+            .min(1)
+            .optional()
+            .describe("Number of Durable Object shards to spread tunnel names across"),
+          dryRun: z
+            .boolean()
+            .optional()
+            .describe("Compile and validate the deploy without uploading"),
+        }),
+      )
+      .handler(async ({ input }) => {
+        const wizardResult = await runDeployWizard(input, { packageRoot });
+        const secret = wizardResult.secret;
+        const serverUrl = await deployWorker(
+          {
+            name: wizardResult.name,
+            route: wizardResult.route,
+            zone: wizardResult.zone,
+            secret,
+            shards: wizardResult.shards,
+            accountId: wizardResult.accountId,
+            customHostname: wizardResult.customHostname,
+            dryRun: input.dryRun,
+          },
+          { packageRoot },
+        );
+        if (input.dryRun) {
+          console.log("\nDry run complete (no upload, config not written).");
+          console.log(`Expected server URL pattern: ${serverUrl}`);
+          return { serverUrl, dryRun: true };
         }
-      }
 
-      printDeploySummary({
-        serverUrl,
-        workerName: wizardResult.name ?? "captun",
-        route: wizardResult.route,
-        zone: wizardResult.zone,
-        shards: wizardResult.shards ?? 1,
-      });
+        // Worker is live now — persist config before anything that can fail later
+        // (e.g. cert provisioning can time out, but the deploy is already complete).
+        await writeCliConfig({ serverUrl, secret });
 
-      if (process.stdin.isTTY) {
-        await postDeploySelfTest({
+        if (wizardResult.certWait) {
+          try {
+            await waitForCertWithSpinner(wizardResult.certWait);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.log(
+              `\n${color.yellow("!")} Certificate provisioning is still pending: ${message}`,
+            );
+            console.log(
+              `  ${color.dim("Config has been saved. Re-run `captun deploy` later (or check the Cloudflare dashboard) once the cert is active.")}`,
+            );
+          }
+        }
+
+        printDeploySummary({
           serverUrl,
-          secret,
           workerName: wizardResult.name ?? "captun",
           route: wizardResult.route,
           zone: wizardResult.zone,
           shards: wizardResult.shards ?? 1,
         });
-      }
 
-      return { serverUrl, configPath };
-    }),
-});
+        if (process.stdin.isTTY) {
+          await postDeploySelfTest({
+            serverUrl,
+            secret,
+            workerName: wizardResult.name ?? "captun",
+            route: wizardResult.route,
+            zone: wizardResult.zone,
+            shards: wizardResult.shards ?? 1,
+          });
+        }
+
+        return { serverUrl, configPath };
+      }),
+  });
+}
+
+export const router = createCaptunCliRouter();
 
 type DeployedSummary = {
   serverUrl: string;
@@ -237,7 +262,7 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
     target,
     secret: opts.secret,
     requestLogs: true,
-    tunnel: tunnelUrl(opts.serverUrl, name),
+    tunnel: getTunnelUrlFromServerUrl(opts.serverUrl, name),
   };
 
   printTunnelOpening(tunnel);
@@ -377,16 +402,6 @@ async function writeConfig(config: Config) {
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
 
-function tunnelUrl(baseUrl: string, name: string) {
-  // The wizard writes serverUrl with a `{name}` placeholder when the Worker is
-  // on a custom hostname (subdomain routing). Plain URLs (workers.dev or local
-  // wrangler dev) use folder routing — append the tunnel name as a path segment.
-  if (baseUrl.includes("{name}")) return removeTrailingSlash(baseUrl.replaceAll("{name}", name));
-  const url = new URL(baseUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
-  return removeTrailingSlash(url.toString());
-}
-
 function removeTrailingSlash(url: string) {
   return url.replace(/\/$/, "");
 }
@@ -424,10 +439,7 @@ function colorStatus(status: number) {
 }
 
 function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
-  const serverUrl = input.serverUrl ?? config?.serverUrl;
-  if (!serverUrl) {
-    throw new Error(`No tunnel server configured. Run "captun deploy" first or pass --server-url.`);
-  }
+  const serverUrl = input.serverUrl || config?.serverUrl || HOSTED_CAPTUN_SERVER_URL;
 
   const name = input.name ?? randomName();
   const target = normalizeTarget(input.target);
@@ -436,9 +448,9 @@ function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
     name,
     serverUrl,
     target,
-    secret: input.secret ?? config?.secret,
+    secret: input.secret || config?.secret,
     requestLogs: input.requestLogs,
-    tunnel: tunnelUrl(serverUrl, name),
+    tunnel: getTunnelUrlFromServerUrl(serverUrl, name),
   };
 }
 
@@ -457,7 +469,11 @@ function normalizeTarget(target: string) {
 
 async function runTunnelSession(
   tunnel: ResolvedTunnel,
-  opts: { retries?: number; onReady?: () => void } = {},
+  opts: {
+    retries?: number;
+    waitForShutdown?: () => Promise<void>;
+    onReady?: (ready: TunnelReady) => void | Promise<void>;
+  } = {},
 ) {
   const startedAt = performance.now();
   await assertLocalTargetAcceptingConnections(tunnel.target);
@@ -475,8 +491,8 @@ async function runTunnelSession(
     console.log(color.cyan(tunnelUrlForDisplay));
     console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
     console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
-    opts.onReady?.();
-    await waitForShutdown();
+    await opts.onReady?.({ url: tunnelUrlForDisplay, tunnel });
+    await (opts.waitForShutdown || waitForShutdown)();
   } finally {
     session[Symbol.dispose]();
   }
@@ -614,16 +630,23 @@ function pick(words: string[]) {
   return word;
 }
 
-const cli = createCli({
-  router,
-  name: "captun",
-  version: "0.0.0",
-  description: "Expose local HTTP servers through a tiny Cloudflare Worker tunnel.",
-});
+if (isMainModule()) {
+  const cli = createCli({
+    router,
+    name: "captun",
+    version: "0.0.0",
+    description: "Expose local HTTP servers through a tiny Cloudflare Worker tunnel.",
+  });
 
-await cli.run({
-  prompts,
-  logger: yamlTableConsoleLogger,
-  formatError: (error) =>
-    error instanceof CliFriendlyError ? `\n${error.message}\n` : inspect(error),
-});
+  await cli.run({
+    prompts,
+    logger: yamlTableConsoleLogger,
+    formatError: (error) =>
+      error instanceof CliFriendlyError ? `\n${error.message}\n` : inspect(error),
+  });
+}
+
+function isMainModule() {
+  const entry = process.argv[1];
+  return Boolean(entry && resolve(entry) === fileURLToPath(import.meta.url));
+}

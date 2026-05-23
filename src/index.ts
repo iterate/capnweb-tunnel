@@ -1,4 +1,5 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
+import { getTunnelUrlFromServerUrl, HOSTED_CAPTUN_SERVER_URL } from "./routing.js";
 
 /** Fetch is all you need!
  *
@@ -25,13 +26,20 @@ export interface Fetcher {
  * Cap'n Web WebSocket sessions:
  * https://github.com/cloudflare/capnweb#websocket-client
  */
+export type CaptunTunnel = Disposable & {
+  url: string;
+};
+
 export async function createCaptunTunnel(
   options: Fetcher & {
-    url: string | URL;
+    url?: string | URL;
+    serverUrl?: string;
+    name?: string;
     headers?: Record<string, string>;
   },
-): Promise<Disposable> {
-  const socket = createWebSocket(options);
+): Promise<CaptunTunnel> {
+  const endpoint = resolveTunnelEndpoint(options);
+  const socket = createWebSocket({ url: endpoint.connectUrl, headers: options.headers });
   // tunnelTargetFetcher is the "main object" that comes out on the other side in acceptCaptunTunnel
   // as a capnweb rpc stub that the server can just call fetch on
   const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
@@ -39,8 +47,37 @@ export async function createCaptunTunnel(
   await waitUntilOpen(socket);
 
   return {
+    url: endpoint.publicUrl,
     [Symbol.dispose]: () => session[Symbol.dispose](),
   };
+}
+
+function resolveTunnelEndpoint(options: {
+  url?: string | URL;
+  serverUrl?: string;
+  name?: string;
+}): { publicUrl: string; connectUrl: string } {
+  if (options.url) {
+    const publicUrl = publicUrlFromConnectUrl(new URL(options.url));
+    return { publicUrl, connectUrl: String(options.url) };
+  }
+
+  const tunnelName = options.name || randomTunnelName();
+  const serverUrl = options.serverUrl || HOSTED_CAPTUN_SERVER_URL;
+  const publicUrl = getTunnelUrlFromServerUrl(serverUrl, tunnelName);
+  return { publicUrl, connectUrl: `${publicUrl}/__captun-connect` };
+}
+
+function publicUrlFromConnectUrl(connectUrl: URL) {
+  const publicUrl = new URL(connectUrl);
+  publicUrl.pathname = publicUrl.pathname.replace(/\/__captun-connect\/?$/, "") || "/";
+  return publicUrl.toString().replace(/\/$/, "");
+}
+
+function randomTunnelName() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 class TunnelTargetFetcher extends RpcTarget implements Fetcher {

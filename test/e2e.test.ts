@@ -18,6 +18,32 @@ test.concurrent("forwards HTTP", async ({ task }) => {
   expect(await response.json()).toMatchObject({ body: "hello through tunnel" });
 });
 
+test.concurrent("creates a named tunnel from a server URL", async ({ task }) => {
+  await using server = await createServerFixture();
+  const name = tunnelName(task.name);
+  using tunnel = await createCaptunTunnel({
+    serverUrl: server.url,
+    name,
+    headers: server.headers,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      return Response.json({ path: url.pathname, body: await request.text() });
+    },
+  });
+
+  expect(tunnel).toMatchObject({ url: tunnelUrl(server.url, name) });
+
+  const response = await fetch(`${tunnel.url}/server-url-api`, {
+    method: "POST",
+    body: "hello through server url",
+  });
+
+  expect(await response.json()).toMatchObject({
+    path: "/server-url-api",
+    body: "hello through server url",
+  });
+});
+
 test.concurrent("streams a binary response", async ({ task }) => {
   await using tunnel = await createTunnelFixture(task.name, () => {
     let sent = 0;
