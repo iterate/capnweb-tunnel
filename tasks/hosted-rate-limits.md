@@ -13,7 +13,7 @@ Status summary: First hosted throttling slice is implemented and locally verifie
 - [x] Limit tunnel connect attempts per client IP. _`__captun-connect` requests check `connect:ip:<client>` before shard dispatch._
 - [x] Limit forwarded HTTP requests per client IP and per tunnel name. _Forwarded hosted requests check both `request:ip:<client>` and `request:tunnel:<name>` buckets._
 - [x] Return useful `429` responses. _Hosted throttles return plain text with `Retry-After`, `cache-control: no-store`, and `x-captun-rate-limit`._
-- [x] Make limits configurable by Worker vars. _Window and connect/IP/tunnel limits are controlled by `HOSTED_*_PER_WINDOW` vars with public-service defaults._
+- [x] Make limits configurable by Worker vars. _Window and connect/IP/tunnel limits are controlled by `HOSTED_\*_PER_WINDOW` vars with public-service defaults._
 - [x] Cover limits in Miniflare tests. _`test/worker.test.ts` covers connect, per-IP request, per-tunnel request, and self-hosted bypass behavior._
 - [ ] Deploy to `captun-public` after merge-ready checks. _Not deployed yet; this stacked PR should deploy after review or on explicit request._
 
@@ -28,5 +28,6 @@ Status summary: First hosted throttling slice is implemented and locally verifie
 ## Implementation Notes
 
 - 2026-05-23: Initial unsafe hosted service is intentionally live but obscure. This task starts the first throttling layer before publicising `captun.sh`.
-- 2026-05-24: Implemented fixed-window in-memory buckets inside a single hosted rate-limiter Durable Object named `global`. This is intentionally a first abuse guardrail, not billing-grade quota accounting.
-- 2026-05-24: Verified with `pnpm run check`, `pnpm test`, and `pnpm run build`.
+- 2026-05-24: Implemented fixed-window in-memory buckets in hosted rate-limiter Durable Objects named by hashed bucket key. This is intentionally a first abuse guardrail, not billing-grade quota accounting.
+- 2026-05-24: Review follow-up changed the limiter to fail closed when the binding is missing, added an explicit `HOSTED_RATE_LIMIT_DISABLED=1` escape hatch, and stopped trusting spoofable forwarded-IP headers.
+- 2026-05-24: Verified with `pnpm run check`, `pnpm test`, `pnpm run build`, and `CAPTUN_PUBLIC_E2E=1 pnpm vitest run test/public-hosted.test.ts` after retrying one transient live WebSocket-open failure.

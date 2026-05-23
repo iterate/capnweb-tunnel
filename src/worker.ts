@@ -19,12 +19,12 @@ type CaptunEnv = {
   HOSTED_CONNECTS_PER_IP_PER_WINDOW?: string;
   HOSTED_REQUESTS_PER_IP_PER_WINDOW?: string;
   HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW?: string;
+  HOSTED_RATE_LIMIT_DISABLED?: string;
 };
 
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
 
-const HOSTED_RATE_LIMITER_NAME = "global";
 const DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS = 60;
 const DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW = 30;
 const DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW = 600;
@@ -32,11 +32,7 @@ const DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW = 1200;
 
 type HostedRateLimitKind = "connect" | "request";
 
-type HostedRateLimitInput = {
-  kind: HostedRateLimitKind;
-  clientKey: string;
-  tunnelName: string;
-};
+type HostedRateLimitInput = { limit: number; windowSeconds: number };
 
 type HostedRateLimitResult = { ok: true } | { ok: false; limit: number; retryAfterSeconds: number };
 
@@ -98,49 +94,28 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 }
 
 export class HostedRateLimiter extends DurableObject<CaptunEnv> {
-  private readonly buckets = new Map<string, HostedRateLimitBucket>();
+  private bucket: HostedRateLimitBucket | undefined;
 
   check(input: HostedRateLimitInput): HostedRateLimitResult {
-    const config = hostedRateLimitConfig(this.env);
     const now = Date.now();
-    const resetAt = now + config.windowSeconds * 1000;
-    const checks =
-      input.kind === "connect"
-        ? [{ key: `connect:ip:${input.clientKey}`, limit: config.connectsPerIp }]
-        : [
-            { key: `request:ip:${input.clientKey}`, limit: config.requestsPerIp },
-            { key: `request:tunnel:${input.tunnelName}`, limit: config.requestsPerTunnel },
-          ];
-
-    const blocked = checks
-      .map((check) => ({ ...check, bucket: this.activeBucket(check.key, now, resetAt) }))
-      .find((check) => check.bucket.count >= check.limit);
-    if (blocked) {
+    const bucket = this.activeBucket(now, now + input.windowSeconds * 1000);
+    if (bucket.count >= input.limit) {
       return {
         ok: false,
-        limit: blocked.limit,
-        retryAfterSeconds: Math.max(1, Math.ceil((blocked.bucket.resetAt - now) / 1000)),
+        limit: input.limit,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
       };
     }
 
-    for (const check of checks) this.activeBucket(check.key, now, resetAt).count++;
-    this.cleanupExpiredBuckets(now);
+    bucket.count++;
     return { ok: true };
   }
 
-  private activeBucket(key: string, now: number, resetAt: number) {
-    const existing = this.buckets.get(key);
-    if (existing && existing.resetAt > now) return existing;
+  private activeBucket(now: number, resetAt: number) {
+    if (this.bucket && this.bucket.resetAt > now) return this.bucket;
     const bucket = { count: 0, resetAt };
-    this.buckets.set(key, bucket);
+    this.bucket = bucket;
     return bucket;
-  }
-
-  private cleanupExpiredBuckets(now: number) {
-    if (this.buckets.size < 10_000) return;
-    for (const [key, bucket] of this.buckets) {
-      if (bucket.resetAt <= now) this.buckets.delete(key);
-    }
   }
 }
 
@@ -212,16 +187,37 @@ async function hostedRateLimitResponse(input: {
   kind: HostedRateLimitKind;
 }): Promise<Response | undefined> {
   if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
-  if (!input.env.HostedRateLimiter) return undefined;
+  if (!input.env.HostedRateLimiter) {
+    if (input.env.HOSTED_RATE_LIMIT_DISABLED === "1") return undefined;
+    return new Response("Hosted rate limiter is not configured\n", {
+      status: 503,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
 
-  const limiter = input.env.HostedRateLimiter.getByName(HOSTED_RATE_LIMITER_NAME);
-  const result = await limiter.check({
+  const config = hostedRateLimitConfig(input.env);
+  const checks = hostedRateLimitChecks({
     kind: input.kind,
     clientKey: hostedClientKey(input.request),
     tunnelName: input.tunnelName,
+    config,
   });
-  if (result.ok) return undefined;
+  for (const check of checks) {
+    const limiter = input.env.HostedRateLimiter.getByName(hostedRateLimiterName(check.key));
+    const result = await limiter.check({
+      limit: check.limit,
+      windowSeconds: config.windowSeconds,
+    });
+    if (!result.ok) return hostedRateLimitedResponse(result);
+  }
 
+  return undefined;
+}
+
+function hostedRateLimitedResponse(result: Extract<HostedRateLimitResult, { ok: false }>) {
   return new Response(`Rate limit exceeded. Try again in ${result.retryAfterSeconds}s.\n`, {
     status: 429,
     headers: {
@@ -234,12 +230,32 @@ async function hostedRateLimitResponse(input: {
 }
 
 function hostedClientKey(request: Request) {
-  return (
-    request.headers.get("cf-connecting-ip") ||
-    request.headers.get("x-real-ip") ||
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
+  return request.headers.get("cf-connecting-ip") || "unknown";
+}
+
+function hostedRateLimitChecks(input: {
+  kind: HostedRateLimitKind;
+  clientKey: string;
+  tunnelName: string;
+  config: ReturnType<typeof hostedRateLimitConfig>;
+}) {
+  if (input.kind === "connect") {
+    return [{ key: `connect:ip:${input.clientKey}`, limit: input.config.connectsPerIp }];
+  }
+
+  return [
+    { key: `request:ip:${input.clientKey}`, limit: input.config.requestsPerIp },
+    { key: `request:tunnel:${input.tunnelName}`, limit: input.config.requestsPerTunnel },
+  ];
+}
+
+function hostedRateLimiterName(key: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index++) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `bucket-${(hash >>> 0).toString(36)}`;
 }
 
 function hostedRateLimitConfig(env: CaptunEnv) {
