@@ -1,6 +1,6 @@
 {
   "name": "captun",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": false,
   "description": "A tiny Cap'n Web tunnel for forwarding public Worker requests to a local fetcher.",
   "repository": {
