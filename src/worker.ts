@@ -7,7 +7,8 @@ import {
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
-type CaptunEnv = Env & {
+type CaptunEnv = {
+  CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
   CAPTUN_SECRET?: string;
   SHARD_COUNT?: string;
   CUSTOM_HOSTNAME?: string;
