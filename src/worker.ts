@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { decideTunnelAdmission } from "./hosted-admission.js";
 import { acceptCaptunTunnel, type Fetcher } from "./index.js";
 import {
   captunShardName,
@@ -6,8 +7,6 @@ import {
   getTunnelNameFromUrl,
   getTunnelUrl,
   RESERVED_HOSTED_SUBDOMAINS,
-  TUNNEL_OWNER_TOKEN_HEADER,
-  TUNNEL_OWNER_TOKEN_QUERY_PARAM,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
@@ -69,29 +68,13 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
-    const expected = this.env.CAPTUN_SECRET ? `Bearer ${this.env.CAPTUN_SECRET}` : undefined;
-    if (expected) {
-      // Constant-time comparison to avoid leaking the secret via timing.
-      const actual = new TextEncoder().encode(request.headers.get("authorization") ?? "");
-      const want = new TextEncoder().encode(expected);
-      if (actual.length !== want.length || !crypto.subtle.timingSafeEqual(actual, want)) {
-        return new Response("Unauthorized\n", { status: 401 });
-      }
-    }
-
-    const ownerToken = hostedAnonymousOwnerToken(request, this.env);
-    if (ownerToken instanceof Response) return ownerToken;
-
     const activeTunnel = this.tunnels.get(tunnelName);
-    if (activeTunnel?.ownerToken && activeTunnel.ownerToken !== ownerToken) {
-      return new Response("Tunnel name is already connected\n", {
-        status: 409,
-        headers: {
-          "content-type": "text/plain; charset=utf-8",
-          "cache-control": "no-store",
-        },
-      });
-    }
+    const admission = decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeOwnerToken: activeTunnel?.ownerToken,
+    });
+    if (!admission.ok) return admission.response;
 
     activeTunnel?.fetcher[Symbol.dispose]();
     const { response, tunnel } = acceptCaptunTunnel({
@@ -99,7 +82,7 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
         if (this.tunnels.get(tunnelName)?.fetcher === tunnel) this.tunnels.delete(tunnelName);
       },
     });
-    this.tunnels.set(tunnelName, { fetcher: tunnel, ownerToken });
+    this.tunnels.set(tunnelName, { fetcher: tunnel, ownerToken: admission.ownerToken });
     return response;
   }
 
@@ -236,39 +219,6 @@ async function hostedRateLimitResponse(input: {
   }
 
   return undefined;
-}
-
-function hostedAnonymousOwnerToken(
-  request: Request,
-  env: CaptunEnv,
-): string | Response | undefined {
-  if (env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
-  if (env.CAPTUN_SECRET) return undefined;
-
-  const token =
-    request.headers.get(TUNNEL_OWNER_TOKEN_HEADER) ||
-    new URL(request.url).searchParams.get(TUNNEL_OWNER_TOKEN_QUERY_PARAM) ||
-    "";
-  if (!token) {
-    return new Response("Missing tunnel ownership token\n", {
-      status: 400,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
-  }
-  if (!/^[a-zA-Z0-9._~-]{1,128}$/.test(token)) {
-    return new Response("Invalid tunnel ownership token\n", {
-      status: 400,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
-  }
-
-  return token;
 }
 
 function hostedRateLimitedResponse(result: Extract<HostedRateLimitResult, { ok: false }>) {

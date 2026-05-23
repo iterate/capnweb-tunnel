@@ -498,13 +498,14 @@ test("Hosted Captun rejects a different ownership token while a tunnel is active
     "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
     { headers: { "cf-connecting-ip": "203.0.113.71" } },
   );
+  expect({ status: conflict.status }).toMatchObject({ status: 409 });
+  expect(await conflict.text()).toBe("Tunnel name is already connected\n");
+
   const stillOwned = await fixture.worker.fetch("https://demo.captun.sh/hello", {
     headers: { "cf-connecting-ip": "203.0.113.72" },
   });
 
-  expect(conflict).toMatchObject({ status: 409 });
-  expect(await conflict.text()).toBe("Tunnel name is already connected\n");
-  expect(stillOwned).toMatchObject({ status: 200 });
+  expect({ status: stillOwned.status }).toMatchObject({ status: 200 });
   expect(await stillOwned.text()).toBe("owner a\n");
 });
 
