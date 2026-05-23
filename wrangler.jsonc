@@ -10,7 +10,13 @@
     "head_sampling_rate": 1,
   },
   "durable_objects": {
-    "bindings": [{ "name": "CaptunServerShard", "class_name": "CaptunServerShard" }],
+    "bindings": [
+      { "name": "CaptunServerShard", "class_name": "CaptunServerShard" },
+      { "name": "HostedRateLimiter", "class_name": "HostedRateLimiter" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CaptunServerShard"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CaptunServerShard"] },
+    { "tag": "v2", "new_sqlite_classes": ["HostedRateLimiter"] },
+  ],
 }

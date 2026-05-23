@@ -11,13 +11,39 @@ import {
 
 type CaptunEnv = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
+  HostedRateLimiter?: DurableObjectNamespace<HostedRateLimiter>;
   CAPTUN_SECRET?: string;
   SHARD_COUNT?: string;
   CUSTOM_HOSTNAME?: string;
+  HOSTED_RATE_LIMIT_WINDOW_SECONDS?: string;
+  HOSTED_CONNECTS_PER_IP_PER_WINDOW?: string;
+  HOSTED_REQUESTS_PER_IP_PER_WINDOW?: string;
+  HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW?: string;
 };
 
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
+
+const HOSTED_RATE_LIMITER_NAME = "global";
+const DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS = 60;
+const DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW = 30;
+const DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW = 600;
+const DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW = 1200;
+
+type HostedRateLimitKind = "connect" | "request";
+
+type HostedRateLimitInput = {
+  kind: HostedRateLimitKind;
+  clientKey: string;
+  tunnelName: string;
+};
+
+type HostedRateLimitResult = { ok: true } | { ok: false; limit: number; retryAfterSeconds: number };
+
+type HostedRateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
 
 /**
  * A shard Durable Object owns many named tunnels.
@@ -71,8 +97,55 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
   }
 }
 
+export class HostedRateLimiter extends DurableObject<CaptunEnv> {
+  private readonly buckets = new Map<string, HostedRateLimitBucket>();
+
+  check(input: HostedRateLimitInput): HostedRateLimitResult {
+    const config = hostedRateLimitConfig(this.env);
+    const now = Date.now();
+    const resetAt = now + config.windowSeconds * 1000;
+    const checks =
+      input.kind === "connect"
+        ? [{ key: `connect:ip:${input.clientKey}`, limit: config.connectsPerIp }]
+        : [
+            { key: `request:ip:${input.clientKey}`, limit: config.requestsPerIp },
+            { key: `request:tunnel:${input.tunnelName}`, limit: config.requestsPerTunnel },
+          ];
+
+    const blocked = checks
+      .map((check) => ({ ...check, bucket: this.activeBucket(check.key, now, resetAt) }))
+      .find((check) => check.bucket.count >= check.limit);
+    if (blocked) {
+      return {
+        ok: false,
+        limit: blocked.limit,
+        retryAfterSeconds: Math.max(1, Math.ceil((blocked.bucket.resetAt - now) / 1000)),
+      };
+    }
+
+    for (const check of checks) this.activeBucket(check.key, now, resetAt).count++;
+    this.cleanupExpiredBuckets(now);
+    return { ok: true };
+  }
+
+  private activeBucket(key: string, now: number, resetAt: number) {
+    const existing = this.buckets.get(key);
+    if (existing && existing.resetAt > now) return existing;
+    const bucket = { count: 0, resetAt };
+    this.buckets.set(key, bucket);
+    return bucket;
+  }
+
+  private cleanupExpiredBuckets(now: number) {
+    if (this.buckets.size < 10_000) return;
+    for (const [key, bucket] of this.buckets) {
+      if (bucket.resetAt <= now) this.buckets.delete(key);
+    }
+  }
+}
+
 export default {
-  fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+  async fetch(request: Request, env: CaptunEnv): Promise<Response> {
     const hostedResponse = hostedCaptunResponse(request, env);
     if (hostedResponse) return hostedResponse;
 
@@ -98,10 +171,26 @@ export default {
     const forwarded = new Request(url, request);
 
     if (forwardedPath === "/__captun-connect") {
+      const rateLimited = await hostedRateLimitResponse({
+        env,
+        request,
+        tunnelName,
+        kind: "connect",
+      });
+      if (rateLimited) return rateLimited;
+
       const headers = new Headers(forwarded.headers);
       headers.set(TUNNEL_NAME_HEADER, tunnelName);
       return shard.fetch(new Request(forwarded, { headers }));
     }
+
+    const rateLimited = await hostedRateLimitResponse({
+      env,
+      request,
+      tunnelName,
+      kind: "request",
+    });
+    if (rateLimited) return rateLimited;
 
     // Advertise the canonical tunnel URL back to the tunnel client. The CLI
     // reads this so it doesn't have to mirror the Worker's routing convention.
@@ -115,6 +204,70 @@ export default {
     return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
+
+async function hostedRateLimitResponse(input: {
+  env: CaptunEnv;
+  request: Request;
+  tunnelName: string;
+  kind: HostedRateLimitKind;
+}): Promise<Response | undefined> {
+  if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  if (!input.env.HostedRateLimiter) return undefined;
+
+  const limiter = input.env.HostedRateLimiter.getByName(HOSTED_RATE_LIMITER_NAME);
+  const result = await limiter.check({
+    kind: input.kind,
+    clientKey: hostedClientKey(input.request),
+    tunnelName: input.tunnelName,
+  });
+  if (result.ok) return undefined;
+
+  return new Response(`Rate limit exceeded. Try again in ${result.retryAfterSeconds}s.\n`, {
+    status: 429,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": String(result.retryAfterSeconds),
+      "x-captun-rate-limit": String(result.limit),
+    },
+  });
+}
+
+function hostedClientKey(request: Request) {
+  return (
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-real-ip") ||
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+function hostedRateLimitConfig(env: CaptunEnv) {
+  return {
+    windowSeconds: positiveInteger(
+      env.HOSTED_RATE_LIMIT_WINDOW_SECONDS,
+      DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS,
+    ),
+    connectsPerIp: positiveInteger(
+      env.HOSTED_CONNECTS_PER_IP_PER_WINDOW,
+      DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW,
+    ),
+    requestsPerIp: positiveInteger(
+      env.HOSTED_REQUESTS_PER_IP_PER_WINDOW,
+      DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW,
+    ),
+    requestsPerTunnel: positiveInteger(
+      env.HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW,
+      DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW,
+    ),
+  };
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
 
 function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | undefined {
   if (env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;

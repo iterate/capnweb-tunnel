@@ -1,21 +1,21 @@
 ---
-status: in-progress
+status: review
 size: medium
 ---
 
 # Hosted captun.sh rate limits
 
-Status summary: Spec is being carved into a first reviewable slice. The intended first PR adds Worker-level hosted throttles with tests; ownership, paid/custom names, and deeper abuse controls remain follow-up work.
+Status summary: First hosted throttling slice is implemented and locally verified. It adds hosted-only connect and forwarded-request limits with configurable Worker vars; ownership, paid/custom names, and deeper abuse controls remain follow-up work.
 
 ## First hosted throttling slice
 
-- [ ] Add a hosted-only rate-limiter Durable Object. _Keep self-hosted deployments unaffected unless they opt into the hosted `CUSTOM_HOSTNAME=captun.sh` path._
-- [ ] Limit tunnel connect attempts per client IP. _Repeated `__captun-connect` upgrades from the same IP should eventually return `429` before reaching a shard._
-- [ ] Limit forwarded HTTP requests per client IP and per tunnel name. _A noisy tunnel or source IP should receive `429` without breaking unrelated tunnels._
-- [ ] Return useful `429` responses. _Include `Retry-After`, plain text body, and conservative no-store headers._
-- [ ] Make limits configurable by Worker vars. _Use safe defaults for the public deployment and allow tests to set tiny limits._
-- [ ] Cover limits in Miniflare tests. _Exercise connect throttles, forwarded-request throttles, hosted-only behavior, and reset behavior._
-- [ ] Deploy to `captun-public` after merge-ready checks. _Verify hosted public e2e still passes._
+- [x] Add a hosted-only rate-limiter Durable Object. _`HostedRateLimiter` is bound in `wrangler.jsonc` and only consulted when `CUSTOM_HOSTNAME=captun.sh`._
+- [x] Limit tunnel connect attempts per client IP. _`__captun-connect` requests check `connect:ip:<client>` before shard dispatch._
+- [x] Limit forwarded HTTP requests per client IP and per tunnel name. _Forwarded hosted requests check both `request:ip:<client>` and `request:tunnel:<name>` buckets._
+- [x] Return useful `429` responses. _Hosted throttles return plain text with `Retry-After`, `cache-control: no-store`, and `x-captun-rate-limit`._
+- [x] Make limits configurable by Worker vars. _Window and connect/IP/tunnel limits are controlled by `HOSTED_*_PER_WINDOW` vars with public-service defaults._
+- [x] Cover limits in Miniflare tests. _`test/worker.test.ts` covers connect, per-IP request, per-tunnel request, and self-hosted bypass behavior._
+- [ ] Deploy to `captun-public` after merge-ready checks. _Not deployed yet; this stacked PR should deploy after review or on explicit request._
 
 ## Follow-up safety work
 
@@ -28,3 +28,5 @@ Status summary: Spec is being carved into a first reviewable slice. The intended
 ## Implementation Notes
 
 - 2026-05-23: Initial unsafe hosted service is intentionally live but obscure. This task starts the first throttling layer before publicising `captun.sh`.
+- 2026-05-24: Implemented fixed-window in-memory buckets inside a single hosted rate-limiter Durable Object named `global`. This is intentionally a first abuse guardrail, not billing-grade quota accounting.
+- 2026-05-24: Verified with `pnpm run check`, `pnpm test`, and `pnpm run build`.

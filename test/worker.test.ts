@@ -325,6 +325,81 @@ test.each([
   expect(await response.text()).toBe("Reserved captun.sh subdomain\n");
 });
 
+test("Hosted Captun rate limits tunnel connect attempts per client IP", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    CAPTUN_SECRET: "secret",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "1",
+  });
+  const headers = { "cf-connecting-ip": "203.0.113.10" };
+
+  const first = await fixture.worker.fetch("https://one.captun.sh/__captun-connect", {
+    headers,
+  });
+  const second = await fixture.worker.fetch("https://two.captun.sh/__captun-connect", {
+    headers,
+  });
+
+  expect(first).toMatchObject({ status: 401 });
+  expect(second).toMatchObject({ status: 429 });
+  expect(second.headers.get("retry-after")).toBe("60");
+  expect(second.headers.get("cache-control")).toBe("no-store");
+  expect(await second.text()).toBe("Rate limit exceeded. Try again in 60s.\n");
+});
+
+test("Hosted Captun rate limits forwarded requests per client IP", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_REQUESTS_PER_IP_PER_WINDOW: "2",
+    HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW: "100",
+  });
+  const headers = { "cf-connecting-ip": "203.0.113.20" };
+
+  const first = await fixture.worker.fetch("https://one.captun.sh/hello", { headers });
+  const second = await fixture.worker.fetch("https://two.captun.sh/hello", { headers });
+  const third = await fixture.worker.fetch("https://three.captun.sh/hello", { headers });
+
+  expect(first).toMatchObject({ status: 503 });
+  expect(second).toMatchObject({ status: 503 });
+  expect(third).toMatchObject({ status: 429 });
+  expect(third.headers.get("x-captun-rate-limit")).toBe("2");
+});
+
+test("Hosted Captun rate limits forwarded requests per tunnel name", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_REQUESTS_PER_IP_PER_WINDOW: "100",
+    HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW: "1",
+  });
+
+  const first = await fixture.worker.fetch("https://one.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.30" },
+  });
+  const second = await fixture.worker.fetch("https://one.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.31" },
+  });
+  const otherTunnel = await fixture.worker.fetch("https://two.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.31" },
+  });
+
+  expect(first).toMatchObject({ status: 503 });
+  expect(second).toMatchObject({ status: 429 });
+  expect(otherTunnel).toMatchObject({ status: 503 });
+});
+
+test("Hosted Captun rate limits do not affect self-hosted folder routing", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    HOSTED_REQUESTS_PER_IP_PER_WINDOW: "1",
+  });
+  const headers = { "cf-connecting-ip": "203.0.113.40" };
+
+  const first = await fixture.worker.fetch(`${fixture.origin}/one/hello`, { headers });
+  const second = await fixture.worker.fetch(`${fixture.origin}/two/hello`, { headers });
+
+  expect(first).toMatchObject({ status: 503 });
+  expect(second).toMatchObject({ status: 503 });
+});
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
