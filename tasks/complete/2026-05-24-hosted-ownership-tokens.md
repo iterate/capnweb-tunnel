@@ -1,4 +1,4 @@
-status: review
+status: complete
 size: medium
 
 # Hosted Anonymous Tunnel Ownership Tokens
