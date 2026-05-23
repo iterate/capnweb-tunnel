@@ -622,6 +622,26 @@ test("createCaptunTunnel surfaces rejected WebSocket upgrade response details", 
   ).rejects.toThrow(/409 Conflict: Tunnel name is already connected/);
 });
 
+test("createCaptunTunnel falls back when the rejected upgrade probe does not respond", async () => {
+  await using rejection = await createRejectedWebSocketUpgradeServer({
+    status: 409,
+    body: "Tunnel name is already connected\n",
+    neverRespondToHttp: true,
+  });
+
+  let caught: unknown;
+  try {
+    await createCaptunTunnel({
+      url: `${rejection.origin}/demo/__captun-connect`,
+      fetch: () => new Response("unused\n"),
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toMatchObject({ message: "WebSocket connection failed" });
+});
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
@@ -696,19 +716,26 @@ async function createWebSocketUpgradeRecorder() {
   };
 }
 
-async function createRejectedWebSocketUpgradeServer(options: { status: number; body: string }) {
+async function createRejectedWebSocketUpgradeServer(options: {
+  status: number;
+  body: string;
+  neverRespondToHttp?: boolean;
+}) {
   const sockets = new Set<{ destroy: () => void }>();
   const statusText = options.status === 409 ? "Conflict" : "Rejected";
   const server = createServer((_request, response) => {
+    if (options.neverRespondToHttp) return;
     response.writeHead(options.status, {
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "no-store",
     });
     response.end(options.body);
   });
-  server.on("upgrade", (_request, socket) => {
+  server.on("connection", (socket) => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
+  });
+  server.on("upgrade", (_request, socket) => {
     socket.write(
       [
         `HTTP/1.1 ${options.status} ${statusText}`,

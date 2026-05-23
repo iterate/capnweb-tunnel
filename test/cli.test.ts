@@ -34,6 +34,38 @@ test("CLI tunnel connect errors do not blame DNS for active-owner conflicts", as
   });
 });
 
+test("CLI tunnel connect errors keep DNS guidance for unrelated 409 responses", async () => {
+  await using target = await createTestServer((_request, response) => {
+    response.end("ok\n");
+  });
+  await using rejection = await createRejectedTunnelServer("Some other conflict\n");
+
+  const router = createCaptunCliRouter({ readConfig: async () => undefined });
+  const client = createRouterClient(router);
+
+  let caught: unknown;
+  try {
+    await client.tunnel({
+      target: String(target.port),
+      serverUrl: rejection.origin,
+      name: "demo",
+      requestLogs: false,
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toMatchObject({
+    message: expect.stringContaining("Some other conflict"),
+  });
+  expect(caught).toMatchObject({
+    message: expect.stringContaining("DNS for"),
+  });
+  expect(caught).not.toMatchObject({
+    message: expect.stringContaining("active anonymous client"),
+  });
+});
+
 async function createTestServer(
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
 ) {

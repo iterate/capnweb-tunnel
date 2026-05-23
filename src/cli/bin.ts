@@ -597,8 +597,14 @@ function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
 }
 
 function isActiveTunnelConflict(cause: unknown) {
-  if (cause instanceof CaptunTunnelConnectError && cause.response?.status === 409) return true;
+  if (cause instanceof CaptunTunnelConnectError && cause.response) {
+    return cause.response.status === 409 && isActiveTunnelConflictMessage(cause.response.body);
+  }
   const message = cause instanceof Error ? cause.message : String(cause);
+  return isActiveTunnelConflictMessage(message);
+}
+
+function isActiveTunnelConflictMessage(message: string) {
   return /tunnel name is already connected|tunnel name .*in use/i.test(message);
 }
 

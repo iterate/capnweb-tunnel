@@ -49,6 +49,8 @@ export class CaptunTunnelConnectError extends Error {
   }
 }
 
+const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
+
 export async function createCaptunTunnel(
   options: Fetcher & {
     url?: string | URL;
@@ -223,8 +225,13 @@ async function readWebSocketRejection(options: {
   connectUrl: string;
   headers: Record<string, string> | undefined;
 }) {
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(options.connectUrl, { headers: options.headers });
+    const response = await fetch(options.connectUrl, {
+      headers: options.headers,
+      signal: abort.signal,
+    });
     if (response.ok) return undefined;
     const body = (await response.text()).trim();
     return {
@@ -234,6 +241,8 @@ async function readWebSocketRejection(options: {
     };
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
