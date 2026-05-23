@@ -581,6 +581,31 @@ test("Captun clients send an anonymous ownership token on the tunnel WebSocket U
 
   expect(upgradeUrl).toMatchObject({ pathname: "/demo/__captun-connect" });
   expect(upgradeUrl.searchParams.get("captun-owner-token")).toMatch(/^[a-f0-9]{32}$/);
+  expect(_tunnel).toMatchObject({
+    ownerToken: upgradeUrl.searchParams.get("captun-owner-token"),
+  });
+});
+
+test("Captun clients can reuse a returned anonymous ownership token", async () => {
+  await using recorder = await createWebSocketUpgradeRecorder();
+
+  using firstTunnel = await createCaptunTunnel({
+    url: `${recorder.origin}/demo/__captun-connect`,
+    fetch: () => new Response("first\n"),
+  });
+  using secondTunnel = await createCaptunTunnel({
+    url: `${recorder.origin}/demo/__captun-connect`,
+    ownerToken: firstTunnel.ownerToken,
+    fetch: () => new Response("second\n"),
+  });
+
+  const upgradeUrls = recorder.upgradeUrls.map((url) => new URL(url, recorder.origin));
+
+  expect(secondTunnel).toMatchObject({ ownerToken: firstTunnel.ownerToken });
+  expect(upgradeUrls.map((url) => url.searchParams.get("captun-owner-token"))).toEqual([
+    firstTunnel.ownerToken,
+    firstTunnel.ownerToken,
+  ]);
 });
 
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
@@ -612,12 +637,14 @@ test("Captun Worker requires the configured secret before accepting a tunnel cli
 
 async function createWebSocketUpgradeRecorder() {
   const upgradeUrl = { current: "" };
+  const upgradeUrls: string[] = [];
   const sockets = new Set<{ destroy: () => void }>();
   const server = createServer();
   server.on("upgrade", (request, socket) => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
     upgradeUrl.current = request.url || "";
+    upgradeUrls.push(upgradeUrl.current);
     const key = request.headers["sec-websocket-key"];
     if (typeof key !== "string") {
       socket.destroy();
@@ -647,6 +674,7 @@ async function createWebSocketUpgradeRecorder() {
   return {
     origin: `http://127.0.0.1:${address.port}`,
     upgradeUrl,
+    upgradeUrls,
     async [Symbol.asyncDispose]() {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));

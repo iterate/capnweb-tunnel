@@ -33,6 +33,7 @@ export interface Fetcher {
  */
 export type CaptunTunnel = Disposable & {
   url: string;
+  ownerToken: string;
 };
 
 export async function createCaptunTunnel(
@@ -41,14 +42,16 @@ export async function createCaptunTunnel(
     serverUrl?: string;
     name?: string;
     headers?: Record<string, string>;
+    ownerToken?: string;
   },
 ): Promise<CaptunTunnel> {
   const endpoint = resolveTunnelEndpoint(options);
-  const connectUrl = withAnonymousOwnershipToken({
+  const ownership = withAnonymousOwnershipToken({
     connectUrl: endpoint.connectUrl,
     headers: options.headers,
+    ownerToken: options.ownerToken,
   });
-  const socket = createWebSocket({ url: connectUrl, headers: options.headers });
+  const socket = createWebSocket({ url: ownership.connectUrl, headers: options.headers });
   // tunnelTargetFetcher is the "main object" that comes out on the other side in acceptCaptunTunnel
   // as a capnweb rpc stub that the server can just call fetch on
   const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
@@ -57,6 +60,7 @@ export async function createCaptunTunnel(
 
   return {
     url: endpoint.publicUrl,
+    ownerToken: ownership.ownerToken,
     [Symbol.dispose]: () => session[Symbol.dispose](),
   };
 }
@@ -88,20 +92,25 @@ function publicUrlFromConnectUrl(connectUrl: URL) {
 function withAnonymousOwnershipToken(options: {
   connectUrl: string;
   headers: Record<string, string> | undefined;
+  ownerToken: string | undefined;
 }) {
-  if (hasHeader(options.headers, TUNNEL_OWNER_TOKEN_HEADER)) return options.connectUrl;
+  const headerToken = getHeader(options.headers, TUNNEL_OWNER_TOKEN_HEADER);
+  if (headerToken) return { connectUrl: options.connectUrl, ownerToken: headerToken };
 
   const connectUrl = new URL(options.connectUrl);
-  if (!connectUrl.searchParams.has(TUNNEL_OWNER_TOKEN_QUERY_PARAM)) {
-    connectUrl.searchParams.set(TUNNEL_OWNER_TOKEN_QUERY_PARAM, randomOwnershipToken());
-  }
-  return connectUrl.toString();
+  const ownerToken =
+    options.ownerToken ||
+    connectUrl.searchParams.get(TUNNEL_OWNER_TOKEN_QUERY_PARAM) ||
+    randomOwnershipToken();
+  connectUrl.searchParams.set(TUNNEL_OWNER_TOKEN_QUERY_PARAM, ownerToken);
+  return { connectUrl: connectUrl.toString(), ownerToken };
 }
 
-function hasHeader(headers: Record<string, string> | undefined, name: string) {
-  if (!headers) return false;
+function getHeader(headers: Record<string, string> | undefined, name: string) {
+  if (!headers) return undefined;
   const lowerName = name.toLowerCase();
-  return Object.keys(headers).some((key) => key.toLowerCase() === lowerName);
+  const key = Object.keys(headers).find((candidate) => candidate.toLowerCase() === lowerName);
+  return key ? headers[key] : undefined;
 }
 
 function randomTunnelName() {

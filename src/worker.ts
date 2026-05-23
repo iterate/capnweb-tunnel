@@ -590,7 +590,7 @@ const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "h
 
 export async function createCaptunTunnel(options) {
   const tunnelName = options.name || randomTunnelName();
-  const ownerToken = randomOwnershipToken();
+  const ownerToken = options.ownerToken || randomOwnershipToken();
   const publicUrl = "https://" + tunnelName + ".captun.sh";
   const socket = new WebSocket("wss://" + tunnelName + ".captun.sh/__captun-connect?captun-owner-token=" + ownerToken);
   const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch);
@@ -598,6 +598,7 @@ export async function createCaptunTunnel(options) {
   await waitUntilOpen(socket);
   return {
     url: publicUrl,
+    ownerToken,
     close: () => disposeSession(session),
   };
 }

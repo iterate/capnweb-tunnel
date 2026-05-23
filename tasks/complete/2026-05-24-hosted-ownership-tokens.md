@@ -3,7 +3,7 @@ size: medium
 
 # Hosted Anonymous Tunnel Ownership Tokens
 
-Status summary: Implementation is complete and locally verified. Hosted anonymous tunnel connections now require an ownership token, conflicting active owners get `409`, same-owner reconnects can replace themselves, and self-hosted replacement behavior remains compatible.
+Status summary: Implementation is complete and locally verified. Hosted anonymous tunnel connections now require an ownership token, conflicting active owners get `409`, same-owner reconnects can replace themselves through the public API, and self-hosted replacement behavior remains compatible.
 
 ## Checklist
 
@@ -12,8 +12,8 @@ Status summary: Implementation is complete and locally verified. Hosted anonymou
 - [x] Let a reconnect with the same token replace its own active connection. _Same-token hosted connects still dispose and replace the previous active fetcher._
 - [x] Reject a different token with `409 Conflict` while the tunnel is already active. _Different-token hosted connects return `Tunnel name is already connected` without touching the active tunnel._
 - [x] Keep self-hosted and secret-protected tunnel behavior compatible. _Ownership enforcement is skipped outside hosted `captun.sh` and when `CAPTUN_SECRET` is configured; tests cover self-hosted replacement._
-- [x] Generate and send a client-side anonymous token for hosted CLI/API/browser clients. _`createCaptunTunnel` appends a generated query token to the WebSocket URL, and `/captun.browser.js` does the same for browser clients._
-- [x] Cover the hosted ownership behavior with integration-style tests. _`test/worker.test.ts` covers conflict, same-token replacement, header token parsing, missing-token rejection, client token generation, and self-hosted compatibility._
+- [x] Generate and send a client-side anonymous token for hosted CLI/API/browser clients. _`createCaptunTunnel` appends a generated query token to the WebSocket URL, returns it on `tunnel.ownerToken`, accepts it back as `ownerToken`, and `/captun.browser.js` follows the same shape._
+- [x] Cover the hosted ownership behavior with integration-style tests. _`test/worker.test.ts` covers conflict, same-token replacement, header token parsing, missing-token rejection, client token generation/reuse, and self-hosted compatibility._
 - [x] Run the focused tests and full project checks. _Verified with focused worker tests, full `pnpm test`, `pnpm run check`, and `pnpm run build`._
 
 ## Notes
@@ -25,4 +25,5 @@ Status summary: Implementation is complete and locally verified. Hosted anonymou
 ## Implementation Notes
 
 - 2026-05-24: Tokens are intentionally passed on the connect request only, using a browser-compatible query parameter by default. The Worker also accepts an equivalent header for non-browser clients and tests.
+- 2026-05-24: Review follow-up exposed `ownerToken` on the returned tunnel and added `ownerToken` as an explicit create option so exported API callers can exercise same-owner replacement without manually editing query strings.
 - 2026-05-24: This does not persist ownership after disconnect. Once the active Cap'n Web session breaks, the tunnel name is free for another anonymous token to claim.
