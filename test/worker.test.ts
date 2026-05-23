@@ -206,7 +206,27 @@ test("Hosted Captun serves a static landing page on www", async () => {
 
   expect(response).toMatchObject({ status: 200 });
   expect(response.headers.get("content-type")).toContain("text/html");
-  expect(await response.text()).toContain("npx captun 3000");
+  expect(await response.text()).toEqual(expect.stringContaining("npx captun 3000"));
+});
+
+test("Hosted Captun serves the browser demo module on www", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
+
+  const response = await fixture.worker.fetch("https://www.captun.sh/captun.browser.js");
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(response.headers.get("content-type")).toContain("application/javascript");
+  expect(await response.text()).toEqual(expect.stringContaining("createCaptunTunnel"));
+});
+
+test("Hosted Captun landing page includes an in-browser tunnel demo", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
+
+  const response = await fixture.worker.fetch("https://www.captun.sh/");
+
+  expect(await response.text()).toEqual(
+    expect.stringContaining('<button id="demo-create" type="button">create tunnel</button>'),
+  );
 });
 
 test.each(["app", "login", "dash", "dashboard", "captun", "tunnel", "iterate"])(

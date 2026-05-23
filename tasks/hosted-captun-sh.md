@@ -5,7 +5,7 @@ size: medium
 
 # Hosted captun.sh
 
-Status summary: Initial hosted deployment is live on `captun.sh`. The CLI and library can use hosted random tunnels without local config; the main missing work is a proper free/paid control plane, tunnel ownership, and throttling.
+Status summary: Initial hosted deployment is live on `captun.sh`. The CLI, library, and browser landing-page demo can create hosted random tunnels; the main missing work is a proper free/paid control plane, tunnel ownership, and throttling.
 
 ## Initial public-hosted slice
 
@@ -16,6 +16,7 @@ Status summary: Initial hosted deployment is live on `captun.sh`. The CLI and li
 - [x] Reserve product/control-plane subdomains on hosted `captun.sh`. _The Worker now blocks `app`, `login`, `dash`, `dashboard`, `captun`, `tunnel`, and `iterate` before Durable Object dispatch._
 - [x] Serve a dead-simple landing page on `www.captun.sh`. _The hosted Worker returns a static HTML string with CLI and API examples._
 - [x] Redirect the apex domain to `www.captun.sh`. _Added apex DNS `captun.sh -> 100::` proxied and redeployed with route `captun.sh/*`; the Worker returns a 308 preserving path and query._
+- [x] Add an in-browser tunnel demo to `www.captun.sh`. _The landing page serves `/captun.browser.js`, lets the user edit a fetch function, creates a hosted tunnel, and loads it in an iframe._
 
 ## Safety and product follow-up
 
@@ -32,3 +33,4 @@ Status summary: Initial hosted deployment is live on `captun.sh`. The CLI and li
 - 2026-05-23: User explicitly accepted an initial unsafe/obscure-only deploy: no rate limiting and anyone can still evict anyone. Keep the above follow-ups visible before publicising the domain.
 - 2026-05-23: Public e2e passed against the live service with `CAPTUN_PUBLIC_E2E=1 pnpm vitest run test/public-hosted.test.ts`.
 - 2026-05-23: Reserved names and `www.captun.sh` verified against the live Worker. Apex redirect verified with `curl --resolve` against Cloudflare's authoritative A record while local resolver propagation was still uneven.
+- 2026-05-23: Browser demo deployed and manually verified with Playwriter. Clicking "create tunnel" produced a random `captun.sh` URL, and `curl` to that URL returned the browser-defined response.

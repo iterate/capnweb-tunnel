@@ -133,13 +133,26 @@ function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | unde
   const labels = url.hostname.slice(0, -suffix.length).split(".");
   const subdomain = labels[labels.length - 1] || "";
   if (subdomain === "www") {
-    return new Response(WWW_LANDING_PAGE, {
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
+    return wwwCaptunResponse(url);
   }
   if (RESERVED_HOSTED_SUBDOMAINS.includes(subdomain)) {
     return new Response("Reserved captun.sh subdomain\n", { status: 404 });
   }
+}
+
+function wwwCaptunResponse(url: URL): Response {
+  if (url.pathname === "/captun.browser.js") {
+    return new Response(WWW_BROWSER_MODULE, {
+      headers: {
+        "content-type": "application/javascript; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  return new Response(WWW_LANDING_PAGE, {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 const WWW_LANDING_PAGE = `<!doctype html>
@@ -149,10 +162,19 @@ const WWW_LANDING_PAGE = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>captun</title>
   <style>
-    body { max-width: 720px; margin: 64px auto; padding: 0 20px; font: 16px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #111; background: #fff; }
+    * { box-sizing: border-box; }
+    body { max-width: 840px; margin: 56px auto; padding: 0 20px 48px; font: 16px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #111; background: #fff; }
     h1 { font-size: 28px; margin: 0 0 24px; }
     h2 { font-size: 16px; margin: 28px 0 8px; }
-    pre { padding: 12px 14px; overflow-x: auto; background: #f4f4f4; border: 1px solid #ddd; }
+    pre, textarea { padding: 12px 14px; overflow-x: auto; background: #f4f4f4; border: 1px solid #ddd; border-radius: 0; }
+    textarea { width: 100%; min-height: 230px; resize: vertical; font: inherit; color: inherit; display: block; }
+    button { margin: 12px 0; padding: 9px 12px; font: inherit; color: #fff; background: #111; border: 1px solid #111; cursor: pointer; }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    iframe { width: 100%; height: 180px; border: 1px solid #ddd; background: #fff; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #555; }
+    .error { color: #a40000; white-space: pre-wrap; }
+    .hidden { display: none; }
     a { color: #0645ad; }
   </style>
 </head>
@@ -177,5 +199,114 @@ console.log(tunnel.url);</pre>
   <h2>Bring your own Cloudflare account</h2>
   <pre>npx captun deploy</pre>
   <p>Source: <a href="https://github.com/iterate/captun">github.com/iterate/captun</a></p>
+
+  <h2>Try it in this tab</h2>
+  <p>Edit the fetch function, create a tunnel, then the iframe below will load the public URL.</p>
+  <textarea id="demo-source" spellcheck="false">async function fetch(request) {
+  const url = new URL(request.url);
+  return new Response("hello from " + url.pathname, {
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}</textarea>
+  <div class="row">
+    <button id="demo-create" type="button">create tunnel</button>
+    <span id="demo-status" class="muted">idle</span>
+  </div>
+  <p id="demo-url" class="hidden"><a id="demo-link" target="_blank" rel="noreferrer"></a></p>
+  <p id="demo-error" class="error"></p>
+  <iframe id="demo-frame" title="captun demo response"></iframe>
+
+  <script type="module">
+    import { createCaptunTunnel } from "/captun.browser.js";
+
+    const source = document.querySelector("#demo-source");
+    const button = document.querySelector("#demo-create");
+    const status = document.querySelector("#demo-status");
+    const urlRow = document.querySelector("#demo-url");
+    const link = document.querySelector("#demo-link");
+    const frame = document.querySelector("#demo-frame");
+    const error = document.querySelector("#demo-error");
+    let tunnel;
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "connecting";
+      error.textContent = "";
+
+      try {
+        if (tunnel) tunnel.close();
+        const fetcher = new Function("return (" + source.value + "\\n)")();
+        if (typeof fetcher !== "function") throw new Error("The editor must evaluate to a function.");
+
+        tunnel = await createCaptunTunnel({ fetch: fetcher });
+        link.href = tunnel.url;
+        link.textContent = tunnel.url;
+        urlRow.classList.remove("hidden");
+        frame.src = tunnel.url + "/";
+        status.textContent = "connected";
+      } catch (caught) {
+        status.textContent = "failed";
+        error.textContent = caught && caught.stack ? caught.stack : String(caught);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>`;
+
+const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "https://esm.sh/capnweb@0.8.0";
+
+export async function createCaptunTunnel(options) {
+  const tunnelName = options.name || randomTunnelName();
+  const publicUrl = "https://" + tunnelName + ".captun.sh";
+  const socket = new WebSocket("wss://" + tunnelName + ".captun.sh/__captun-connect");
+  const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch);
+  const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
+  await waitUntilOpen(socket);
+  return {
+    url: publicUrl,
+    close: () => disposeSession(session),
+  };
+}
+
+class TunnelTargetFetcher extends RpcTarget {
+  constructor(fetcher) {
+    super();
+    this.fetcher = fetcher;
+  }
+
+  fetch(request) {
+    return this.fetcher(request);
+  }
+}
+
+function waitUntilOpen(socket) {
+  if (socket.readyState === WebSocket.OPEN) return Promise.resolve();
+  if (socket.readyState !== WebSocket.CONNECTING) {
+    return Promise.reject(new Error("WebSocket closed before opening"));
+  }
+
+  return new Promise((resolve, reject) => {
+    const listeners = new AbortController();
+    const settle = (callback) => {
+      listeners.abort();
+      callback();
+    };
+    socket.addEventListener("open", () => settle(resolve), { signal: listeners.signal });
+    socket.addEventListener("error", () => settle(() => reject(new Error("WebSocket connection failed"))), { signal: listeners.signal });
+    socket.addEventListener("close", (event) => settle(() => reject(new Error("WebSocket closed before opening: " + event.code + " " + event.reason))), { signal: listeners.signal });
+  });
+}
+
+function randomTunnelName() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function disposeSession(session) {
+  const disposeSymbol = Symbol.dispose;
+  if (disposeSymbol && typeof session[disposeSymbol] === "function") session[disposeSymbol]();
+}
+`;
