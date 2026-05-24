@@ -13,7 +13,7 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { CaptunTunnelConnectError, createCaptunTunnel } from "../index.js";
+import { CaptunTunnelConnectError, createCaptunTunnel, randomOwnershipToken } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
 import {
@@ -508,7 +508,7 @@ async function connectTunnelWithRetry(
 ) {
   const url = `${tunnel.tunnel}/__captun-connect`;
   const headers = tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined;
-  const ownerToken = randomOwnerToken();
+  const ownerToken = randomOwnershipToken();
   const fetcher = makeTunnelFetcher(tunnel, advertisedUrl);
 
   const maxAttempts = retries + 1;
@@ -648,12 +648,6 @@ function secretPreview(secret: string, visibleChars = 6) {
 
 function randomName() {
   return [pick(adjectives), pick(speeds), pick(things)].join("-");
-}
-
-function randomOwnerToken() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function pick(words: string[]) {

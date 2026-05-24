@@ -28,3 +28,4 @@ Status summary: Implementation is complete and locally verified. Hosted anonymou
 - 2026-05-24: Review follow-up exposed `ownerToken` on the returned tunnel and added `ownerToken` as an explicit create option so exported API callers can exercise same-owner replacement without manually editing query strings.
 - 2026-05-24: This does not persist ownership after disconnect. Once the active Cap'n Web session breaks, the tunnel name is free for another anonymous token to claim.
 - 2026-05-24: Bugbot follow-up moved CLI retries to one owner token per tunnel session so a partially successful retry cannot conflict with its own previous attempt.
+- 2026-05-24: Second Bugbot follow-up reused the library's exported `randomOwnershipToken` in the CLI instead of maintaining a duplicate token generator.

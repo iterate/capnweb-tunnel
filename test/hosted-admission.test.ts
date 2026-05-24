@@ -33,6 +33,18 @@ test("hosted tunnel admission checks configured secrets before owner-token polic
   expect(accepted).toMatchObject({ ok: true, ownerToken: undefined });
 });
 
+test("hosted tunnel admission ignores active anonymous owners when secret auth is configured", () => {
+  const admission = decideTunnelAdmission({
+    request: new Request("https://demo.captun.sh/__captun-connect", {
+      headers: { authorization: "Bearer secret" },
+    }),
+    env: { CUSTOM_HOSTNAME: "captun.sh", CAPTUN_SECRET: "secret" },
+    activeOwnerToken: "owner-a",
+  });
+
+  expect(admission).toMatchObject({ ok: true, ownerToken: undefined });
+});
+
 test("hosted tunnel admission requires anonymous owner tokens on captun.sh", async () => {
   const missing = decideTunnelAdmission({
     request: new Request("https://demo.captun.sh/__captun-connect"),

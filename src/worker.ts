@@ -31,6 +31,7 @@ const DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS = 60;
 const DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW = 30;
 const DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW = 600;
 const DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW = 1200;
+const HOSTED_RATE_LIMIT_DIAGNOSTIC_WINDOW_MS = 2_000;
 
 type HostedRateLimitKind = "connect" | "request";
 
@@ -41,6 +42,7 @@ type HostedRateLimitResult = { ok: true } | { ok: false; limit: number; retryAft
 type HostedRateLimitBucket = {
   count: number;
   resetAt: number;
+  lastRejectedAt?: number;
 };
 
 type ActiveTunnel = {
@@ -118,6 +120,7 @@ export class HostedRateLimiter extends DurableObject<CaptunEnv> {
     const now = Date.now();
     const bucket = this.activeBucket(now, now + input.windowSeconds * 1000);
     if (bucket.count >= input.limit) {
+      bucket.lastRejectedAt = now;
       return {
         ok: false,
         limit: input.limit,
@@ -129,9 +132,29 @@ export class HostedRateLimiter extends DurableObject<CaptunEnv> {
     return { ok: true };
   }
 
-  private activeBucket(now: number, resetAt: number) {
+  diagnose(input: HostedRateLimitInput): HostedRateLimitResult {
+    const now = Date.now();
+    const bucket = this.bucket;
+    if (
+      bucket &&
+      bucket.count >= input.limit &&
+      bucket.resetAt > now &&
+      bucket.lastRejectedAt &&
+      now - bucket.lastRejectedAt <= HOSTED_RATE_LIMIT_DIAGNOSTIC_WINDOW_MS
+    ) {
+      return {
+        ok: false,
+        limit: input.limit,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+      };
+    }
+
+    return { ok: true };
+  }
+
+  private activeBucket(now: number, resetAt: number): HostedRateLimitBucket {
     if (this.bucket && this.bucket.resetAt > now) return this.bucket;
-    const bucket = { count: 0, resetAt };
+    const bucket: HostedRateLimitBucket = { count: 0, resetAt };
     this.bucket = bucket;
     return bucket;
   }
@@ -167,8 +190,16 @@ export default {
       const headers = new Headers(forwarded.headers);
       headers.set(TUNNEL_NAME_HEADER, tunnelName);
       const connectRequest = new Request(forwarded, { headers });
-      if (isConnectDiagnostic(connectRequest))
+      if (isConnectDiagnostic(connectRequest)) {
+        const rateLimited = await hostedRateLimitDiagnosticResponse({
+          env,
+          request,
+          tunnelName,
+          kind: "connect",
+        });
+        if (rateLimited) return rateLimited;
         return shard.diagnoseConnect(tunnelName, connectRequest);
+      }
 
       const rateLimited = await hostedRateLimitResponse({
         env,
@@ -215,14 +246,7 @@ async function hostedRateLimitResponse(input: {
 }): Promise<Response | undefined> {
   if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
   if (!input.env.HostedRateLimiter) {
-    if (input.env.HOSTED_RATE_LIMIT_DISABLED === "1") return undefined;
-    return new Response("Hosted rate limiter is not configured\n", {
-      status: 503,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
+    return hostedRateLimiterMissingResponse(input.env);
   }
 
   const config = hostedRateLimitConfig(input.env);
@@ -242,6 +266,47 @@ async function hostedRateLimitResponse(input: {
   }
 
   return undefined;
+}
+
+async function hostedRateLimitDiagnosticResponse(input: {
+  env: CaptunEnv;
+  request: Request;
+  tunnelName: string;
+  kind: HostedRateLimitKind;
+}): Promise<Response | undefined> {
+  if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  if (!input.env.HostedRateLimiter) {
+    return hostedRateLimiterMissingResponse(input.env);
+  }
+
+  const config = hostedRateLimitConfig(input.env);
+  const checks = hostedRateLimitChecks({
+    kind: input.kind,
+    clientKey: hostedClientKey(input.request),
+    tunnelName: input.tunnelName,
+    config,
+  });
+  for (const check of checks) {
+    const limiter = input.env.HostedRateLimiter.getByName(hostedRateLimiterName(check.key));
+    const result = await limiter.diagnose({
+      limit: check.limit,
+      windowSeconds: config.windowSeconds,
+    });
+    if (!result.ok) return hostedRateLimitedResponse(result);
+  }
+
+  return undefined;
+}
+
+function hostedRateLimiterMissingResponse(env: CaptunEnv) {
+  if (env.HOSTED_RATE_LIMIT_DISABLED === "1") return undefined;
+  return new Response("Hosted rate limiter is not configured\n", {
+    status: 503,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
 }
 
 function hostedRateLimitedResponse(result: Extract<HostedRateLimitResult, { ok: false }>) {

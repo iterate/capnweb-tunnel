@@ -26,7 +26,7 @@ export function decideTunnelAdmission(input: {
   const ownerToken = hostedAnonymousOwnerToken(input.request, input.env);
   if (ownerToken instanceof Response) return { ok: false, response: ownerToken };
 
-  if (input.activeOwnerToken && input.activeOwnerToken !== ownerToken) {
+  if (ownerToken !== undefined && input.activeOwnerToken && input.activeOwnerToken !== ownerToken) {
     return { ok: false, response: reject("Tunnel name is already connected\n", 409) };
   }
 

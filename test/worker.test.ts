@@ -576,6 +576,58 @@ test("Hosted Captun connect diagnostics do not spend connect rate-limit slots", 
   expect({ status: secondConflict.status }).toMatchObject({ status: 409 });
 });
 
+test("Hosted Captun connect diagnostics surface recent connect rate limits", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "1",
+  });
+  using _ownerTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "owner a\n",
+    clientIp: "203.0.113.79",
+  });
+
+  const rateLimited = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
+    { headers: { "cf-connecting-ip": "203.0.113.79" } },
+  );
+  const diagnostic = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
+    {
+      headers: {
+        "cf-connecting-ip": "203.0.113.79",
+        [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
+      },
+    },
+  );
+
+  expect({ status: rateLimited.status }).toMatchObject({ status: 429 });
+  expect({ status: diagnostic.status }).toMatchObject({ status: 429 });
+  expect(await diagnostic.text()).toMatch(/^Rate limit exceeded\. Try again in \d+s\.\n$/);
+});
+
+test("Hosted Captun connect diagnostics fail closed when rate limiter binding is missing", async () => {
+  await using fixture = await createMiniflareWorkerFixture({
+    entryPoint: "src/worker.ts",
+    durableObjects: { CaptunServerShard: { className: "CaptunServerShard" } },
+    bindings: { CUSTOM_HOSTNAME: "captun.sh" },
+  });
+
+  const diagnostic = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    {
+      headers: {
+        "cf-connecting-ip": "203.0.113.84",
+        [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
+      },
+    },
+  );
+
+  expect({ status: diagnostic.status }).toMatchObject({ status: 503 });
+  expect(await diagnostic.text()).toBe("Hosted rate limiter is not configured\n");
+});
+
 test("Hosted Captun lets the same ownership token replace its active tunnel", async () => {
   await using fixture = await createCaptunWorkerFixture({
     CUSTOM_HOSTNAME: "captun.sh",
