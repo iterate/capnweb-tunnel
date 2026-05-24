@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { homedir } from "node:os";
@@ -648,5 +649,10 @@ if (isMainModule()) {
 
 function isMainModule() {
   const entry = process.argv[1];
-  return Boolean(entry && resolve(entry) === fileURLToPath(import.meta.url));
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return resolve(entry) === fileURLToPath(import.meta.url);
+  }
 }
