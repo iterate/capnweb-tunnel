@@ -2,6 +2,7 @@ import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import {
   getTunnelUrlFromServerUrl,
   HOSTED_CAPTUN_SERVER_URL,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_OWNER_TOKEN_HEADER,
   TUNNEL_OWNER_TOKEN_QUERY_PARAM,
 } from "./routing.js";
@@ -229,7 +230,7 @@ async function readWebSocketRejection(options: {
   const timeout = setTimeout(() => abort.abort(), WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS);
   try {
     const response = await fetch(options.connectUrl, {
-      headers: options.headers,
+      headers: diagnosticHeaders(options.headers),
       signal: abort.signal,
     });
     if (response.ok) return undefined;
@@ -244,6 +245,12 @@ async function readWebSocketRejection(options: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function diagnosticHeaders(headers: Record<string, string> | undefined) {
+  const diagnostic = new Headers(headers);
+  diagnostic.set(TUNNEL_CONNECT_DIAGNOSTIC_HEADER, "1");
+  return diagnostic;
 }
 
 // ---------------------------------------------------------------------------

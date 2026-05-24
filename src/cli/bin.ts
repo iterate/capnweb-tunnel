@@ -60,6 +60,7 @@ export type CaptunCliRouterOptions = {
   writeConfig?: (config: Config) => Promise<void>;
   waitForShutdown?: () => Promise<void>;
   onTunnelReady?: (ready: TunnelReady) => void | Promise<void>;
+  tunnelRetries?: number;
 };
 
 const adjectives =
@@ -111,6 +112,7 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
         const tunnel = resolveTunnel(input, config);
         printTunnelOpening(tunnel);
         await runTunnelSession(tunnel, {
+          retries: options.tunnelRetries,
           waitForShutdown: options.waitForShutdown,
           onReady: options.onTunnelReady,
         });
@@ -506,6 +508,7 @@ async function connectTunnelWithRetry(
 ) {
   const url = `${tunnel.tunnel}/__captun-connect`;
   const headers = tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined;
+  const ownerToken = randomOwnerToken();
   const fetcher = makeTunnelFetcher(tunnel, advertisedUrl);
 
   const maxAttempts = retries + 1;
@@ -516,7 +519,9 @@ async function connectTunnelWithRetry(
         ? `Connecting to ${tunnel.tunnel}`
         : `Connecting to ${tunnel.tunnel} (retry ${attempt - 1}/${retries})`;
     try {
-      return await withSpinner(label, () => createCaptunTunnel({ url, headers, fetch: fetcher }));
+      return await withSpinner(label, () =>
+        createCaptunTunnel({ url, headers, ownerToken, fetch: fetcher }),
+      );
     } catch (error) {
       if (attempt === maxAttempts) {
         throw tunnelConnectError(tunnel, error);
@@ -643,6 +648,12 @@ function secretPreview(secret: string, visibleChars = 6) {
 
 function randomName() {
   return [pick(adjectives), pick(speeds), pick(things)].join("-");
+}
+
+function randomOwnerToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function pick(words: string[]) {

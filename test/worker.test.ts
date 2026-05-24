@@ -8,6 +8,7 @@ import {
   captunShardName,
   getTunnelNameFromUrl,
   getTunnelUrl,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_URL_HEADER,
 } from "../src/routing.js";
 import { createCaptunWorkerFixture, createMiniflareWorkerFixture } from "./miniflare.js";
@@ -507,6 +508,72 @@ test("Hosted Captun rejects a different ownership token while a tunnel is active
 
   expect({ status: stillOwned.status }).toMatchObject({ status: 200 });
   expect(await stillOwned.text()).toBe("owner a\n");
+});
+
+test("Hosted Captun connect diagnostics do not replace active tunnels", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _ownerTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "owner a\n",
+    clientIp: "203.0.113.74",
+  });
+
+  const diagnostic = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    {
+      headers: {
+        "cf-connecting-ip": "203.0.113.75",
+        [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
+      },
+    },
+  );
+  const stillOwned = await fixture.worker.fetch("https://demo.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.76" },
+  });
+
+  expect({ status: diagnostic.status }).toMatchObject({ status: 204 });
+  expect({ status: stillOwned.status }).toMatchObject({ status: 200 });
+  expect(await stillOwned.text()).toBe("owner a\n");
+});
+
+test("Hosted Captun connect diagnostics do not spend connect rate-limit slots", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    CUSTOM_HOSTNAME: "captun.sh",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "2",
+  });
+  using _ownerTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-a",
+    responseText: "owner a\n",
+    clientIp: "203.0.113.77",
+  });
+
+  const firstConflict = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
+    { headers: { "cf-connecting-ip": "203.0.113.78" } },
+  );
+  const diagnostic = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-b",
+    {
+      headers: {
+        "cf-connecting-ip": "203.0.113.78",
+        [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
+      },
+    },
+  );
+  const secondConflict = await fixture.worker.fetch(
+    "https://demo.captun.sh/__captun-connect?captun-owner-token=owner-c",
+    { headers: { "cf-connecting-ip": "203.0.113.78" } },
+  );
+
+  expect({ status: firstConflict.status }).toMatchObject({ status: 409 });
+  expect({ status: diagnostic.status }).toMatchObject({ status: 409 });
+  expect(await diagnostic.text()).toBe("Tunnel name is already connected\n");
+  expect({ status: secondConflict.status }).toMatchObject({ status: 409 });
 });
 
 test("Hosted Captun lets the same ownership token replace its active tunnel", async () => {

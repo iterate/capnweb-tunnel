@@ -7,6 +7,7 @@ import {
   getTunnelNameFromUrl,
   getTunnelUrl,
   RESERVED_HOSTED_SUBDOMAINS,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
@@ -86,6 +87,19 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     return response;
   }
 
+  diagnoseConnect(tunnelName: string, request: Request): Response {
+    const admission = decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeOwnerToken: this.tunnels.get(tunnelName)?.ownerToken,
+    });
+    if (!admission.ok) return admission.response;
+    return new Response(null, {
+      status: 204,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+
   async forward(tunnelName: string, request: Request): Promise<Response> {
     const tunnel = this.tunnels.get(tunnelName)?.fetcher;
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
@@ -150,6 +164,12 @@ export default {
     const forwarded = new Request(url, request);
 
     if (forwardedPath === "/__captun-connect") {
+      const headers = new Headers(forwarded.headers);
+      headers.set(TUNNEL_NAME_HEADER, tunnelName);
+      const connectRequest = new Request(forwarded, { headers });
+      if (isConnectDiagnostic(connectRequest))
+        return shard.diagnoseConnect(tunnelName, connectRequest);
+
       const rateLimited = await hostedRateLimitResponse({
         env,
         request,
@@ -158,9 +178,7 @@ export default {
       });
       if (rateLimited) return rateLimited;
 
-      const headers = new Headers(forwarded.headers);
-      headers.set(TUNNEL_NAME_HEADER, tunnelName);
-      return shard.fetch(new Request(forwarded, { headers }));
+      return shard.fetch(connectRequest);
     }
 
     const rateLimited = await hostedRateLimitResponse({
@@ -183,6 +201,11 @@ export default {
     return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
+
+function isConnectDiagnostic(request: Request) {
+  if (request.headers.get("upgrade") === "websocket") return false;
+  return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
+}
 
 async function hostedRateLimitResponse(input: {
   env: CaptunEnv;
