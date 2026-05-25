@@ -1,6 +1,9 @@
 export const HOSTED_CAPTUN_HOSTNAME = "captun.sh";
-export const HOSTED_CAPTUN_SERVER_URL = "https://{name}.captun.sh";
-export const RESERVED_HOSTED_SUBDOMAINS = [
+export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
+export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
+export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
+export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
+export const RESERVED_TUNNEL_NAMES = [
   "account",
   "accounts",
   "admin",
@@ -12,6 +15,8 @@ export const RESERVED_HOSTED_SUBDOMAINS = [
   "dash",
   "dashboard",
   "docs",
+  "gateway",
+  "gateways",
   "iterate",
   "login",
   "payment",
@@ -19,6 +24,7 @@ export const RESERVED_HOSTED_SUBDOMAINS = [
   "status",
   "support",
   "tunnel",
+  "tunnels",
   "www",
 ];
 
@@ -82,9 +88,9 @@ export function getTunnelNameFromUrl({
  * tunnel. `reqUrl` is any URL that hits the same Worker — we only use its
  * protocol (and, in folder mode, its host).
  *
- * The Worker calls this and advertises the result back to the tunnel client
- * via the `x-captun-tunnel-url` header on each forwarded request, so the CLI
- * doesn't have to know the routing convention to print the right URL.
+ * The Worker calls this before accepting a tunnel client and returns the result
+ * through the Cap'n Web ready callback, so the client doesn't have to know the
+ * gateway's routing convention to print the right URL.
  */
 export function getTunnelUrl({
   reqUrl,
@@ -102,23 +108,11 @@ export function getTunnelUrl({
   return `${parsed.protocol}//${parsed.host}/${encodeURIComponent(tunnelName)}`;
 }
 
-export function getTunnelUrlFromServerUrl(serverUrl: string, tunnelName: string): string {
-  if (serverUrl.includes("{name}"))
-    return removeTrailingSlash(serverUrl.replaceAll("{name}", tunnelName));
-  const url = new URL(serverUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(tunnelName)}`;
-  return removeTrailingSlash(url.toString());
-}
-
-/** Header used by the Worker to advertise a tunnel's canonical URL to its client. */
+/** Internal header used by the top-level Worker to pass the canonical tunnel URL to the DO. */
 export const TUNNEL_URL_HEADER = "x-captun-tunnel-url";
 
-/** Reserved path used by tunnel clients to open the WebSocket; not a tunnel name. */
-const CONNECT_PATH_SEGMENT = "__captun-connect";
-
-function isValidTunnelName(name: string): boolean {
+export function isValidTunnelName(name: string): boolean {
   if (!name) return false;
-  if (name === CONNECT_PATH_SEGMENT) return false;
   return true;
 }
 
@@ -139,8 +133,4 @@ function safeDecodeURIComponent(value: string) {
   } catch {
     return undefined;
   }
-}
-
-function removeTrailingSlash(url: string) {
-  return url.replace(/\/$/, "");
 }

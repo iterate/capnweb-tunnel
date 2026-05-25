@@ -1,77 +1,74 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import { getTunnelUrlFromServerUrl, HOSTED_CAPTUN_SERVER_URL } from "./routing.js";
+import {
+  CONNECT_TOKEN_QUERY_PARAM,
+  GATEWAY_CONNECT_QUERY_PARAM,
+  HOSTED_CAPTUN_GATEWAY,
+  TUNNEL_NAME_QUERY_PARAM,
+} from "./routing.js";
 
 /** Fetch is all you need!
  *
- * Cap'n Web let us pass this fetcher from the
- * tunnel client to the server via fetch (via websockets)
- * Then the server can just fetch into the client like normal.
- * This is all possible because Cap'n Web can pass Request and Response object
- * across the websocket RPC boundary transparently
+ * Cap'n Web lets us pass this fetcher from the tunnel client to the gateway.
+ * The gateway can then call fetch on the client like normal, with Request and
+ * Response objects crossing the WebSocket RPC boundary transparently.
  **/
 export interface Fetcher {
   fetch(request: Request): Response | Promise<Response>;
 }
 
-// ---------------------------------------------------------------------------
-// Tunnel client (formerly src/client.ts)
-// ---------------------------------------------------------------------------
-
-/** Creates a tunnel from a public Worker URL to a local fetch implementation.
- *
- * Captun gives us one WebSocket RPC session. The client exposes its fetcher as
- * the session's main object, and the server calls that object through a remote
- * stub when forwarding HTTP requests.
- *
- * Cap'n Web WebSocket sessions:
- * https://github.com/cloudflare/capnweb#websocket-client
- */
 export type CaptunTunnel = Disposable & {
   url: string;
+  token?: string;
 };
 
+export type FetcherStub = Fetcher &
+  Disposable & {
+    ready(tunnel: { url: string; token?: string }): void | Promise<void>;
+  };
+
+type TunnelClientCapability = Fetcher & {
+  ready(tunnel: { url: string; token?: string }): void | Promise<void>;
+};
+
+const TUNNEL_READY_TIMEOUT_MS = 5_000;
+
+/** Creates a public tunnel by exposing a local fetch implementation to a Tunnel Gateway. */
 export async function createCaptunTunnel(
   options: Fetcher & {
-    url?: string | URL;
-    serverUrl?: string;
+    gateway?: string | URL;
     name?: string;
-    headers?: Record<string, string>;
+    token?: string;
   },
 ): Promise<CaptunTunnel> {
-  const endpoint = resolveTunnelEndpoint(options);
-  const socket = createWebSocket({ url: endpoint.connectUrl, headers: options.headers });
-  // tunnelTargetFetcher is the "main object" that comes out on the other side in acceptCaptunTunnel
-  // as a capnweb rpc stub that the server can just call fetch on
-  const tunnelTargetFetcher = new TunnelTargetFetcher({ fetch: options.fetch });
-  const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
-  await waitUntilOpen(socket);
-
-  return {
-    url: endpoint.publicUrl,
-    [Symbol.dispose]: () => session[Symbol.dispose](),
-  };
-}
-
-function resolveTunnelEndpoint(options: {
-  url?: string | URL;
-  serverUrl?: string;
-  name?: string;
-}): { publicUrl: string; connectUrl: string } {
-  if (options.url) {
-    const publicUrl = publicUrlFromConnectUrl(new URL(options.url));
-    return { publicUrl, connectUrl: String(options.url) };
+  const connect = gatewayConnectRequest(options);
+  const ready = Promise.withResolvers<{ url: string; token?: string }>();
+  const socket = createWebSocket(connect.url);
+  const fetcher = new TunnelTargetFetcher({
+    fetch: options.fetch,
+    ready: (tunnel) => ready.resolve(tunnel),
+  });
+  const session = newWebSocketRpcSession(socket, fetcher);
+  try {
+    await waitUntilOpen(socket);
+    const tunnel = await waitUntilReady(ready.promise);
+    return {
+      url: tunnel.url,
+      token: tunnel.token || connect.token,
+      [Symbol.dispose]: () => session[Symbol.dispose](),
+    };
+  } catch (error) {
+    session[Symbol.dispose]();
+    throw error;
   }
-
-  const tunnelName = options.name || randomTunnelName();
-  const serverUrl = options.serverUrl || HOSTED_CAPTUN_SERVER_URL;
-  const publicUrl = getTunnelUrlFromServerUrl(serverUrl, tunnelName);
-  return { publicUrl, connectUrl: `${publicUrl}/__captun-connect` };
 }
 
-function publicUrlFromConnectUrl(connectUrl: URL) {
-  const publicUrl = new URL(connectUrl);
-  publicUrl.pathname = publicUrl.pathname.replace(/\/__captun-connect\/?$/, "") || "/";
-  return publicUrl.toString().replace(/\/$/, "");
+function gatewayConnectRequest(options: { gateway?: string | URL; name?: string; token?: string }) {
+  const name = options.name || randomTunnelName();
+  const url = new URL(options.gateway || HOSTED_CAPTUN_GATEWAY);
+  url.searchParams.set(GATEWAY_CONNECT_QUERY_PARAM, "1");
+  url.searchParams.set(TUNNEL_NAME_QUERY_PARAM, name);
+  if (options.token) url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, options.token);
+  return { url: url.toString(), name, token: options.token };
 }
 
 function randomTunnelName() {
@@ -80,33 +77,32 @@ function randomTunnelName() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-class TunnelTargetFetcher extends RpcTarget implements Fetcher {
+class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
   private fetcher: Fetcher;
+  private onReady: (tunnel: { url: string; token?: string }) => void;
 
-  constructor(fetcher: Fetcher) {
+  constructor(options: {
+    fetch: Fetcher["fetch"];
+    ready: (tunnel: { url: string; token?: string }) => void;
+  }) {
     super();
-    this.fetcher = fetcher;
+    this.fetcher = { fetch: options.fetch };
+    this.onReady = options.ready;
   }
 
   fetch(request: Request) {
     return this.fetcher.fetch(request);
   }
+
+  ready(tunnel: { url: string; token?: string }) {
+    this.onReady(tunnel);
+  }
 }
 
-function createWebSocket(options: { url: string | URL; headers?: Record<string, string> }) {
-  const connectUrl = new URL(options.url);
+function createWebSocket(url: string | URL) {
+  const connectUrl = new URL(url);
   connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
-  // TypeScript sees the standard DOM/Workers constructor here, where the second
-  // argument is only WebSocket protocols. Node's CLI WebSocket runtime also
-  // accepts a headers init object, which we need for tunnel auth.
-  const WebSocketWithHeaders = WebSocket as unknown as new (
-    url: string,
-    init?: string | string[] | { headers: Record<string, string> },
-  ) => WebSocket;
-  return new WebSocketWithHeaders(
-    connectUrl.href,
-    options.headers ? { headers: options.headers } : undefined,
-  );
+  return new WebSocket(connectUrl.href);
 }
 
 async function waitUntilOpen(socket: WebSocket) {
@@ -138,36 +134,50 @@ async function waitUntilOpen(socket: WebSocket) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tunnel server (formerly src/server.ts)
-// ---------------------------------------------------------------------------
+async function waitUntilReady(promise: Promise<{ url: string; token?: string }>) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Timed out waiting for tunnel gateway ready message")),
+          TUNNEL_READY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
-/** Creates a Worker WebSocket upgrade response and matching tunnel handle. */
-export function acceptCaptunTunnel(options: { onDisconnect?: () => void } = {}) {
+/** Creates a Worker WebSocket upgrade response and matching fetcher stub. */
+export function acceptFetcherCapability(options: { onDisconnect?: () => void } = {}) {
   const pair = new WebSocketPair();
   const clientSocket = pair[0];
   const serverSocket = pair[1];
 
   serverSocket.accept();
-  const tunnel = acceptCaptunTunnelFromSocket(serverSocket, options);
+  const fetcher = acceptFetcherCapabilityFromSocket(serverSocket, options);
 
   return {
-    tunnel,
+    fetcher,
     response: new Response(null, { status: 101, webSocket: clientSocket }),
   };
 }
 
-export function acceptCaptunTunnelFromSocket(
+export function acceptFetcherCapabilityFromSocket(
   socket: WebSocket,
   options: { onDisconnect?: () => void } = {},
-): Fetcher & Disposable {
-  // The generic describes the peer's main object; Cap'n Web still returns a
-  // stub with lifecycle methods like onRpcBroken() and Symbol.dispose.
-  const tunnelTargetFetcher = newWebSocketRpcSession<Fetcher>(socket);
-  tunnelTargetFetcher.onRpcBroken(() => options.onDisconnect?.());
+): FetcherStub {
+  const remote = newWebSocketRpcSession<TunnelClientCapability>(socket) as FetcherStub & {
+    onRpcBroken(callback: () => void): void;
+  };
+  remote.onRpcBroken(() => options.onDisconnect?.());
 
   return {
-    fetch: (request) => tunnelTargetFetcher.fetch(request),
-    [Symbol.dispose]: () => tunnelTargetFetcher[Symbol.dispose](),
+    fetch: (request) => remote.fetch(request),
+    ready: (tunnel) => remote.ready(tunnel),
+    [Symbol.dispose]: () => remote[Symbol.dispose](),
   };
 }

@@ -16,11 +16,7 @@ import { CliFriendlyError } from "./cli-error.js";
 import { createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
-import {
-  getTunnelUrlFromServerUrl,
-  HOSTED_CAPTUN_SERVER_URL,
-  TUNNEL_URL_HEADER,
-} from "../routing.js";
+import { HOSTED_CAPTUN_GATEWAY } from "../routing.js";
 import {
   captunHealthResponse,
   confirmTunnelHealth,
@@ -29,25 +25,24 @@ import {
 import { deployWorker, openInBrowser, runDeployWizard, waitForCertWithSpinner } from "./deploy.js";
 
 export type Config = {
-  serverUrl: string;
-  secret?: string;
+  gateway: string;
+  token?: string;
 };
 
 type TunnelCliInput = {
   target: string;
   name?: string;
-  serverUrl?: string;
-  secret?: string;
+  gateway?: string;
+  token?: string;
   requestLogs: boolean;
 };
 
 export type ResolvedTunnel = {
   name: string;
-  serverUrl: string;
+  gateway: string;
   target: string;
-  secret?: string;
+  token?: string;
   requestLogs: boolean;
-  tunnel: string;
 };
 
 export type TunnelReady = {
@@ -99,8 +94,8 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
             .describe("Local target to expose, as a port, host:port, or URL")
             .meta({ positional: true }),
           name: z.string().optional().describe("Tunnel name"),
-          serverUrl: z.url().optional().describe("Tunnel Worker base URL"),
-          secret: z.string().optional().describe("Tunnel connection secret"),
+          gateway: z.url().optional().describe("Tunnel Gateway URL"),
+          token: z.string().optional().describe("Tunnel Gateway token"),
           requestLogs: z.boolean().default(true).describe("Print basic request logs"),
         }),
       )
@@ -140,10 +135,10 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
             .string()
             .optional()
             .describe("Cloudflare zone name for the route, for example example.com"),
-          secret: z
+          token: z
             .string()
             .optional()
-            .describe("Secret required by tunnel clients; generated when omitted"),
+            .describe("Token required by tunnel clients; generated when omitted"),
           shards: z
             .number()
             .int()
@@ -158,13 +153,13 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
       )
       .handler(async ({ input }) => {
         const wizardResult = await runDeployWizard(input, { packageRoot });
-        const secret = wizardResult.secret;
-        const serverUrl = await deployWorker(
+        const token = wizardResult.token;
+        const gateway = await deployWorker(
           {
             name: wizardResult.name,
             route: wizardResult.route,
             zone: wizardResult.zone,
-            secret,
+            token,
             shards: wizardResult.shards,
             accountId: wizardResult.accountId,
             customHostname: wizardResult.customHostname,
@@ -174,13 +169,13 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
         );
         if (input.dryRun) {
           console.log("\nDry run complete (no upload, config not written).");
-          console.log(`Expected server URL pattern: ${serverUrl}`);
-          return { serverUrl, dryRun: true };
+          console.log(`Expected gateway: ${gateway}`);
+          return { gateway, dryRun: true };
         }
 
         // Worker is live now — persist config before anything that can fail later
         // (e.g. cert provisioning can time out, but the deploy is already complete).
-        await writeCliConfig({ serverUrl, secret });
+        await writeCliConfig({ gateway, token });
 
         if (wizardResult.certWait) {
           try {
@@ -197,25 +192,25 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
         }
 
         printDeploySummary({
-          serverUrl,
-          workerName: wizardResult.name ?? "captun",
+          gateway,
+          workerName: wizardResult.name || "captun",
           route: wizardResult.route,
           zone: wizardResult.zone,
-          shards: wizardResult.shards ?? 1,
+          shards: wizardResult.shards || 1,
         });
 
         if (process.stdin.isTTY) {
           await postDeploySelfTest({
-            serverUrl,
-            secret,
-            workerName: wizardResult.name ?? "captun",
+            gateway,
+            token,
+            workerName: wizardResult.name || "captun",
             route: wizardResult.route,
             zone: wizardResult.zone,
-            shards: wizardResult.shards ?? 1,
+            shards: wizardResult.shards || 1,
           });
         }
 
-        return { serverUrl, configPath };
+        return { gateway, configPath };
       }),
   });
 }
@@ -223,7 +218,7 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
 export const router = createCaptunCliRouter();
 
 type DeployedSummary = {
-  serverUrl: string;
+  gateway: string;
   workerName: string;
   route?: string;
   zone?: string;
@@ -235,12 +230,12 @@ function printDeploySummary(summary: DeployedSummary) {
   tunnelInfoRow("worker", color.cyan(summary.workerName));
   if (summary.route) tunnelInfoRow("route", color.cyan(summary.route));
   if (summary.zone) tunnelInfoRow("zone", color.cyan(summary.zone));
-  tunnelInfoRow("server url", color.cyan(summary.serverUrl));
+  tunnelInfoRow("gateway", color.cyan(summary.gateway));
   tunnelInfoRow("shards", color.cyan(String(summary.shards)));
   tunnelInfoRow("config", color.cyan(configPath));
 }
 
-async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
+async function postDeploySelfTest(opts: DeployedSummary & { token: string }) {
   const server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(renderSuccessPage(opts));
@@ -259,11 +254,10 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
   const name = randomName();
   const tunnel: ResolvedTunnel = {
     name,
-    serverUrl: opts.serverUrl,
+    gateway: opts.gateway,
     target,
-    secret: opts.secret,
+    token: opts.token,
     requestLogs: true,
-    tunnel: getTunnelUrlFromServerUrl(opts.serverUrl, name),
   };
 
   printTunnelOpening(tunnel);
@@ -274,7 +268,7 @@ async function postDeploySelfTest(opts: DeployedSummary & { secret: string }) {
   try {
     await runTunnelSession(tunnel, {
       retries: 6,
-      onReady: () => openInBrowser(tunnel.tunnel),
+      onReady: ({ url }) => openInBrowser(url),
     });
   } finally {
     await new Promise<void>((closeResolve) => server.close(() => closeResolve()));
@@ -294,7 +288,7 @@ function renderSuccessPage(opts: DeployedSummary): string {
     ["Worker name", opts.workerName],
     ...(opts.route ? [["Route", opts.route] as [string, string]] : []),
     ...(opts.zone ? [["Zone", opts.zone] as [string, string]] : []),
-    ["Server URL", opts.serverUrl],
+    ["Gateway", opts.gateway],
     ["Shards", String(opts.shards)],
     ["Config file", configPath],
   ];
@@ -440,18 +434,17 @@ function colorStatus(status: number) {
 }
 
 function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
-  const serverUrl = input.serverUrl || config?.serverUrl || HOSTED_CAPTUN_SERVER_URL;
+  const gateway = input.gateway || config?.gateway || HOSTED_CAPTUN_GATEWAY;
 
-  const name = input.name ?? randomName();
+  const name = input.name || randomName();
   const target = normalizeTarget(input.target);
 
   return {
     name,
-    serverUrl,
+    gateway,
     target,
-    secret: input.secret || config?.secret,
+    token: input.token || config?.token,
     requestLogs: input.requestLogs,
-    tunnel: getTunnelUrlFromServerUrl(serverUrl, name),
   };
 }
 
@@ -479,44 +472,41 @@ async function runTunnelSession(
   const startedAt = performance.now();
   await assertLocalTargetAcceptingConnections(tunnel.target);
 
-  // Filled in from the `x-captun-tunnel-url` header on the first forwarded
-  // request — the Worker is the source of truth for the public URL.
-  const advertisedUrl: { current: string | undefined } = { current: undefined };
-  const session = await connectTunnelWithRetry(tunnel, opts.retries ?? 0, advertisedUrl);
+  const session = await connectTunnelWithRetry(tunnel, opts.retries || 0);
   try {
-    await confirmTunnelHealth(tunnel.tunnel);
-    const tunnelUrlForDisplay = advertisedUrl.current ?? tunnel.tunnel;
+    await confirmTunnelHealth(session.url);
     console.log(
       `\n${color.green("Ready")} ${color.dim(`in ${Math.round(performance.now() - startedAt)}ms`)}\n`,
     );
-    console.log(color.cyan(tunnelUrlForDisplay));
+    console.log(color.cyan(session.url));
     console.log(`  ${color.dim("->")} ${color.cyan(tunnel.target)}`);
     console.log(`\n${color.dim("Press Ctrl+C to close tunnel")}\n`);
-    await opts.onReady?.({ url: tunnelUrlForDisplay, tunnel });
+    await opts.onReady?.({ url: session.url, tunnel });
     await (opts.waitForShutdown || waitForShutdown)();
   } finally {
     session[Symbol.dispose]();
   }
 }
 
-async function connectTunnelWithRetry(
-  tunnel: ResolvedTunnel,
-  retries: number,
-  advertisedUrl: { current: string | undefined },
-) {
-  const url = `${tunnel.tunnel}/__captun-connect`;
-  const headers = tunnel.secret ? { authorization: `Bearer ${tunnel.secret}` } : undefined;
-  const fetcher = makeTunnelFetcher(tunnel, advertisedUrl);
+async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
+  const fetcher = makeTunnelFetcher(tunnel);
 
   const maxAttempts = retries + 1;
   let delay = 2000;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const label =
       attempt === 1
-        ? `Connecting to ${tunnel.tunnel}`
-        : `Connecting to ${tunnel.tunnel} (retry ${attempt - 1}/${retries})`;
+        ? `Connecting to ${tunnel.gateway}`
+        : `Connecting to ${tunnel.gateway} (retry ${attempt - 1}/${retries})`;
     try {
-      return await withSpinner(label, () => createCaptunTunnel({ url, headers, fetch: fetcher }));
+      return await withSpinner(label, () =>
+        createCaptunTunnel({
+          gateway: tunnel.gateway,
+          name: tunnel.name,
+          token: tunnel.token,
+          fetch: fetcher,
+        }),
+      );
     } catch (error) {
       if (attempt === maxAttempts) {
         throw tunnelConnectError(tunnel, error);
@@ -528,11 +518,8 @@ async function connectTunnelWithRetry(
   throw new Error("unreachable");
 }
 
-function makeTunnelFetcher(tunnel: ResolvedTunnel, advertisedUrl: { current: string | undefined }) {
+function makeTunnelFetcher(tunnel: ResolvedTunnel) {
   return async (request: Request) => {
-    const advertised = request.headers.get(TUNNEL_URL_HEADER);
-    if (advertised) advertisedUrl.current = advertised;
-
     if (isCaptunHealthRequest(request)) return captunHealthResponse();
 
     const url = new URL(request.url);
@@ -568,9 +555,9 @@ function makeTunnelFetcher(tunnel: ResolvedTunnel, advertisedUrl: { current: str
 }
 
 function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
-  const hostname = new URL(tunnel.tunnel).hostname;
+  const hostname = new URL(tunnel.gateway).hostname;
   const message = cause instanceof Error ? cause.message : String(cause);
-  const lines = [`Could not connect tunnel to ${color.cyan(tunnel.tunnel)} (${message}).`];
+  const lines = [`Could not connect tunnel to ${color.cyan(tunnel.gateway)} (${message}).`];
   if (!hostname.endsWith(".workers.dev")) {
     // Dropping the leftmost label gives the zone-side wildcard parent —
     // `tunnel.mispwoso.com` -> `mispwoso.com`, `t.captun.example.com` -> `captun.example.com`.
@@ -602,10 +589,10 @@ function tunnelOpeningRows(tunnel: ResolvedTunnel) {
   const rows = [
     { label: "target", value: color.cyan(tunnel.target) },
     { label: "--name", value: color.cyan(tunnel.name) },
-    { label: "--server-url", value: color.cyan(tunnel.serverUrl) },
+    { label: "--gateway", value: color.cyan(tunnel.gateway) },
     {
-      label: "--secret",
-      value: tunnel.secret ? color.dim(secretPreview(tunnel.secret)) : color.dim("none"),
+      label: "--token",
+      value: tunnel.token ? color.dim(tokenPreview(tunnel.token)) : color.dim("none"),
     },
   ];
   if (tunnel.requestLogs) rows.push({ label: "--request-logs", value: color.dim("true") });
@@ -616,9 +603,9 @@ function tunnelInfoRow(label: string, value: string) {
   console.log(`  ${color.dim(label.padEnd(16))}${value}`);
 }
 
-function secretPreview(secret: string, visibleChars = 6) {
-  if (secret.length <= visibleChars) return secret;
-  return `${secret.slice(0, visibleChars)}…`;
+function tokenPreview(token: string, visibleChars = 6) {
+  if (token.length <= visibleChars) return token;
+  return `${token.slice(0, visibleChars)}…`;
 }
 
 function randomName() {

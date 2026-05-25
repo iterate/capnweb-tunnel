@@ -14,8 +14,7 @@ const tunnelNameCases: Array<
 > = [
   // Folder routing (no customHostname): first path segment is the tunnel name.
   ["https://captun.account.workers.dev/my-test/hello", undefined, "my-test"],
-  ["https://captun.account.workers.dev/my-test/__captun-connect", undefined, "my-test"],
-  ["https://captun.account.workers.dev/__captun-connect", undefined, null],
+  ["https://captun.account.workers.dev/my-test/nested/path", undefined, "my-test"],
   ["https://captun.account.workers.dev/", undefined, null],
   ["http://localhost:8787/my-test/hello", undefined, "my-test"],
   ["https://captun.account.workers.dev/bad%/hello", undefined, null],
@@ -23,7 +22,7 @@ const tunnelNameCases: Array<
   // Subdomain routing: tunnel name is the last label before customHostname.
   ["https://my-test.captun.example.com/hello", "captun.example.com", "my-test"],
   ["https://my-test.my-tunnels.com/hello", "my-tunnels.com", "my-test"],
-  ["https://my-test.my-tunnels.com/__captun-connect", "my-tunnels.com", "my-test"],
+  ["https://my-test.my-tunnels.com/nested/path", "my-tunnels.com", "my-test"],
   ["https://my-test.mysubdomain.mydomain.com/hello", "mysubdomain.mydomain.com", "my-test"],
 
   // Nested wildcard: the *last* label before customHostname wins. Anything to
@@ -56,7 +55,7 @@ const tunnelUrlCases: Array<
 > = [
   // Folder mode: protocol + host from reqUrl, name appended as a path segment.
   [
-    "https://captun.acct.workers.dev/banana/__captun-connect",
+    "https://captun.acct.workers.dev/banana/nested/path",
     undefined,
     "banana",
     "https://captun.acct.workers.dev/banana",
@@ -116,7 +115,8 @@ test("Captun Worker keeps a tunnel name on a stable shard", () => {
 test("Captun Worker forwards requests through a real Durable Object tunnel", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
-    url: `${fixture.origin}/demo/__captun-connect`,
+    gateway: fixture.origin,
+    name: "demo",
     fetch: async (request) => {
       const url = new URL(request.url);
       return Response.json({
@@ -142,7 +142,8 @@ test("Captun Worker forwards requests through a real Durable Object tunnel", asy
 test("Captun Worker verifies health through a connected tunnel client", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
-    url: `${fixture.origin}/demo/__captun-connect`,
+    gateway: fixture.origin,
+    name: "demo",
     fetch: (request) => {
       if (isCaptunHealthRequest(request)) return captunHealthResponse();
       return new Response("unexpected\n", { status: 500 });
@@ -158,7 +159,8 @@ test("Captun Worker verifies health through a connected tunnel client", async ()
 test("Captun Worker returns 502 when the tunnel client fetch throws", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
-    url: `${fixture.origin}/demo/__captun-connect`,
+    gateway: fixture.origin,
+    name: "demo",
     fetch: () => {
       throw new Error("local target unavailable");
     },
@@ -231,7 +233,10 @@ test("Hosted Captun serves the browser demo module on www", async () => {
 
   expect(response).toMatchObject({ status: 200 });
   expect(response.headers.get("content-type")).toContain("application/javascript");
-  expect(await response.text()).toEqual(expect.stringContaining("createCaptunTunnel"));
+  const module = await response.text();
+  expect(module).toEqual(expect.stringContaining("createCaptunTunnel"));
+  expect(module).toEqual(expect.stringContaining("captun-connect"));
+  expect(module).not.toEqual(expect.stringContaining("__captun-connect"));
 });
 
 test("Hosted Captun landing page includes an in-browser tunnel demo", async () => {
@@ -309,6 +314,8 @@ test.each([
   "dash",
   "dashboard",
   "docs",
+  "gateway",
+  "gateways",
   "iterate",
   "login",
   "payment",
@@ -316,19 +323,22 @@ test.each([
   "status",
   "support",
   "tunnel",
+  "tunnels",
 ])("Hosted Captun reserves %s.captun.sh", async (subdomain) => {
   await using fixture = await createCaptunWorkerFixture({ CUSTOM_HOSTNAME: "captun.sh" });
 
   const response = await fixture.worker.fetch(`https://${subdomain}.captun.sh/`);
 
   expect(response).toMatchObject({ status: 404 });
-  expect(await response.text()).toBe("Reserved captun.sh subdomain\n");
+  expect(await response.text()).toBe("Reserved Captun tunnel name\n");
 });
 
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
-  const response = await fetch(`${fixture.origin}/__captun-connect`);
+  const response = await fixture.worker.fetch(`${fixture.origin}/?captun-connect=1`, {
+    headers: { upgrade: "websocket" },
+  });
 
   expect(response).toMatchObject({ status: 404 });
   expect(await response.text()).toBe("Missing tunnel name\n");
@@ -343,10 +353,13 @@ test("Captun Worker rejects malformed folder tunnel names", async () => {
   expect(await response.text()).toBe("Missing tunnel name\n");
 });
 
-test("Captun Worker requires the configured secret before accepting a tunnel client", async () => {
-  await using fixture = await createCaptunWorkerFixture({ CAPTUN_SECRET: "secret" });
+test("Captun Worker requires the configured token before accepting a tunnel client", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "token" });
 
-  const response = await fetch(`${fixture.origin}/demo/__captun-connect`);
+  const response = await fixture.worker.fetch(
+    `${fixture.origin}/?captun-connect=1&captun-name=demo`,
+    { headers: { upgrade: "websocket" } },
+  );
 
   expect(response).toMatchObject({ status: 401 });
   expect(await response.text()).toBe("Unauthorized\n");

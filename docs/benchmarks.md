@@ -5,7 +5,7 @@ These are pragmatic benchmark notes, not a formal benchmark suite. The goal is t
 The startup benchmark in [scripts/benchmark-startup.ts](../scripts/benchmark-startup.ts) measures from "start creating a tunnel" to the first successful public HTTP fetch through that tunnel:
 
 ```bash
-CAPTUN_SERVER_URL=https://{name}.tunnels.example.com \
+CAPTUN_GATEWAY=https://gateway.tunnels.example.com \
 PROVIDERS=captun,ngrok,cloudflared,wrangler-tunnel \
 COUNTS=1 \
 OUT=docs/performance/captun-startup.json \
@@ -15,7 +15,7 @@ node scripts/benchmark-startup.ts
 The stream benchmark in [scripts/benchmark-streams.ts](../scripts/benchmark-streams.ts) creates many named tunnels and fetches large responses through them:
 
 ```bash
-CAPTUN_SERVER_URL=https://captun.example.workers.dev \
+CAPTUN_GATEWAY=https://captun.example.workers.dev \
 COUNTS=100 \
 BYTES=2097152 \
 OUT=docs/performance/captun-streams.json \

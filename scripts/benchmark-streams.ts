@@ -35,7 +35,7 @@ type Result = {
 const counts = (process.env.COUNTS ?? "1,10,25,50,100")
   .split(",")
   .map((value) => Number(value.trim()));
-const serverUrl = process.env.CAPTUN_SERVER_URL ?? "https://captun.example.workers.dev";
+const gateway = process.env.CAPTUN_GATEWAY ?? "https://captun.example.workers.dev";
 const out = process.env.OUT ?? "docs/performance/captun-streams.json";
 const bytes = Number(process.env.BYTES ?? 2 * 1024 * 1024);
 const chunkBytes = Number(process.env.CHUNK_BYTES ?? 64 * 1024);
@@ -63,8 +63,9 @@ if (warmupCount > 0) {
     Math.min(warmupCount, Math.max(connectConcurrency, 25)),
     async (index) => {
       const session = await createCaptunTunnel({
-        url: `${tunnelUrl(`${namePrefix}-warm-${index}`)}/__captun-connect`,
-        headers: captunHeaders(),
+        gateway,
+        name: `${namePrefix}-warm-${index}`,
+        token: process.env.CAPTUN_TOKEN,
         fetch: () => testResponse("stream"),
       });
       session[Symbol.dispose]();
@@ -85,7 +86,7 @@ for (const count of counts) {
 await mkdir("docs/performance", { recursive: true });
 await writeFile(
   out,
-  `${JSON.stringify({ serverUrl, bytes, chunkBytes, modes, readMode, timeoutMs, results }, null, 2)}\n`,
+  `${JSON.stringify({ gateway, bytes, chunkBytes, modes, readMode, timeoutMs, results }, null, 2)}\n`,
 );
 console.log(`wrote ${out}`);
 
@@ -127,19 +128,19 @@ async function runPool<T>(count: number, concurrency: number, task: (index: numb
 async function measure(index: number, mode: string): Promise<Measurement> {
   // Deterministic names make runs reproducible and let us intentionally spread
   // or collide names across shards by changing NAME_PREFIX and SHARD_COUNT.
-  const url = tunnelUrl(`${namePrefix}-${index}`);
   const started = performance.now();
   const cpuStarted = process.cpuUsage();
   const eventLoopStarted = performance.eventLoopUtilization();
-  let tunnel: Disposable | undefined;
+  let tunnel: Awaited<ReturnType<typeof createCaptunTunnel>> | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: `${url}/__captun-connect`,
-      headers: captunHeaders(),
+      gateway,
+      name: `${namePrefix}-${index}`,
+      token: process.env.CAPTUN_TOKEN,
       fetch: () => testResponse(mode),
     });
     const connectedAt = performance.now();
-    const response = await withTimeout(fetch(url), timeoutMs, "fetch timed out");
+    const response = await withTimeout(fetch(tunnel.url), timeoutMs, "fetch timed out");
     const responseAt = performance.now();
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const received = await readBytes(response);
@@ -170,12 +171,6 @@ async function measure(index: number, mode: string): Promise<Measurement> {
   } finally {
     tunnel?.[Symbol.dispose]();
   }
-}
-
-function captunHeaders() {
-  return process.env.CAPTUN_SECRET
-    ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
-    : undefined;
 }
 
 function testResponse(mode: string) {
@@ -214,14 +209,6 @@ async function readBytes(response: Response) {
   let total = 0;
   for await (const chunk of response.body ?? []) total += chunk.byteLength;
   return total;
-}
-
-function tunnelUrl(name: string) {
-  if (serverUrl.includes("{name}")) return serverUrl.replaceAll("{name}", name).replace(/\/$/, "");
-  const url = new URL(serverUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) url.pathname = "/";
-  else url.pathname = `/${name}`;
-  return url.toString().replace(/\/$/, "");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, message: string) {

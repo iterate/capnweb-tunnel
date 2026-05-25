@@ -18,29 +18,30 @@ test.concurrent("forwards HTTP", async ({ task }) => {
   expect(await response.json()).toMatchObject({ body: "hello through tunnel" });
 });
 
-test.concurrent("creates a named tunnel from a server URL", async ({ task }) => {
+test.concurrent("creates a named tunnel from a gateway", async ({ task }) => {
   await using server = await createServerFixture();
   const name = tunnelName(task.name);
   using tunnel = await createCaptunTunnel({
-    serverUrl: server.url,
+    gateway: server.gateway,
     name,
-    headers: server.headers,
+    token: server.token,
     fetch: async (request) => {
       const url = new URL(request.url);
       return Response.json({ path: url.pathname, body: await request.text() });
     },
   });
 
-  expect(tunnel).toMatchObject({ url: tunnelUrl(server.url, name) });
+  expect(tunnel).toMatchObject({ token: server.token });
+  if (server.tunnelUrl) expect(tunnel).toMatchObject({ url: server.tunnelUrl(name) });
 
-  const response = await fetch(`${tunnel.url}/server-url-api`, {
+  const response = await fetch(`${tunnel.url}/gateway-api`, {
     method: "POST",
-    body: "hello through server url",
+    body: "hello through gateway",
   });
 
   expect(await response.json()).toMatchObject({
-    path: "/server-url-api",
-    body: "hello through server url",
+    path: "/gateway-api",
+    body: "hello through gateway",
   });
 });
 
@@ -177,14 +178,14 @@ async function createTunnelFixture(
   const server = await createServerFixture();
   const name = tunnelName(testName);
   try {
-    const url = tunnelUrl(server.url, name);
     const tunnel = await createCaptunTunnel({
-      url: `${url}/__captun-connect`,
-      headers: server.headers,
+      gateway: server.gateway,
+      name,
+      token: server.token,
       fetch,
     });
     return {
-      url,
+      url: tunnel.url,
       async [Symbol.asyncDispose]() {
         tunnel[Symbol.dispose]();
         await server[Symbol.asyncDispose]();
@@ -197,20 +198,20 @@ async function createTunnelFixture(
 }
 
 async function createServerFixture() {
-  if (process.env.CAPTUN_SERVER_URL) {
+  if (process.env.CAPTUN_GATEWAY) {
     return {
-      url: process.env.CAPTUN_SERVER_URL,
-      headers: process.env.CAPTUN_SECRET
-        ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
-        : undefined,
+      gateway: process.env.CAPTUN_GATEWAY,
+      token: process.env.CAPTUN_TOKEN,
+      tunnelUrl: undefined,
       async [Symbol.asyncDispose]() {},
     };
   }
 
   const worker = await createCaptunWorkerFixture({});
   return {
-    url: worker.origin,
-    headers: undefined,
+    gateway: worker.origin,
+    token: undefined,
+    tunnelUrl: (name: string) => `${worker.origin}/${name}`,
     async [Symbol.asyncDispose]() {
       await worker[Symbol.asyncDispose]();
     },
@@ -226,18 +227,6 @@ function tunnelName(testName: string) {
   const prefix = slug.slice(0, 32).replace(/-$/, "") || "test";
   const hash = createHash("sha256").update(seed).digest("hex").slice(0, 12);
   return `${prefix}-${hash}`;
-}
-
-function tunnelUrl(serverUrl: string, name: string) {
-  if (serverUrl.includes("{name}")) return serverUrl.replaceAll("{name}", name).replace(/\/$/, "");
-
-  const url = new URL(serverUrl);
-  if (url.hostname.match(/^[^.]+\.tunnels\./)) {
-    url.pathname = "/";
-  } else {
-    url.pathname = `/${name}`;
-  }
-  return url.toString().replace(/\/$/, "");
 }
 
 function makeBytes(size: number) {

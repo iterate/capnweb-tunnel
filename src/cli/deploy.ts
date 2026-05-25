@@ -30,7 +30,7 @@ export type DeployInput = {
   name?: string;
   route?: string;
   zone?: string;
-  secret?: string;
+  token?: string;
   shards?: number;
   dryRun?: boolean;
 };
@@ -40,7 +40,7 @@ export type DeployWizardResult = {
   route?: string;
   zone?: string;
   shards?: number;
-  secret: string;
+  token: string;
   accountId?: string;
   customHostname?: string;
   certWait?: {
@@ -61,9 +61,9 @@ export async function runDeployWizard(
       route: input.route,
       zone: input.zone,
       shards: input.shards,
-      secret: input.secret ?? randomSecret(),
-      // Without this, non-interactive `--route` deploys fall through to folder
-      // routing while serverUrlFromRoute still hands out subdomain URLs.
+      token: input.token ?? randomToken(),
+      // Without this, non-interactive `--route` deploys would accept tunnel
+      // connects on the route host but still parse forwarded requests in folder mode.
       customHostname: input.route ? customHostnameFromRoute(input.route) : undefined,
     };
   }
@@ -211,12 +211,12 @@ export async function runDeployWizard(
   });
   const shards = Number(shardsAnswer);
 
-  const secret = await prompts.input({
-    message: "Tunnel secret (leave empty to allow anyone to create tunnels on your captun server)",
-    default: input.secret ?? randomSecret(),
+  const token = await prompts.input({
+    message: "Tunnel token (leave empty to allow anyone to create tunnels on your Captun gateway)",
+    default: input.token ?? randomToken(),
   });
 
-  return { name, route, zone, shards, certWait, secret, accountId, customHostname };
+  return { name, route, zone, shards, certWait, token, accountId, customHostname };
 }
 
 async function pickAccount(packageRoot: string): Promise<string> {
@@ -509,7 +509,7 @@ export async function deployWorker(
     name?: string;
     route?: string;
     zone?: string;
-    secret: string;
+    token: string;
     shards?: number;
     accountId?: string;
     customHostname?: string;
@@ -522,7 +522,7 @@ export async function deployWorker(
   const tempDir = await mkdtemp(resolve(tmpdir(), "captun-"));
   const secretsFile = resolve(tempDir, "secrets.json");
   try {
-    await writeFile(secretsFile, JSON.stringify({ CAPTUN_SECRET: input.secret }), { mode: 0o600 });
+    await writeFile(secretsFile, JSON.stringify({ CAPTUN_TOKEN: input.token }), { mode: 0o600 });
 
     const baseConfigPath = resolve(packageRoot, "wrangler.jsonc");
     const baseConfig = parseJsonc(await readFile(baseConfigPath, "utf8")) as Record<
@@ -551,7 +551,7 @@ export async function deployWorker(
     if (input.shards) args.push("--var", `SHARD_COUNT:${input.shards}`);
     // Always set CUSTOM_HOSTNAME (empty string = folder routing) so `--keep-vars`
     // doesn't leave a stale value behind when switching modes on redeploy.
-    args.push("--var", `CUSTOM_HOSTNAME:${input.customHostname ?? ""}`);
+    args.push("--var", `CUSTOM_HOSTNAME:${input.customHostname || ""}`);
     if (input.dryRun) args.push("--dry-run");
 
     if (!input.dryRun) await assertWranglerAuthenticated({ cwd: packageRoot });
@@ -559,17 +559,17 @@ export async function deployWorker(
     const output = await runWrangler(args, { cwd: packageRoot, tty: !input.dryRun });
     if (input.dryRun) {
       return input.route
-        ? serverUrlFromRoute(input.route)
+        ? gatewayFromRoute(input.route, input.zone)
         : "https://captun.<your-account>.workers.dev";
     }
 
-    const serverUrl = input.route
-      ? serverUrlFromRoute(input.route)
-      : serverUrlFromWranglerOutput(output);
-    if (!serverUrl) {
+    const gateway = input.route
+      ? gatewayFromRoute(input.route, input.zone)
+      : gatewayFromWranglerOutput(output);
+    if (!gateway) {
       throw new Error("Wrangler deploy succeeded, but the Worker URL was not found in its output.");
     }
-    return serverUrl;
+    return gateway;
   } finally {
     await rm(tempDir, { force: true, recursive: true });
   }
@@ -596,14 +596,21 @@ export async function waitForCertWithSpinner(
   }
 }
 
-function serverUrlFromRoute(route: string) {
+function gatewayFromRoute(route: string, zone: string | undefined) {
   const withoutProtocol = route.replace(/^https?:\/\//, "");
   const [hostPart, ...pathParts] = withoutProtocol.split("/");
-  const host = hostPart?.startsWith("*.") ? `{name}.${hostPart.slice(2)}` : hostPart;
-  if (!host) throw new Error(`Cannot infer server URL from route: ${route}`);
+  const host = gatewayHostFromRouteHost(hostPart || "", zone);
+  if (!host) throw new Error(`Cannot infer gateway from route: ${route}`);
 
   const path = pathParts.join("/").replace(/\*.*$/, "").replace(/\/$/, "");
   return `https://${host}${path ? `/${path}` : ""}`;
+}
+
+function gatewayHostFromRouteHost(hostPart: string, zone: string | undefined) {
+  if (!hostPart.startsWith("*.")) return hostPart;
+  const wildcardParent = hostPart.slice(2);
+  const gatewayLabel = zone && wildcardParent === zone ? "captun" : "gateway";
+  return `${gatewayLabel}.${wildcardParent}`;
 }
 
 /** `*.captun.example.com/*` -> `captun.example.com`; `*.example.com/*` -> `example.com`. */
@@ -613,7 +620,7 @@ function customHostnameFromRoute(route: string): string | undefined {
   return host.slice(2);
 }
 
-function serverUrlFromWranglerOutput(output: string) {
+function gatewayFromWranglerOutput(output: string) {
   // Wrangler colorizes URLs with ANSI escapes (which would attach to the match
   // tail) and also prints a `Worker Version Preview URL` with a literal
   // `<VERSION_PREFIX>-` placeholder we want to skip.
@@ -621,7 +628,7 @@ function serverUrlFromWranglerOutput(output: string) {
   return stripped.match(/https:\/\/[^\s<>]+\.workers\.dev/)?.[0];
 }
 
-function randomSecret() {
+function randomToken() {
   return randomBytes(32).toString("base64url");
 }
 
@@ -629,7 +636,7 @@ function randomSecret() {
 function parseJsonc(input: string): unknown {
   const withoutComments = input.replace(
     /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-    (_match, str: string | undefined) => str ?? "",
+    (_match, str: string | undefined) => str || "",
   );
   const withoutTrailingCommas = withoutComments.replace(/,(\s*[}\]])/g, "$1");
   return JSON.parse(withoutTrailingCommas);

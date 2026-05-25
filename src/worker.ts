@@ -1,23 +1,33 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel, type Fetcher } from "./index.js";
+import { acceptFetcherCapability, type FetcherStub } from "./index.js";
 import {
   captunShardName,
+  CONNECT_TOKEN_QUERY_PARAM,
+  GATEWAY_CONNECT_QUERY_PARAM,
   HOSTED_CAPTUN_HOSTNAME,
   getTunnelNameFromUrl,
   getTunnelUrl,
-  RESERVED_HOSTED_SUBDOMAINS,
+  isValidTunnelName,
+  RESERVED_TUNNEL_NAMES,
+  TUNNEL_NAME_QUERY_PARAM,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
 type CaptunEnv = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
-  CAPTUN_SECRET?: string;
+  CAPTUN_TOKEN?: string;
   SHARD_COUNT?: string;
   CUSTOM_HOSTNAME?: string;
 };
 
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
+
+type ActiveTunnel = {
+  url: string;
+  token?: string;
+  fetcher: FetcherStub;
+};
 
 /**
  * A shard Durable Object owns many named tunnels.
@@ -28,7 +38,7 @@ const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
  * aggregate throughput for lots of concurrent large responses.
  */
 export class CaptunServerShard extends DurableObject<CaptunEnv> {
-  private readonly tunnels = new Map<string, Fetcher & Disposable>();
+  private readonly tunnels = new Map<string, ActiveTunnel>();
 
   // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
   // is special-cased by the Workers runtime around `stub.fetch(...)` — a 101
@@ -40,28 +50,36 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
-    const expected = this.env.CAPTUN_SECRET ? `Bearer ${this.env.CAPTUN_SECRET}` : undefined;
+    const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
+    if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
+
+    const expected = this.env.CAPTUN_TOKEN;
     if (expected) {
-      // Constant-time comparison to avoid leaking the secret via timing.
-      const actual = new TextEncoder().encode(request.headers.get("authorization") ?? "");
+      // Constant-time comparison to avoid leaking the gateway token via timing.
+      const actual = new TextEncoder().encode(connectToken(request) || "");
       const want = new TextEncoder().encode(expected);
       if (actual.length !== want.length || !crypto.subtle.timingSafeEqual(actual, want)) {
         return new Response("Unauthorized\n", { status: 401 });
       }
     }
 
-    this.tunnels.get(tunnelName)?.[Symbol.dispose]();
-    const { response, tunnel } = acceptCaptunTunnel({
+    const token = expected ? connectToken(request) || undefined : undefined;
+    this.tunnels.get(tunnelName)?.fetcher[Symbol.dispose]();
+    const { response, fetcher } = acceptFetcherCapability({
       onDisconnect: () => {
-        if (this.tunnels.get(tunnelName) === tunnel) this.tunnels.delete(tunnelName);
+        if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
       },
     });
+    const tunnel = { url: tunnelUrl, token, fetcher };
     this.tunnels.set(tunnelName, tunnel);
+    queueMicrotask(() => {
+      void fetcher.ready({ url: tunnel.url, token: tunnel.token });
+    });
     return response;
   }
 
   async forward(tunnelName: string, request: Request): Promise<Response> {
-    const tunnel = this.tunnels.get(tunnelName);
+    const tunnel = this.tunnels.get(tunnelName)?.fetcher;
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
       return await tunnel.fetch(request);
@@ -73,6 +91,10 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
 export default {
   fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+    if (isGatewayConnectRequest(request)) {
+      return connectTunnel(request, env);
+    }
+
     const hostedResponse = hostedCaptunResponse(request, env);
     if (hostedResponse) return hostedResponse;
 
@@ -88,23 +110,19 @@ export default {
     const url = new URL(request.url);
     const forwardedPath = env.CUSTOM_HOSTNAME
       ? url.pathname
-      : (url.pathname.match(/^\/[^/]+(\/.*)?$/)?.[1] ?? "/");
+      : url.pathname.match(/^\/[^/]+(\/.*)?$/)?.[1] || "/";
     url.pathname = forwardedPath;
+
+    if (RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+      return new Response("Reserved Captun tunnel name\n", { status: 404 });
+    }
 
     const shard = env.CaptunServerShard.getByName(
       captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
     );
-
     const forwarded = new Request(url, request);
 
-    if (forwardedPath === "/__captun-connect") {
-      const headers = new Headers(forwarded.headers);
-      headers.set(TUNNEL_NAME_HEADER, tunnelName);
-      return shard.fetch(new Request(forwarded, { headers }));
-    }
-
-    // Advertise the canonical tunnel URL back to the tunnel client. The CLI
-    // reads this so it doesn't have to mirror the Worker's routing convention.
+    // Keep the canonical tunnel URL attached while crossing into the DO.
     const tunnelUrl = getTunnelUrl({
       reqUrl: request.url,
       customHostname: env.CUSTOM_HOSTNAME,
@@ -115,6 +133,39 @@ export default {
     return shard.forward(tunnelName, new Request(forwarded, { headers }));
   },
 } satisfies ExportedHandler<CaptunEnv>;
+
+function connectTunnel(request: Request, env: CaptunEnv) {
+  if (request.headers.get("upgrade") !== "websocket") {
+    return new Response("Expected WebSocket upgrade\n", { status: 400 });
+  }
+
+  const url = new URL(request.url);
+  const tunnelName = url.searchParams.get(TUNNEL_NAME_QUERY_PARAM) || "";
+  if (!isValidTunnelName(tunnelName) || RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+    return new Response("Missing tunnel name\n", { status: 404 });
+  }
+
+  const tunnelUrl = getTunnelUrl({
+    reqUrl: request.url,
+    customHostname: env.CUSTOM_HOSTNAME,
+    tunnelName,
+  });
+  const shard = env.CaptunServerShard.getByName(
+    captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
+  );
+  const headers = new Headers(request.headers);
+  headers.set(TUNNEL_NAME_HEADER, tunnelName);
+  headers.set(TUNNEL_URL_HEADER, tunnelUrl);
+  return shard.fetch(new Request(request, { headers }));
+}
+
+function isGatewayConnectRequest(request: Request) {
+  return new URL(request.url).searchParams.get(GATEWAY_CONNECT_QUERY_PARAM) === "1";
+}
+
+function connectToken(request: Request) {
+  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
 
 function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | undefined {
   if (env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
@@ -135,8 +186,8 @@ function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | unde
   if (subdomain === "www") {
     return wwwCaptunResponse(url);
   }
-  if (RESERVED_HOSTED_SUBDOMAINS.includes(subdomain)) {
-    return new Response("Reserved captun.sh subdomain\n", { status: 404 });
+  if (RESERVED_TUNNEL_NAMES.includes(subdomain)) {
+    return new Response("Reserved Captun tunnel name\n", { status: 404 });
   }
 }
 
@@ -366,27 +417,42 @@ console.log(tunnel.url);</textarea>
 const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "https://esm.sh/capnweb@0.8.0";
 
 export async function createCaptunTunnel(options) {
-  const tunnelName = options.name || randomTunnelName();
-  const publicUrl = "https://" + tunnelName + ".captun.sh";
-  const socket = new WebSocket("wss://" + tunnelName + ".captun.sh/__captun-connect");
-  const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch);
+  const socket = new WebSocket(gatewayConnectUrl(options));
+  const readyPromise = waitForReady();
+  const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch, readyPromise.ready);
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
   await waitUntilOpen(socket);
+  const tunnel = await readyPromise.promise;
   return {
-    url: publicUrl,
+    url: tunnel.url,
+    token: tunnel.token || options.token,
     close: () => disposeSession(session),
   };
 }
 
 class TunnelTargetFetcher extends RpcTarget {
-  constructor(fetcher) {
+  constructor(fetcher, ready) {
     super();
     this.fetcher = fetcher;
+    this.readyCallback = ready;
   }
 
   fetch(request) {
     return this.fetcher(request);
   }
+
+  ready(tunnel) {
+    return this.readyCallback(tunnel);
+  }
+}
+
+function gatewayConnectUrl(options) {
+  const url = new URL(options.gateway || "https://captun.sh");
+  url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
+  url.searchParams.set("captun-connect", "1");
+  url.searchParams.set("captun-name", options.name || randomTunnelName());
+  if (options.token) url.searchParams.set("captun-token", options.token);
+  return url;
 }
 
 function waitUntilOpen(socket) {
@@ -405,6 +471,25 @@ function waitUntilOpen(socket) {
     socket.addEventListener("error", () => settle(() => reject(new Error("WebSocket connection failed"))), { signal: listeners.signal });
     socket.addEventListener("close", (event) => settle(() => reject(new Error("WebSocket closed before opening: " + event.code + " " + event.reason))), { signal: listeners.signal });
   });
+}
+
+function waitForReady() {
+  let timer;
+  let resolveReady;
+  let rejectReady;
+  const promise = new Promise((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+    timer = setTimeout(() => reject(new Error("Timed out waiting for tunnel gateway")), 5000);
+  });
+  return {
+    promise,
+    ready: (tunnel) => {
+      clearTimeout(timer);
+      resolveReady(tunnel);
+    },
+    reject: rejectReady,
+  };
 }
 
 function randomTunnelName() {

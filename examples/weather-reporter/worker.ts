@@ -1,12 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "captun";
+import { acceptFetcherCapability, type FetcherStub } from "captun";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
 };
 
 export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
-  private egressTunnel: ReturnType<typeof acceptCaptunTunnel>["tunnel"] | undefined;
+  private egressTunnel: FetcherStub | undefined;
 
   async fetch(request: Request) {
     const url = new URL(request.url);
@@ -24,12 +24,15 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     if (url.pathname === "/__intercept-egress-traffic") {
       // Here we set up our worker to allow clients/tests to intercept egress traffic
       this.egressTunnel?.[Symbol.dispose]();
-      const { response, tunnel } = acceptCaptunTunnel({
+      const { response, fetcher } = acceptFetcherCapability({
         onDisconnect: () => {
-          if (this.egressTunnel === tunnel) this.egressTunnel = undefined;
+          if (this.egressTunnel === fetcher) this.egressTunnel = undefined;
         },
       });
-      this.egressTunnel = tunnel;
+      this.egressTunnel = fetcher;
+      queueMicrotask(() => {
+        void fetcher.ready({ url: new URL(request.url).origin });
+      });
       return response;
     }
 

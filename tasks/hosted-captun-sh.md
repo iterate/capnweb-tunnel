@@ -9,10 +9,10 @@ Status summary: Initial hosted deployment is live on `captun.sh`. The CLI, libra
 
 ## Initial public-hosted slice
 
-- [x] Default unconfigured CLI usage to the hosted server so `npx captun 3000` uses a random `https://<name>.captun.sh` URL. _`resolveTunnel` now falls back to `HOSTED_CAPTUN_SERVER_URL` when no config or `--server-url` is present._
-- [x] Let library users call `createCaptunTunnel({ fetch })` without passing a deployed Worker URL. _`createCaptunTunnel` now derives a cryptographic random hosted URL and returns it on `tunnel.url`._
-- [x] Add public-hosted e2e coverage for the library API and CLI router. _Added gated `CAPTUN_PUBLIC_E2E=1` tests in `test/public-hosted.test.ts`, plus local Miniflare coverage for the new server-url path._
-- [x] Deploy the initial Worker route on `*.captun.sh/*`. _Deployed `captun-public` to Iterate prd with route `*.captun.sh/*`, `CUSTOM_HOSTNAME=captun.sh`, empty `CAPTUN_SECRET`, and wildcard DNS `*.captun.sh -> 100::` proxied._
+- [x] Default unconfigured CLI usage to the hosted gateway so `npx captun 3000` uses a random `https://<name>.captun.sh` URL. _`resolveTunnel` now falls back to `HOSTED_CAPTUN_GATEWAY` when no config or `--gateway` is present._
+- [x] Let library users call `createCaptunTunnel({ fetch })` without passing a deployed Worker URL. _`createCaptunTunnel` now connects to the default hosted gateway and resolves with the gateway-returned `tunnel.url`._
+- [x] Add public-hosted e2e coverage for the library API and CLI router. _Added gated `CAPTUN_PUBLIC_E2E=1` tests in `test/public-hosted.test.ts`, plus local Miniflare coverage for the new gateway path._
+- [x] Deploy the initial Worker route on `*.captun.sh/*`. _Deployed `captun-public` to Iterate prd with route `*.captun.sh/*`, `CUSTOM_HOSTNAME=captun.sh`, empty `CAPTUN_TOKEN`, and wildcard DNS `*.captun.sh -> 100::` proxied._
 - [x] Reserve product/control-plane subdomains on hosted `captun.sh`. _The Worker now blocks `app`, `login`, `dash`, `dashboard`, `captun`, `tunnel`, and `iterate` before Durable Object dispatch._
 - [x] Serve a dead-simple landing page on `www.captun.sh`. _The hosted Worker returns a static HTML string with CLI and API examples._
 - [x] Redirect the apex domain to `www.captun.sh`. _Added apex DNS `captun.sh -> 100::` proxied and redeployed with route `captun.sh/*`; the Worker returns a 308 preserving path and query._
