@@ -24,3 +24,4 @@ Status summary: Complete on #16. The API, Worker connect protocol, CLI/deploy co
 - 2026-05-26: Focused tests passed: `pnpm exec vitest run test/worker.test.ts test/e2e.test.ts examples/weather-reporter/e2e.test.ts`.
 - 2026-05-26: Full local checks passed: `pnpm run check`, `pnpm test`, and `pnpm run build`.
 - 2026-05-26: Pushed #16 and closed #20 as superseded.
+- 2026-05-26: Deployed `captun-public` to Iterate prd with `captun.sh/*` and `*.captun.sh/*`; live public e2e passed with `CAPTUN_PUBLIC_E2E=1 pnpm exec vitest run test/public-hosted.test.ts`.
