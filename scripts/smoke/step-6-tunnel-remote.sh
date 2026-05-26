@@ -18,7 +18,7 @@ else
 fi
 echo $! >"$PIDFILE"
 wait_for_log "$LOG" "Press Ctrl+C to close tunnel" 30
-CURL_URL="${SMOKE_TUNNEL_URL:-$(grep -Eo 'https?://[^[:space:]]+' "$LOG" | tail -n 1 || true)}"
+CURL_URL="${SMOKE_TUNNEL_URL:-$(grep -E '^[[:space:]]*https?://[^[:space:]]+$' "$LOG" | tail -n 1 | tr -d '[:space:]' || true)}"
 CURL_URL="${CURL_URL%/}/"
 [[ -n "$CURL_URL" ]] || fail "could not infer tunnel URL from $LOG"
 
