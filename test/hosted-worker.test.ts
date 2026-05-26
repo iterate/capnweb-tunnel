@@ -107,10 +107,21 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
       '<button id="demo-reload" class="icon-button" type="button" aria-label="reload iframe" title="reload iframe" disabled>&#8635;</button>',
     ),
   );
+  expect(html).toEqual(
+    expect.stringContaining(
+      ".status-group { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }",
+    ),
+  );
   expect(html).toEqual(expect.stringContaining("text-size-adjust: 100%"));
   expect(html).toEqual(expect.stringContaining('style="font-size:16px" autofocus'));
   expect(html).toEqual(expect.stringContaining("function currentSource()"));
   expect(html).toEqual(expect.stringContaining('frame.src = tunnel.url + "/"'));
+  expect(html).toEqual(expect.stringContaining("const startedAt = performance.now();"));
+  expect(html).toEqual(
+    expect.stringContaining(
+      'status.textContent = "connected in " + Math.round(performance.now() - startedAt) + "ms";',
+    ),
+  );
   expect(html).toEqual(expect.stringContaining("void enhanceEditor();"));
   expect(html).toEqual(
     expect.stringContaining('const captunBrowser = import("/captun.browser.js");'),
