@@ -230,7 +230,7 @@ function landingPageScriptSource() {
   let activeFetch: Fetcher["fetch"];
   let editor: any;
   void enhanceEditor();
-  const captunBrowser = runtimeImport<typeof import("../index")>("/captun.browser.js");
+  const captunBrowser = runtimeImport<typeof import("../index.js")>("/captun.browser.js");
   const snippets: Record<string, { description: string; source: string }> = {
     hello: {
       description: "Return a tiny text response from this browser tab.",
