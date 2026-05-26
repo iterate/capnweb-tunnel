@@ -265,7 +265,8 @@ const WWW_FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
 const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "https://esm.sh/capnweb@0.8.0";
 
 export async function createCaptunTunnel(options) {
-  const socket = new WebSocket(gatewayConnectUrl(options));
+  const connect = gatewayConnectUrl(options);
+  const socket = new WebSocket(connect.url);
   const readyPromise = waitForReady();
   const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch, readyPromise.ready);
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
@@ -273,7 +274,7 @@ export async function createCaptunTunnel(options) {
   const tunnel = await readyPromise.promise;
   return {
     url: tunnel.url,
-    token: tunnel.token || options.token,
+    token: tunnel.token || connect.token,
     close: () => disposeSession(session),
   };
 }
@@ -296,11 +297,12 @@ class TunnelTargetFetcher extends RpcTarget {
 
 function gatewayConnectUrl(options) {
   const url = new URL(options.gateway || "https://captun.sh");
+  const token = options.token || (url.hostname === "captun.sh" ? randomConnectToken() : undefined);
   url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
   url.searchParams.set("captun-connect", "1");
   url.searchParams.set("captun-name", options.name || randomTunnelName());
-  if (options.token) url.searchParams.set("captun-token", options.token);
-  return url;
+  if (token) url.searchParams.set("captun-token", token);
+  return { url, token };
 }
 
 function waitUntilOpen(socket) {
@@ -342,6 +344,12 @@ function waitForReady() {
 
 function randomTunnelName() {
   const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomConnectToken() {
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

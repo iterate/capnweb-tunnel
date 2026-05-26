@@ -62,6 +62,7 @@ export function createHostedCaptunWorkerFixture(bindings: Record<string, string>
     entryPoint: "src/hosted/worker.ts",
     durableObjects: {
       CaptunServerShard: { className: "CaptunServerShard" },
+      HostedRateLimiter: { className: "HostedRateLimiter" },
     },
     bindings: { CUSTOM_HOSTNAME: "captun.sh", ...bindings },
   });

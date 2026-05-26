@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+
 import { expect, test } from "vitest";
 import { createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
@@ -190,6 +192,19 @@ test("Captun Worker routes subdomain tunnel requests when CUSTOM_HOSTNAME is set
   expect(await response.text()).toBe("No tunnel client connected\n");
 });
 
+test("Captun Worker ignores hosted rate-limit bindings in self-hosted folder routing", async () => {
+  await using fixture = await createCaptunWorkerFixture({
+    HOSTED_REQUESTS_PER_IP_PER_WINDOW: "1",
+  });
+  const headers = { "cf-connecting-ip": "203.0.113.40" };
+
+  const first = await fixture.worker.fetch(`${fixture.origin}/one/hello`, { headers });
+  const second = await fixture.worker.fetch(`${fixture.origin}/two/hello`, { headers });
+
+  expect(first).toMatchObject({ status: 503 });
+  expect(second).toMatchObject({ status: 503 });
+});
+
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
 
@@ -229,3 +244,88 @@ test("Captun Worker rejects the legacy CAPTUN_SECRET binding", async () => {
     "CAPTUN_SECRET has been renamed to CAPTUN_TOKEN",
   );
 });
+
+test("createCaptunTunnel surfaces rejected WebSocket upgrade response details", async () => {
+  await using rejection = await createRejectedWebSocketUpgradeServer({
+    status: 409,
+    body: "Tunnel name is already connected\n",
+  });
+
+  await expect(
+    createCaptunTunnel({
+      gateway: rejection.origin,
+      name: "demo",
+      fetch: () => new Response("unused\n"),
+    }),
+  ).rejects.toThrow(/409 Conflict: Tunnel name is already connected/);
+});
+
+test("createCaptunTunnel falls back when the rejected upgrade probe does not respond", async () => {
+  await using rejection = await createRejectedWebSocketUpgradeServer({
+    status: 409,
+    body: "Tunnel name is already connected\n",
+    neverRespondToHttp: true,
+  });
+
+  let caught: unknown;
+  try {
+    await createCaptunTunnel({
+      gateway: rejection.origin,
+      name: "demo",
+      fetch: () => new Response("unused\n"),
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toMatchObject({ message: "WebSocket connection failed" });
+});
+
+async function createRejectedWebSocketUpgradeServer(options: {
+  status: number;
+  body: string;
+  neverRespondToHttp?: boolean;
+}) {
+  const sockets = new Set<{ destroy: () => void }>();
+  const statusText = options.status === 409 ? "Conflict" : "Rejected";
+  const server = createServer((_request, response) => {
+    if (options.neverRespondToHttp) return;
+    response.writeHead(options.status, {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    response.end(options.body);
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  server.on("upgrade", (_request, socket) => {
+    socket.write(
+      [
+        `HTTP/1.1 ${options.status} ${statusText}`,
+        "Content-Type: text/plain; charset=utf-8",
+        "Cache-Control: no-store",
+        `Content-Length: ${Buffer.byteLength(options.body)}`,
+        "Connection: close",
+        "",
+        options.body,
+      ].join("\r\n"),
+    );
+    socket.destroy();
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not start test server");
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    async [Symbol.asyncDispose]() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    },
+  };
+}

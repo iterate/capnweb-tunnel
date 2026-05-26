@@ -137,6 +137,7 @@ _Avoid_: Agent layer, agent product
 - The **Hosted Site** is part of the **Hosted Service** product surface, but it is not tunnel routing or **Tunnel Admission**.
 - **Hosted Site** code should not live in **Cloudflare Tunnel Gateway** core. A real browser package can wait until the demo surface needs it.
 - **Hosted Service** entrypoints may compose the **Cloudflare Tunnel Gateway**, but **Cloudflare Tunnel Gateway** core should remain understandable as a **Self-Hosted Deployment** with **Trusted Gateway Policy**.
+- **Public Gateway Policy** implementation for `captun.sh` should live under `src/hosted/`; `src/worker.ts` should stay readable as the deployable **Cloudflare Tunnel Gateway** core.
 - The **Control Plane** governs future **Hosted Service** accounts, reservations, billing, and policy.
 - The **Agent Preview Use Case** uses the **Hosted Service** and may later use the **Control Plane**.
 - The **Agent Preview Use Case** should not shape the current gateway/core split until **Control Plane** support exists.

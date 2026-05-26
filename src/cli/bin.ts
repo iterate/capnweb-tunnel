@@ -13,10 +13,11 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { createCaptunTunnel } from "../index.js";
+import { CaptunTunnelConnectError, createCaptunTunnel } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
-import { HOSTED_CAPTUN_GATEWAY } from "../routing.js";
+import { HOSTED_CAPTUN_GATEWAY, HOSTED_CAPTUN_HOSTNAME } from "../routing.js";
+import { randomConnectToken } from "../token.js";
 import {
   captunHealthResponse,
   confirmTunnelHealth,
@@ -57,8 +58,10 @@ export type TunnelReady = {
 export type CaptunCliRouterOptions = {
   readConfig?: () => Promise<Config | undefined>;
   writeConfig?: (config: Config) => Promise<void>;
+  createTunnel?: typeof createCaptunTunnel;
   waitForShutdown?: () => Promise<void>;
   onTunnelReady?: (ready: TunnelReady) => void | Promise<void>;
+  tunnelRetries?: number;
 };
 
 const adjectives =
@@ -110,6 +113,8 @@ export function createCaptunCliRouter(options: CaptunCliRouterOptions = {}) {
         const tunnel = resolveTunnel(input, config);
         printTunnelOpening(tunnel);
         await runTunnelSession(tunnel, {
+          retries: options.tunnelRetries,
+          createTunnel: options.createTunnel,
           waitForShutdown: options.waitForShutdown,
           onReady: options.onTunnelReady,
         });
@@ -442,14 +447,20 @@ function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
 
   const name = input.name || randomName();
   const target = normalizeTarget(input.target);
+  const token = input.token || config?.token || hostedGatewayToken(gateway);
 
   return {
     name,
     gateway,
     target,
-    token: input.token || config?.token,
+    token,
     requestLogs: input.requestLogs,
   };
+}
+
+function hostedGatewayToken(gateway: string) {
+  if (new URL(gateway).hostname !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  return randomConnectToken();
 }
 
 function normalizeTarget(target: string) {
@@ -469,6 +480,7 @@ async function runTunnelSession(
   tunnel: ResolvedTunnel,
   opts: {
     retries?: number;
+    createTunnel?: typeof createCaptunTunnel;
     waitForShutdown?: () => Promise<void>;
     onReady?: (ready: TunnelReady) => void | Promise<void>;
   } = {},
@@ -476,7 +488,7 @@ async function runTunnelSession(
   const startedAt = performance.now();
   await assertLocalTargetAcceptingConnections(tunnel.target);
 
-  const session = await connectTunnelWithRetry(tunnel, opts.retries || 0);
+  const session = await connectTunnelWithRetry(tunnel, opts.retries || 0, opts.createTunnel);
   try {
     await confirmTunnelHealth(session.url);
     console.log(
@@ -492,7 +504,11 @@ async function runTunnelSession(
   }
 }
 
-async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
+async function connectTunnelWithRetry(
+  tunnel: ResolvedTunnel,
+  retries: number,
+  createTunnel = createCaptunTunnel,
+) {
   const fetcher = makeTunnelFetcher(tunnel);
 
   const maxAttempts = retries + 1;
@@ -504,7 +520,7 @@ async function connectTunnelWithRetry(tunnel: ResolvedTunnel, retries: number) {
         : `Connecting to ${tunnel.gateway} (retry ${attempt - 1}/${retries})`;
     try {
       return await withSpinner(label, () =>
-        createCaptunTunnel({
+        createTunnel({
           gateway: tunnel.gateway,
           name: tunnel.name,
           token: tunnel.token,
@@ -562,7 +578,11 @@ function tunnelConnectError(tunnel: ResolvedTunnel, cause: unknown) {
   const hostname = new URL(tunnel.gateway).hostname;
   const message = cause instanceof Error ? cause.message : String(cause);
   const lines = [`Could not connect tunnel to ${color.cyan(tunnel.gateway)} (${message}).`];
-  if (!hostname.endsWith(".workers.dev")) {
+  const connectRejection = cause instanceof CaptunTunnelConnectError ? cause.response : undefined;
+  const knownTunnelConflict =
+    connectRejection?.status === 409 &&
+    connectRejection.body === "Tunnel name is already connected";
+  if (!knownTunnelConflict && !hostname.endsWith(".workers.dev")) {
     // Dropping the leftmost label gives the zone-side wildcard parent —
     // `tunnel.mispwoso.com` -> `mispwoso.com`, `t.captun.example.com` -> `captun.example.com`.
     const wildcardParent = hostname.split(".").slice(1).join(".");
