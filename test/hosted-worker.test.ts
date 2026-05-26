@@ -37,6 +37,22 @@ test("Hosted Captun serves a static landing page on www", async () => {
   expect(html).toEqual(
     expect.stringContaining("You don't need to run a local server. Just a fetch function:"),
   );
+  expect(html).toEqual(
+    expect.stringContaining('<link rel="icon" href="/favicon.svg" type="image/svg+xml">'),
+  );
+});
+
+test("Hosted Captun serves a tunnel favicon on www", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture();
+
+  const response = await fixture.worker.fetch("https://www.captun.sh/favicon.svg");
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(response.headers.get("content-type")).toContain("image/svg+xml");
+  expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
+  const svg = await response.text();
+  expect(svg).toEqual(expect.stringContaining("<svg"));
+  expect(svg).toEqual(expect.stringContaining("<path"));
 });
 
 test("Hosted Captun serves the browser demo module on www", async () => {
@@ -78,6 +94,11 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   );
   expect(html).toEqual(expect.stringContaining('// your "server" is this browser tab!'));
   expect(html).toEqual(expect.stringContaining("window.chatMessages"));
+  expect(html).toEqual(
+    expect.stringContaining(
+      "window.chatMessages.join(\"\\n\").replace(/&/g, '&amp').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#039;').replace(/`/g, '&#96;')",
+    ),
+  );
   expect(html).toEqual(expect.stringContaining("document.cookie"));
   expect(html).toEqual(expect.stringContaining("username ||= "));
   expect(html).toEqual(expect.stringContaining("function send(form)"));
