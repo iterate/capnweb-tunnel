@@ -97,7 +97,11 @@ export default {
       customHostname: env.CUSTOM_HOSTNAME,
       tunnelName,
     });
-    return shard.forward(tunnelName, createTunnelForwardRequest(forwarded, tunnelUrl));
+    const response = await shard.forward(
+      tunnelName,
+      createTunnelForwardRequest(forwarded, tunnelUrl),
+    );
+    return stripSetCookieHeadersOutsideTunnel(response, new URL(tunnelUrl).hostname);
   },
 } satisfies ExportedHandler<HostedCaptunEnv>;
 
@@ -154,6 +158,52 @@ function isConnectDiagnostic(request: Request) {
 
 function connectToken(request: Request) {
   return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+function stripSetCookieHeadersOutsideTunnel(response: Response, tunnelHostname: string) {
+  const setCookies = setCookieHeaders(response.headers);
+  if (setCookies.length === 0) return response;
+
+  const safeCookies = setCookies.filter((cookie) =>
+    setCookieIsScopedToTunnel(cookie, tunnelHostname),
+  );
+  if (safeCookies.length === setCookies.length) return response;
+
+  const headers = new Headers(response.headers);
+  headers.delete("set-cookie");
+  for (const cookie of safeCookies) headers.append("set-cookie", cookie);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function setCookieHeaders(headers: Headers) {
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  const cookies = getSetCookie ? getSetCookie.call(headers) : [];
+  if (cookies.length > 0) return cookies;
+
+  const cookie = headers.get("set-cookie");
+  return cookie ? [cookie] : [];
+}
+
+function setCookieIsScopedToTunnel(cookie: string, tunnelHostname: string) {
+  const domain = setCookieDomain(cookie);
+  if (!domain) return true;
+
+  // Add captun.sh to the public suffix list if/when people are using this.
+  return domain === tunnelHostname || domain.endsWith(`.${tunnelHostname}`);
+}
+
+function setCookieDomain(cookie: string) {
+  const attributes = cookie.split(";").slice(1);
+  for (const attribute of attributes) {
+    const [name, ...valueParts] = attribute.split("=");
+    if (name?.trim().toLowerCase() !== "domain") continue;
+    return valueParts.join("=").trim().replace(/^\./, "").toLowerCase();
+  }
 }
 
 function reject(body: string, status: number) {

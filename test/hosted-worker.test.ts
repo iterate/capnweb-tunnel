@@ -290,7 +290,7 @@ test("Hosted Captun accepts the configured gateway token when token auth is enab
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=secret",
-    responseText: "configured token\n",
+    response: "configured token\n",
     clientIp: "203.0.113.65",
   });
 
@@ -323,7 +323,7 @@ test("Hosted Captun rejects a different token while a tunnel is active", async (
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "token a\n",
+    response: "token a\n",
     clientIp: "203.0.113.70",
   });
 
@@ -349,7 +349,7 @@ test("Hosted Captun connect diagnostics do not replace active tunnels", async ()
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "token a\n",
+    response: "token a\n",
     clientIp: "203.0.113.74",
   });
 
@@ -378,7 +378,7 @@ test("Hosted Captun connect diagnostics do not spend connect rate-limit slots", 
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "token a\n",
+    response: "token a\n",
     clientIp: "203.0.113.77",
   });
 
@@ -413,7 +413,7 @@ test("Hosted Captun connect diagnostics surface recent connect rate limits", asy
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "token a\n",
+    response: "token a\n",
     clientIp: "203.0.113.79",
   });
 
@@ -464,13 +464,13 @@ test("Hosted Captun lets the same token replace its active tunnel", async () => 
   using _firstTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "first\n",
+    response: "first\n",
     clientIp: "203.0.113.80",
   });
   using _secondTunnel = await createDirectWorkerTunnel({
     fixture,
     url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
-    responseText: "second\n",
+    response: "second\n",
     clientIp: "203.0.113.81",
   });
 
@@ -496,6 +496,39 @@ test("Hosted Captun requires anonymous tokens for public hosted connections", as
 
   expect(response).toMatchObject({ status: 400 });
   expect(await response.text()).toBe("Missing tunnel token\n");
+});
+
+test("Hosted Captun strips response cookies scoped outside the tunnel hostname", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture({
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _tokenTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    response: () => {
+      const headers = new Headers();
+      headers.append("set-cookie", "host=1; Path=/; Secure");
+      headers.append("set-cookie", "tunnel=1; Domain=demo.captun.sh; Path=/; Secure");
+      headers.append("set-cookie", "child=1; Domain=.child.demo.captun.sh; Path=/; Secure");
+      headers.append("set-cookie", "root=1; Domain=captun.sh; Path=/; Secure");
+      headers.append("set-cookie", "dotroot=1; Domain=.captun.sh; Path=/; Secure");
+      headers.append("set-cookie", "sibling=1; Domain=other.captun.sh; Path=/; Secure");
+      return new Response("cookies\n", { headers });
+    },
+    clientIp: "203.0.113.92",
+  });
+
+  const response = await fixture.worker.fetch("https://demo.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.93" },
+  });
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(response.headers.getSetCookie()).toEqual([
+    "host=1; Path=/; Secure",
+    "tunnel=1; Domain=demo.captun.sh; Path=/; Secure",
+    "child=1; Domain=.child.demo.captun.sh; Path=/; Secure",
+  ]);
+  expect(await response.text()).toBe("cookies\n");
 });
 
 test.each([
@@ -532,7 +565,7 @@ test.each([
 async function createDirectWorkerTunnel(options: {
   fixture: any;
   url: string;
-  responseText: string;
+  response: string | (() => Response);
   clientIp: string;
 }) {
   const response = await options.fixture.worker.fetch(options.url, {
@@ -545,7 +578,7 @@ async function createDirectWorkerTunnel(options: {
 
   const socket = response.webSocket;
   socket.accept();
-  const session = newWebSocketRpcSession(socket, new TestTunnelFetcher(options.responseText));
+  const session = newWebSocketRpcSession(socket, new TestTunnelFetcher(options.response));
 
   return {
     [Symbol.dispose]() {
@@ -555,15 +588,16 @@ async function createDirectWorkerTunnel(options: {
 }
 
 class TestTunnelFetcher extends RpcTarget {
-  private responseText: string;
+  private response: string | (() => Response);
 
-  constructor(responseText: string) {
+  constructor(response: string | (() => Response)) {
     super();
-    this.responseText = responseText;
+    this.response = response;
   }
 
   fetch() {
-    return new Response(this.responseText);
+    if (typeof this.response === "string") return new Response(this.response);
+    return this.response();
   }
 
   ready() {}
