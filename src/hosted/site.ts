@@ -1,7 +1,11 @@
-import { HOSTED_CAPTUN_HOSTNAME, RESERVED_TUNNEL_NAMES } from "../routing.js";
+import { HOSTED_CAPTUN_HOSTNAME, isLoopbackHostname, RESERVED_TUNNEL_NAMES } from "../routing.js";
 
 export function hostedCaptunResponse(request: Request): Response | undefined {
   const url = new URL(request.url);
+  if (isLoopbackHostname(url.hostname) && isWwwCaptunPath(url.pathname)) {
+    return wwwCaptunResponse(url);
+  }
+
   if (url.hostname === HOSTED_CAPTUN_HOSTNAME) {
     return Response.redirect(
       `https://www.${HOSTED_CAPTUN_HOSTNAME}${url.pathname}${url.search}`,
@@ -20,6 +24,10 @@ export function hostedCaptunResponse(request: Request): Response | undefined {
   if (RESERVED_TUNNEL_NAMES.includes(subdomain)) {
     return new Response("Reserved Captun tunnel name\n", { status: 404 });
   }
+}
+
+function isWwwCaptunPath(pathname: string) {
+  return pathname === "/" || pathname === "/captun.browser.js" || pathname === "/favicon.svg";
 }
 
 function wwwCaptunResponse(url: URL): Response {
@@ -72,6 +80,11 @@ const WWW_LANDING_PAGE = `<!doctype html>
     #from-code-editor .cm-editor, #demo-editor .cm-editor { background: #f4f4f4; font: 16px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     #from-code-editor .cm-scroller { min-height: 210px; }
     #demo-editor .cm-scroller { min-height: 300px; }
+    .snippet-tabs { display: flex; align-items: stretch; margin: 12px 0 0; border: 1px solid #ddd; border-bottom: 0; background: #eee; }
+    .snippet-tab { margin: 0; padding: 7px 10px; color: #111; background: #fff; border: 0; border-right: 1px solid #ddd; }
+    .snippet-tab[aria-pressed="true"] { color: #fff; background: #111; }
+    .snippet-tabs + #demo-source { border-top: 0; }
+    .snippet-tabs + #demo-source.enhanced + #demo-editor.enhanced { border-top: 0; }
     button { margin: 12px 0; padding: 9px 12px; font: inherit; color: #fff; background: #111; border: 1px solid #111; cursor: pointer; }
     button:disabled { opacity: 0.55; cursor: wait; }
     .status-group { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
@@ -109,8 +122,17 @@ console.log(tunnel.url);</textarea>
 
   <h2>Try it in this tab</h2>
   <p>This works in <em>any</em> environment supported by <a href="https://github.com/cloudflare/capnweb">capnweb</a>, so you can run a "server" basically anywhere, even the browser.</p>
-  <p>Edit the fetch function, create a tunnel, then the iframe below will load the public URL.</p>
+  <p id="demo-description">Return a tiny text response from this browser tab.</p>
+  <div class="snippet-tabs" role="tablist" aria-label="demo snippets">
+    <button class="snippet-tab" type="button" data-demo-snippet="hello" aria-pressed="true">hello world</button>
+    <button class="snippet-tab" type="button" data-demo-snippet="chat" aria-pressed="false">chat room</button>
+    <button class="snippet-tab" type="button" data-demo-snippet="mcp" aria-pressed="false">mcp server</button>
+  </div>
   <textarea id="demo-source" spellcheck="false">createCaptunTunnel({
+  fetch: () => new Response("hello world from this browser tab\\n"),
+});</textarea>
+  <div id="demo-editor"></div>
+  <textarea id="demo-chat-source" hidden>createCaptunTunnel({
   fetch: async (request) => {
     // your "server" is this browser tab!
     window.chatMessages ||= [];
@@ -134,8 +156,72 @@ console.log(tunnel.url);</textarea>
       </form>
     \`, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
-})</textarea>
-  <div id="demo-editor"></div>
+});</textarea>
+  <textarea id="demo-mcp-source" hidden>const { z } = await import("https://esm.sh/zod@3.25.76");
+const { McpServer } = await import(
+  "https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76"
+);
+const { WebStandardStreamableHTTPServerTransport } = await import(
+  "https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/webStandardStreamableHttp.js?deps=zod@3.25.76"
+);
+
+for (const transport of window.mcpTransports?.values() || []) {
+  await transport.close?.();
+}
+window.mcpTransports = new Map();
+
+createCaptunTunnel({
+  fetch: async (request) => {
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
+
+    const sessionId = request.headers.get("mcp-session-id");
+    const transport = window.mcpTransports.get(sessionId) || await createMcpTransport();
+    const response = await transport.handleRequest(request);
+    const responseSessionId = response.headers.get("mcp-session-id");
+    if (responseSessionId) window.mcpTransports.set(responseSessionId, transport);
+    return withCors(response);
+  },
+});
+
+function withCors(response) {
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "accept, authorization, content-type, mcp-protocol-version, mcp-session-id");
+  response.headers.set("Access-Control-Expose-Headers", "mcp-session-id");
+  return response;
+}
+
+async function createMcpTransport() {
+  const mcpServer = new McpServer({
+    name: "browser-tab-mcp",
+    version: "1.0.0",
+  });
+
+  mcpServer.registerTool(
+    "ask_question",
+    {
+      description: "Ask a question in the browser tab that owns this MCP server.",
+      inputSchema: {
+        question: z.string().describe("Question to ask in the browser prompt."),
+      },
+    },
+    async ({ question }) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const answer = window.prompt(question) || "";
+      return {
+        content: [{ text: answer, type: "text" }],
+        structuredContent: { answer },
+      };
+    },
+  );
+
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    enableJsonResponse: true,
+    sessionIdGenerator: () => crypto.randomUUID(),
+  });
+  await mcpServer.connect(transport);
+  return transport;
+}</textarea>
   <div class="row">
     <button id="demo-create" type="button">create tunnel</button>
     <span class="status-group">
@@ -154,8 +240,10 @@ console.log(tunnel.url);</textarea>
   <script type="module">
     const fromCodeSource = document.querySelector("#from-code-source");
     const fromCodeEditorHost = document.querySelector("#from-code-editor");
+    const description = document.querySelector("#demo-description");
     const source = document.querySelector("#demo-source");
     const editorHost = document.querySelector("#demo-editor");
+    const snippetButtons = Array.from(document.querySelectorAll("[data-demo-snippet]"));
     const button = document.querySelector("#demo-create");
     const reload = document.querySelector("#demo-reload");
     const status = document.querySelector("#demo-status");
@@ -168,38 +256,99 @@ console.log(tunnel.url);</textarea>
     let editor;
     void enhanceEditor();
     const captunBrowser = import("/captun.browser.js");
+    const snippets = {
+      hello: {
+        description: "Return a tiny text response from this browser tab.",
+        path: "",
+        source: source.value,
+      },
+      chat: {
+        description: "Run the chat room currently on captun.sh from this browser tab.",
+        path: "",
+        source: document.querySelector("#demo-chat-source").value,
+      },
+      mcp: {
+        description: "Run an MCP server from this browser tab. Use the shown URL in MCP Inspector.",
+        path: "/mcp",
+        source: document.querySelector("#demo-mcp-source").value,
+      },
+    };
+    let activeSnippet = "hello";
 
     function currentSource() {
       return editor ? editor.state.doc.toString() : source.value;
     }
 
-    function evaluateDemo() {
+    async function evaluateDemo() {
       let capturedFetch;
       const createCaptunTunnel = (options) => {
         capturedFetch = options.fetch;
-        return { url: tunnel ? tunnel.url : "https://pending.captun.sh" };
+        return Promise.resolve({ url: tunnel ? tunnel.url : "https://pending.captun.sh" });
       };
-      new Function("createCaptunTunnel", currentSource())(createCaptunTunnel);
+      await new Function("createCaptunTunnel", "return (async () => {\\n" + currentSource() + "\\n})()")(createCaptunTunnel);
       if (typeof capturedFetch !== "function") throw new Error("Call createCaptunTunnel({ fetch }) in the editor.");
       activeFetch = capturedFetch;
     }
 
-    function refreshTunnelFromSource() {
+    async function refreshTunnelFromSource() {
       if (!tunnel) return;
       try {
-        evaluateDemo();
+        await evaluateDemo();
         status.textContent = "updated";
         error.textContent = "";
-        frame.src = tunnel.url + "/";
+        showTunnelTarget(tunnel.url);
       } catch (caught) {
         status.textContent = "edit has an error";
         error.textContent = caught && caught.stack ? caught.stack : String(caught);
       }
     }
 
-    source.addEventListener("input", refreshTunnelFromSource);
+    function switchSnippet(name) {
+      const snippet = snippets[name];
+      if (!snippet) return;
+      activeSnippet = name;
+      description.innerText = snippet.description;
+      for (const snippetButton of snippetButtons) {
+        snippetButton.setAttribute("aria-pressed", String(snippetButton.dataset.demoSnippet === name));
+      }
+      setSource(snippet.source);
+      if (!editor) void refreshTunnelFromSource();
+    }
+
+    function setSource(nextSource) {
+      if (!editor) {
+        source.value = nextSource;
+        return;
+      }
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: nextSource },
+      });
+    }
+
+    function tunnelUrlForActiveSnippet(tunnelUrl) {
+      return tunnelUrl.replace(/\\/$/, "") + snippets[activeSnippet].path;
+    }
+
+    function showTunnelTarget(tunnelUrl) {
+      const url = tunnelUrlForActiveSnippet(tunnelUrl);
+      link.href = url;
+      link.textContent = url;
+      if (snippets[activeSnippet].path === "/mcp") {
+        frame.removeAttribute("src");
+        frame.srcdoc = previewHtml(url);
+        return;
+      }
+
+      frame.removeAttribute("srcdoc");
+      frame.src = url;
+    }
+
+    source.addEventListener("input", () => void refreshTunnelFromSource());
+    for (const snippetButton of snippetButtons) {
+      snippetButton.addEventListener("click", () => switchSnippet(snippetButton.dataset.demoSnippet));
+    }
     reload.addEventListener("click", () => {
-      if (tunnel) frame.src = tunnel.url + "/";
+      if (tunnel) showTunnelTarget(tunnel.url);
     });
 
     button.addEventListener("click", async () => {
@@ -211,13 +360,12 @@ console.log(tunnel.url);</textarea>
 
       try {
         if (tunnel) tunnel.close();
-        evaluateDemo();
+        await evaluateDemo();
         const { createCaptunTunnel } = await captunBrowser;
-        tunnel = await createCaptunTunnel({ fetch: (request) => activeFetch(request) });
-        link.href = tunnel.url;
-        link.textContent = tunnel.url;
+        const options = { fetch: (request) => activeFetch(request) };
+        tunnel = await createCaptunTunnel(options);
         urlRow.classList.remove("hidden");
-        frame.src = tunnel.url + "/";
+        showTunnelTarget(tunnel.url);
         status.textContent = "connected in " + Math.round(performance.now() - startedAt) + "ms";
         reload.disabled = false;
       } catch (caught) {
@@ -227,6 +375,14 @@ console.log(tunnel.url);</textarea>
         button.disabled = false;
       }
     });
+
+    function previewHtml(url) {
+      return "<pre>MCP server listening at\\n" + escapeHtml(url) + "\\n\\nUse ask_question to prompt this browser tab and return the answer.</pre>";
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
 
     async function enhanceEditor() {
       try {
@@ -241,7 +397,9 @@ console.log(tunnel.url);</textarea>
         });
         editor = new EditorView({
           doc: source.value,
-          extensions: [basicSetup, javascript(), EditorView.updateListener.of(refreshTunnelFromSource)],
+          extensions: [basicSetup, javascript(), EditorView.updateListener.of((update) => {
+            if (update.docChanged) void refreshTunnelFromSource();
+          })],
           parent: editorHost,
         });
         fromCodeSource.classList.add("enhanced");
@@ -297,7 +455,7 @@ class TunnelTargetFetcher extends RpcTarget {
 
 function gatewayConnectUrl(options) {
   const url = new URL(options.gateway || "https://captun.sh");
-  const token = options.token || (url.hostname === "captun.sh" ? randomConnectToken() : undefined);
+  const token = options.token || randomConnectToken();
   url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
   url.searchParams.set("captun-connect", "1");
   url.searchParams.set("captun-name", options.name || randomTunnelName());
