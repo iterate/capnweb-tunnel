@@ -1,0 +1,11 @@
+name = "weather-reporter"
+main = "worker.ts"
+compatibility_date = "2026-05-15"
+
+[[durable_objects.bindings]]
+name = "WEATHER_REPORTER_EGRESS"
+class_name = "WeatherReporterEgressTunnel"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WeatherReporterEgressTunnel"]
