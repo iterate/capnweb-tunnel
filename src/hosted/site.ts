@@ -118,23 +118,23 @@ function chatRoomDemoSource() {
         return Response.json({ ok: true });
       }
 
-      const messages = window.chatMessages.join("\n").replace(/[^\w-,.'"!?()]/g, "");
+      const messages = window.chatMessages.join("\n").replace(/[^\w\s-,.'"!?():]/g, "");
 
       return new Response(
-        [
-          "<script>",
-          "  let username = document.cookie.match(/username=([^;]+)/)?.[1];",
-          "  username ||= 'user' + Math.random().toString().slice(2, 8);",
-          "  document.cookie = 'username=' + username + '; Path=/; Secure';",
-          "  function send(form) {",
-          "    fetch('/', { method: 'POST', body: username + ': ' + form.m.value }).then(() => location.reload());",
-          "  }",
-          "</script>",
-          "<pre>" + messages + "</pre>",
-          '<form onsubmit="send(this); return false">',
-          '  <input name="m" style="font-size:16px" autofocus><button>send</button>',
-          "</form>",
-        ].join("\n"),
+        String(`
+          <script>
+            let username = document.cookie.match(/username=([^;]+)/)?.[1];
+            username ||= 'user' + Math.random().toString().slice(2, 8);
+            document.cookie = 'username=' + username + '; Path=/; Secure';
+            function send(form) {
+              fetch('/', { method: 'POST', body: username + ': ' + form.m.value }).then(() => location.reload());
+            }
+          </script>
+          <pre>${messages}</pre>
+          <form onsubmit="send(this); return false">
+            <input name="m" style="font-size:16px" autofocus><button>send</button>
+          </form>
+        `),
         { headers: { "content-type": "text/html; charset=utf-8" } },
       );
     },
@@ -351,13 +351,9 @@ function landingPageScriptSource() {
   function previewHtml(url: string) {
     return (
       "<pre>MCP server listening at\n" +
-      escapeHtml(url) +
+      url +
       "\n\nUse ask_question to prompt this browser tab and return the answer.</pre>"
     );
-  }
-
-  function escapeHtml(value: string) {
-    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   async function enhanceEditor() {
