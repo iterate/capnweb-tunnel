@@ -83,6 +83,10 @@ test("Hosted Captun serves the browser demo module on www", async () => {
   expect(module).toEqual(expect.stringContaining("captun-connect"));
   expect(module).toEqual(expect.stringContaining("captun-token"));
   expect(module).toEqual(expect.stringContaining("randomConnectToken"));
+  expect(module).toEqual(
+    expect.stringContaining("[Symbol.dispose]: () => session[Symbol.dispose]()"),
+  );
+  expect(module).not.toContain("close: () => disposeSession(session)");
   expect(module).not.toEqual(expect.stringContaining("__captun-connect"));
 });
 
@@ -130,7 +134,7 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   const demoSource = textareaValue(html, "demo-source");
   expect(demoSource).toEqual(
     `createCaptunTunnel({
-  fetch: () => new Response("hello world from this browser tab\\n"),
+  fetch: () => new Response("hello world from this browser tab\\n")
 });`,
   );
   expect(demoSource).not.toContain("@modelcontextprotocol");
@@ -144,12 +148,12 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   const mcpSource = textareaValue(html, "demo-mcp-source");
   expect(mcpSource.indexOf('import("https://esm.sh/zod@3.25.76")')).toBeLessThan(
     mcpSource.indexOf(
-      'import(\n  "https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76"',
+      'import("https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76")',
     ),
   );
   expect(mcpSource).toEqual(
     expect.stringContaining(
-      'import(\n  "https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76"',
+      'import("https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76")',
     ),
   );
   expect(mcpSource).toEqual(
@@ -226,11 +230,15 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   expect(html).not.toContain("gatewayForCurrentPage");
   expect(html).not.toContain("options.gateway");
   expect(html).toEqual(expect.stringContaining("function switchSnippet(name)"));
-  expect(html).toEqual(expect.stringContaining("function tunnelUrlForActiveSnippet(tunnelUrl)"));
+  expect(html).not.toContain("function tunnelUrlForActiveSnippet");
+  expect(html).not.toContain('path: "/mcp"');
   expect(html).toEqual(expect.stringContaining("function showTunnelTarget(tunnelUrl)"));
-  expect(html).toEqual(expect.stringContaining("frame.srcdoc = previewHtml(url);"));
-  expect(html).toEqual(expect.stringContaining("frame.src = url;"));
+  expect(html).toEqual(expect.stringContaining("link.href = tunnelUrl;"));
+  expect(html).toEqual(expect.stringContaining("frame.srcdoc = previewHtml(tunnelUrl);"));
+  expect(html).toEqual(expect.stringContaining("frame.src = tunnelUrl;"));
   expect(html).toEqual(expect.stringContaining("const startedAt = performance.now();"));
+  expect(html).toEqual(expect.stringContaining("if (tunnel) tunnel[Symbol.dispose]();"));
+  expect(html).not.toContain("tunnel.close()");
   expect(html).toEqual(
     expect.stringContaining(
       'status.textContent = "connected in " + Math.round(performance.now() - startedAt) + "ms";',

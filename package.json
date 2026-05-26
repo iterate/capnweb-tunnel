@@ -67,7 +67,8 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.lib.json",
+    "build": "pnpm run build:hosted-browser-module && rm -rf dist && tsc -p tsconfig.lib.json",
+    "build:hosted-browser-module": "tsx scripts/build-hosted-browser-module.ts",
     "check": "pnpm run typecheck && pnpm run lint:check && pnpm run format:check",
     "typecheck": "tsc -p tsconfig.json && pnpm --recursive --filter '!captun' --if-present run typecheck",
     "format": "oxfmt",
@@ -75,7 +76,7 @@
     "lint": "oxlint . --threads 1 --deny-warnings",
     "lint:check": "pnpm run lint",
     "lint:fix": "oxlint . --fix",
-    "deploy": "wrangler deploy",
+    "deploy": "pnpm run build:hosted-browser-module && wrangler deploy",
     "dev": "wrangler dev",
     "test": "vitest run",
     "test:unit": "vitest run test/worker.test.ts",
@@ -94,7 +95,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
+    "@codemirror/lang-javascript": "6.2.4",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@types/node": "^25.8.0",
+    "codemirror": "6.0.1",
     "esbuild": "^0.28.0",
     "miniflare": "^4.20260515.0",
     "oxfmt": "^0.35.0",
