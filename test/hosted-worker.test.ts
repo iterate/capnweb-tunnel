@@ -513,6 +513,10 @@ test("Hosted Captun strips response cookies scoped outside the tunnel hostname",
       headers.append("set-cookie", "root=1; Domain=captun.sh; Path=/; Secure");
       headers.append("set-cookie", "dotroot=1; Domain=.captun.sh; Path=/; Secure");
       headers.append("set-cookie", "sibling=1; Domain=other.captun.sh; Path=/; Secure");
+      headers.append(
+        "set-cookie",
+        "duplicate=1; Domain=demo.captun.sh; Domain=captun.sh; Path=/; Secure",
+      );
       return new Response("cookies\n", { headers });
     },
     clientIp: "203.0.113.92",

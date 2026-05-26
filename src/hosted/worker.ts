@@ -190,20 +190,24 @@ function setCookieHeaders(headers: Headers) {
 }
 
 function setCookieIsScopedToTunnel(cookie: string, tunnelHostname: string) {
-  const domain = setCookieDomain(cookie);
-  if (!domain) return true;
+  const domains = setCookieDomains(cookie);
+  if (domains.length === 0) return true;
 
   // Add captun.sh to the public suffix list if/when people are using this.
-  return domain === tunnelHostname || domain.endsWith(`.${tunnelHostname}`);
+  return domains.every(
+    (domain) => domain === tunnelHostname || domain.endsWith(`.${tunnelHostname}`),
+  );
 }
 
-function setCookieDomain(cookie: string) {
+function setCookieDomains(cookie: string) {
   const attributes = cookie.split(";").slice(1);
+  const domains: string[] = [];
   for (const attribute of attributes) {
     const [name, ...valueParts] = attribute.split("=");
     if (name?.trim().toLowerCase() !== "domain") continue;
-    return valueParts.join("=").trim().replace(/^\./, "").toLowerCase();
+    domains.push(valueParts.join("=").trim().replace(/^\./, "").toLowerCase());
   }
+  return domains;
 }
 
 function reject(body: string, status: number) {
