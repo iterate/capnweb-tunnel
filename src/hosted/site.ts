@@ -118,7 +118,7 @@ console.log(tunnel.url);</textarea>
       window.chatMessages.push(await request.text());
       return Response.json({ ok: true });
     }
-    const messages = window.chatMessages.join("\\n").replace(/&/g, '&amp').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;').replace(/\`/g, '&#96;');
+    const messages = window.chatMessages.join("\\n").replace(/&/g, '&amp;amp').replace(/</g, '&amp;lt').replace(/>/g, '&amp;gt').replace(/"/g, '&amp;quot').replace(/'/g, '&amp;#039').replace(/\`/g, '&amp;#96');
     return new Response(\`
       <script>
         let username = document.cookie.match(/username=([^;]+)/)?.[1];
