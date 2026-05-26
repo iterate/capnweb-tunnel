@@ -57,6 +57,16 @@ export function createCaptunWorkerFixture(bindings: Record<string, string>) {
   });
 }
 
+export function createHostedCaptunWorkerFixture(bindings: Record<string, string> = {}) {
+  return createMiniflareWorkerFixture({
+    entryPoint: "src/hosted/worker.ts",
+    durableObjects: {
+      CaptunServerShard: { className: "CaptunServerShard" },
+    },
+    bindings: { CUSTOM_HOSTNAME: "captun.sh", ...bindings },
+  });
+}
+
 export interface WorkerFetcherLike {
   fetch(input: string, init?: RequestInit): Promise<Response>;
 }

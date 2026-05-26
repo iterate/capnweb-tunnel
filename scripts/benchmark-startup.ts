@@ -38,7 +38,7 @@ const providers = (process.env.PROVIDERS ?? "captun")
 const counts = (process.env.COUNTS ?? "1,10,100,500,1000,2000")
   .split(",")
   .map((value) => Number(value.trim()));
-const captunUrl = process.env.CAPTUN_SERVER_URL ?? "https://{name}.tunnels.example.com";
+const captunGateway = process.env.CAPTUN_GATEWAY ?? "https://gateway.tunnels.example.com";
 const out =
   process.env.OUT ??
   `docs/performance/startup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
@@ -73,7 +73,7 @@ try {
   await mkdir("docs/performance", { recursive: true });
   await writeFile(
     out,
-    `${JSON.stringify({ originUrl, captunUrl, timeoutMs, results }, null, 2)}\n`,
+    `${JSON.stringify({ originUrl, captunGateway, timeoutMs, results }, null, 2)}\n`,
   );
   console.log(`wrote ${out}`);
 } finally {
@@ -111,22 +111,20 @@ async function measure(provider: Provider, index: number, originUrl: string): Pr
 
 async function measureCaptun(index: number, originUrl: string): Promise<Measurement> {
   const name = `bench-${randomBytes(8).toString("hex")}`;
-  const url = tunnelUrl(captunUrl, name);
   const started = performance.now();
-  let tunnel: Disposable | undefined;
+  let tunnel: Awaited<ReturnType<typeof createCaptunTunnel>> | undefined;
   try {
     tunnel = await createCaptunTunnel({
-      url: `${url}/__captun-connect`,
-      headers: process.env.CAPTUN_SECRET
-        ? { authorization: `Bearer ${process.env.CAPTUN_SECRET}` }
-        : undefined,
+      gateway: captunGateway,
+      name,
+      token: process.env.CAPTUN_TOKEN,
       fetch: (request) => {
         const incoming = new URL(request.url);
         return fetch(`${originUrl}${incoming.pathname}${incoming.search}`, request);
       },
     });
-    await waitForFetch(url, started);
-    return { index, ok: true, ms: performance.now() - started, url };
+    await waitForFetch(tunnel.url, started);
+    return { index, ok: true, ms: performance.now() - started, url: tunnel.url };
   } finally {
     tunnel?.[Symbol.dispose]();
   }
@@ -225,13 +223,6 @@ async function waitForFetch(url: string | URL, started: number) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`first fetch timed out: ${lastError}`);
-}
-
-function tunnelUrl(base: string, name: string) {
-  if (base.includes("{name}")) return base.replaceAll("{name}", name).replace(/\/$/, "");
-  const url = new URL(base);
-  url.pathname = `/${name}`;
-  return url.toString().replace(/\/$/, "");
 }
 
 function parseCloudflareTunnelUrl(output: string) {

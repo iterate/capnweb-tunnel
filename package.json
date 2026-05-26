@@ -13,7 +13,8 @@
   "files": [
     "dist",
     "README.md",
-    "wrangler.jsonc"
+    "wrangler.jsonc",
+    "wrangler.hosted.jsonc"
   ],
   "type": "module",
   "exports": {

@@ -1,21 +1,23 @@
-# Captun (cap[tainweb] tun[nel])
+# Captun (cap[nweb] tun[nel])
 
 Captun is a tiny reference implementation of a self-hosted ngrok or Cloudflare Tunnel alternative. It runs the public side on Cloudflare Workers and sends matching HTTP requests back to a Node process over [Cap'n Web](https://github.com/cloudflare/capnweb).
 
 ## Quick start
 
-First deploy a captun worker to your cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
+Expose a local HTTP server with the hosted `captun.sh` tunnel service:
+
+```bash
+npx captun 3000
+```
+
+That prints a public URL like `https://abc123.captun.sh` and forwards requests to `localhost:3000`.
+
+If you want your own tunnel server, deploy a captun Worker to your Cloudflare account. You can think of this like your own personal ngrok server, but [faster](#performance):
 
 `deploy` expects Cloudflare auth to already be available. Run `npx wrangler login` once, or set `CLOUDFLARE_API_TOKEN` for CI and other non-interactive shells.
 
 ```bash
 npx captun deploy
-```
-
-Then tunnel to it:
-
-```bash
-npx captun 3000
 ```
 
 <!-- # https://captun.my-account.workers.dev/funny-banana-wall
@@ -26,7 +28,7 @@ npx captun 3000
 # mydomain.com and www.mydomain.com and something.mydomain.com
 # then you _could_ say *.mydomain.com goes to tunnels - and that could include <tunnel-name>__tunnels.mydomain.com -->
 
-The deploy command will use `wrangler` under the hood to deploy an opinionated captun-tunneler-worker to your cloudflare account, and will store the server url in an XDG config file, and uses it when you tunnel to it.
+The deploy command uses `wrangler` under the hood to deploy an opinionated captun Tunnel Gateway to your Cloudflare account, then stores its gateway URL and token in an XDG config file for later tunnel commands.
 
 <!-- - With captun you can make your own faster ngrok for free in 10 seconds
   - This is how you use it on the cli
@@ -39,15 +41,12 @@ The deploy command will use `wrangler` under the hood to deploy an opinionated c
 
 ### Programmatic usage
 
-You can use the worker you just deployed to create a tunnel from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
+You can use the hosted service from code for receiving HTTP requests. First `npm install captun` to add it as a dependency. Then create it:
 
 ```ts
 import { createCaptunTunnel } from "captun";
 
-const url = "https://captun.account.workers.dev/my-cool-tunnel";
-
 const tunnel = await createCaptunTunnel({
-  url: `${url}/__captun-connect`, // creates a tunnel named "my-tunnel". choose any slug-safe string here
   fetch: async (request) => {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/webhook")) {
@@ -59,7 +58,7 @@ const tunnel = await createCaptunTunnel({
   },
 });
 
-console.log(`Listening to webhooks on ${url}/webhook`);
+console.log(`Listening to webhooks on ${tunnel.url}/webhook`);
 
 await new Promise(() => {}); // stay alive until killed
 ```
@@ -72,14 +71,14 @@ The captun [worker.ts](./src/worker.ts) implementation has useful opinions about
 
 ```ts
 import { DurableObject } from "cloudflare:workers";
-import { acceptCaptunTunnel } from "captun";
+import { acceptFetcherCapability, type FetcherStub } from "captun";
 
 type WeatherReporterEnv = Env & {
   WEATHER_REPORTER_EGRESS: DurableObjectNamespace<WeatherReporterEgressTunnel>;
 };
 
 export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEnv> {
-  private egressTunnel: ReturnType<typeof acceptCaptunTunnel>["tunnel"] | undefined;
+  private egressFetcher: FetcherStub | undefined;
 
   async fetch(request: Request) {
     const url = new URL(request.url);
@@ -96,13 +95,14 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
 
     if (url.pathname === "/__intercept-egress-traffic") {
       // Here we set up our worker to allow clients/tests to intercept egress traffic
-      this.egressTunnel?.[Symbol.dispose]();
-      const { response, tunnel } = acceptCaptunTunnel({
+      this.egressFetcher?.[Symbol.dispose]();
+      const { response, fetcher } = acceptFetcherCapability({
         onDisconnect: () => {
-          if (this.egressTunnel === tunnel) this.egressTunnel = undefined;
+          if (this.egressFetcher === fetcher) this.egressFetcher = undefined;
         },
       });
-      this.egressTunnel = tunnel;
+      this.egressFetcher = fetcher;
+      queueMicrotask(() => void fetcher.ready({ url: new URL(request.url).origin }));
       return response;
     }
 
@@ -110,8 +110,8 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
   }
 
   get egressFetch(): typeof fetch {
-    if (this.egressTunnel) {
-      return async (input, init) => this.egressTunnel!.fetch(new Request(input, init));
+    if (this.egressFetcher) {
+      return async (input, init) => this.egressFetcher!.fetch(new Request(input, init));
     }
     return fetch;
   }
@@ -124,14 +124,14 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces (`createCaptunTunnel`, `acceptCaptunTunnel`, and the `Fetcher` type) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a deployable Cloudflare Worker, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
+The core client/server pieces (`createCaptunTunnel`, `acceptFetcherCapability`, `acceptFetcherCapabilityFromSocket`, `Fetcher`, and `FetcherStub`) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a self-hosted Cloudflare Tunnel Gateway, copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc). The Iterate-operated hosted service is separate: its product surface lives under [src/hosted](./src/hosted), with [wrangler.hosted.jsonc](./wrangler.hosted.jsonc) as its deployment config.
 
 ## Advanced CLI Usage
 
-The CLI is mostly focused on ngrok-style use-cases with our opinionated worker deployment. Once you have run `npx captun deploy`, further commands will pick up the server URL and connection secret from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
+The CLI is mostly focused on ngrok-style use-cases. Without local config it uses the hosted `captun.sh` service. Once you have run `npx captun deploy`, further commands will pick up your self-hosted gateway URL and token from your machine's captun config. You can also pass them explicitly (for example, to create a tunnel using a deployment created from someone else's machine):
 
 ```bash
-npx captun 3000 --server-url 'https://abc123.captun.youraccount.workers.dev' --secret abc123
+npx captun 3000 --gateway 'https://captun.youraccount.workers.dev' --token abc123
 ```
 
 By default, the `npx captun 3000` command will generate a name for the tunnel it creates. You can customise this with `--name`:
@@ -198,7 +198,7 @@ By default, all tunnel names live in one warm `CaptunServerShard` Durable Object
 npx captun deploy --shards 256
 ```
 
-All of captun's public API (both the client `createCaptunTunnel` and the server-side `acceptCaptunTunnel`) is exported from the single `captun` entry point. `acceptCaptunTunnelFromSocket(socket)` is also exported for Workers that have already performed the WebSocket upgrade themselves.
+All of captun's public API (both the client `createCaptunTunnel` and the server-side `acceptFetcherCapability`) is exported from the single `captun` entry point. `acceptFetcherCapabilityFromSocket(socket)` is also exported for Workers that have already performed the WebSocket upgrade themselves.
 
 ## Performance
 
@@ -235,14 +235,15 @@ All you need is `fetch()`. Requests, responses, headers, bodies, streams, SSE, a
 ```mermaid
 sequenceDiagram
   participant HTTP as HTTP client
-  participant Server as Cloudflare Worker / CaptunServerShard
+  participant Gateway as Tunnel Gateway / CaptunServerShard
   participant Client as Node client
 
-  Client->>Server: WebSocket RPC connect to /demo/__captun-connect with fetcher as main capability
-  HTTP->>Server: GET /demo/report
-  Server->>Client: fetch(request)
-  Client-->>Server: Response
-  Server-->>HTTP: Response
+  Client->>Gateway: WebSocket RPC connect to ?captun-connect=1&captun-name=demo with fetcher as main capability
+  Gateway-->>Client: ready({ url })
+  HTTP->>Gateway: GET /demo/report
+  Gateway->>Client: fetch(request)
+  Client-->>Gateway: Response
+  Gateway-->>HTTP: Response
 ```
 
 See [examples/weather-reporter](./examples/weather-reporter) for a small workspace package that imports `captun` and has its own e2e tests.
@@ -257,7 +258,7 @@ pnpm run build
 pnpm run dev
 ```
 
-Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_SERVER_URL`, with optional `CAPTUN_SECRET`, to run the same cases against a deployed Worker.
+Run tests with `pnpm test`. The root e2e suite uses Miniflare by default; set `CAPTUN_GATEWAY`, with optional `CAPTUN_TOKEN`, to run the same cases against a deployed Worker.
 
 End-to-end smoke tests for build, dry-run deploy, local `wrangler dev`, tunnel, and `curl` live in [`scripts/smoke/`](./scripts/smoke) with documentation in [docs/smoke-test.md](./docs/smoke-test.md):
 

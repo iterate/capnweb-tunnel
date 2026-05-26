@@ -46,12 +46,12 @@ pnpm run build
 npx captun deploy
 ```
 
-The CLI writes `serverUrl` and `secret` to `~/.config/captun/config.json` automatically.
+The CLI writes `gateway` and `token` to `~/.config/captun/config.json` automatically.
 
 Non-interactive:
 
 ```bash
-npx captun deploy --secret "$(openssl rand -base64 32 | tr -d '\n=' | tr '/+' '_-')"
+npx captun deploy --token "$(openssl rand -base64 32 | tr -d '\n=' | tr '/+' '_-')"
 ```
 
 Requires `CLOUDFLARE_API_TOKEN` or prior `wrangler login`.
@@ -59,10 +59,10 @@ Requires `CLOUDFLARE_API_TOKEN` or prior `wrangler login`.
 ### B. Wildcard route deploy
 
 ```bash
-npx captun deploy --route '*.tunnels.yourdomain.com/*' --zone yourdomain.com --secret "$SECRET"
+npx captun deploy --route '*.tunnels.yourdomain.com/*' --zone yourdomain.com --token "$TOKEN"
 ```
 
-Config `serverUrl` becomes `https://{name}.tunnels.yourdomain.com`.
+Config `gateway` becomes `https://gateway.tunnels.yourdomain.com`. The gateway returns each tunnel's public URL when the client connects.
 
 ### C. Tunnel port 3000
 
@@ -71,22 +71,22 @@ After deploy, config is enough:
 ```bash
 python3 -m http.server 3000   # terminal 1
 npx captun 3000 --name demo   # terminal 2 (reads ~/.config/captun/config.json)
-curl -i "$(jq -r .serverUrl ~/.config/captun/config.json)demo/"
+curl -i "https://demo.tunnels.yourdomain.com/"
 ```
 
 Or step **6** against an existing Worker:
 
 ```bash
-export SMOKE_SERVER_URL='https://captun.<account>.workers.dev'
-export CAPTUN_SECRET='<secret-if-set>'
+export SMOKE_GATEWAY='https://captun.<account>.workers.dev'
+export CAPTUN_TOKEN='<token-if-set>'
 ./scripts/smoke-test.sh step-6-tunnel-remote
 ```
 
 Wildcard:
 
 ```bash
-export SMOKE_SERVER_URL='https://{name}.tunnels.templestein.com'
-export CAPTUN_SECRET='...'
+export SMOKE_GATEWAY='https://gateway.tunnels.templestein.com'
+export CAPTUN_TOKEN='...'
 ./scripts/smoke-test.sh step-6-tunnel-remote
 curl -i "https://smoke-test.tunnels.templestein.com/"
 ```
@@ -112,7 +112,7 @@ doppler run -p os -c dev_jonas -- sh -c '
   npx captun deploy \
     --route "*.tunnels.templestein.com/*" \
     --zone templestein.com \
-    --secret "$(openssl rand -base64 32 | tr -d "\n=" | tr "/+" "_-")"
+    --token "$(openssl rand -base64 32 | tr -d "\n=" | tr "/+" "_-")"
 '
 
 # Terminal 1
@@ -125,7 +125,7 @@ npx captun 3000 --name banana
 curl https://banana.tunnels.templestein.com/
 ```
 
-**Proved 2026-05-18:** deploy to `*.tunnels.templestein.com/*`, tunnel `banana` → local `:3000`, `curl` returned `200` with body `<h1>banana tunnel works</h1>`. Secret stored in `~/.config/captun/config.json` and set as Worker `CAPTUN_SECRET`.
+**Proved 2026-05-18:** deploy to `*.tunnels.templestein.com/*`, tunnel `banana` → local `:3000`, `curl` returned `200` with body `<h1>banana tunnel works</h1>`. Token stored in `~/.config/captun/config.json` and set as Worker `CAPTUN_TOKEN`.
 
 `--zone` is required when Wrangler cannot infer the zone from the route pattern alone.
 

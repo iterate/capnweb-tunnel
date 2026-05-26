@@ -4,14 +4,14 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 cd "$ROOT"
 
-SERVER_URL="${SMOKE_SERVER_URL:-http://127.0.0.1:$WRANGLER_PORT}"
-CURL_URL="${SERVER_URL%/}/${SMOKE_NAME}/"
+GATEWAY="${SMOKE_GATEWAY:-http://127.0.0.1:$WRANGLER_PORT}"
+CURL_URL="${GATEWAY%/}/${SMOKE_NAME}/"
 PIDFILE="$STATE_DIR/tunnel.pid"
 LOG="$STATE_DIR/tunnel.log"
 stop_pid "$PIDFILE"
 
-log "captun $HTTP_PORT --name $SMOKE_NAME --server-url $SERVER_URL"
-$CAPTUN_BIN "$HTTP_PORT" --name "$SMOKE_NAME" --server-url "$SERVER_URL" >"$LOG" 2>&1 &
+log "captun $HTTP_PORT --name $SMOKE_NAME --gateway $GATEWAY"
+$CAPTUN_BIN "$HTTP_PORT" --name "$SMOKE_NAME" --gateway "$GATEWAY" >"$LOG" 2>&1 &
 echo $! >"$PIDFILE"
 wait_for_log "$LOG" "Press Ctrl+C to close tunnel" 30
 

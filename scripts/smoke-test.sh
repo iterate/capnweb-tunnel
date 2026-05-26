@@ -19,11 +19,11 @@ Steps (run in order for local smoke):
   step-3-wrangler-dev             background wrangler dev (:8787)
   step-4-http-origin              background python http.server (:3456)
   step-5-tunnel-local             captun + curl via local wrangler dev
-  step-6-tunnel-remote            captun + curl via SMOKE_SERVER_URL (deployed Worker)
+  step-6-tunnel-remote            captun + curl via SMOKE_GATEWAY (deployed Worker)
   step-stop                       kill background processes
 
 Local all-in-one:  ./scripts/smoke-test.sh
-Remote tunnel only: SMOKE_SERVER_URL=https://... ./scripts/smoke-test.sh step-6
+Remote tunnel only: SMOKE_GATEWAY=https://... ./scripts/smoke-test.sh step-6
 
 State/logs: $CAPTUN_SMOKE_DIR (default /tmp/captun-smoke)
 EOF

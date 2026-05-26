@@ -8,7 +8,7 @@ vi.setConfig({ testTimeout: 15_000 });
 test("returns nicely formatted weather report", async () => {
   await using app = await createWeatherReporterFixture();
   using _tunnel = await createCaptunTunnel({
-    url: `${app.url}/__intercept-egress-traffic`,
+    gateway: `${app.url}/__intercept-egress-traffic`,
     fetch(request) {
       if (request.url === "https://wttr.in/london?format=j1") {
         return Response.json({ current_condition: [{ temp_C: "18" }] });
