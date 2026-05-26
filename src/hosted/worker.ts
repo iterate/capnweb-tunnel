@@ -1,7 +1,11 @@
-import { DurableObject } from "cloudflare:workers";
-import { acceptFetcherCapability, type FetcherStub } from "../index.js";
 import {
-  captunShardName,
+  captunServerShard,
+  createCaptunServerShard,
+  createTunnelConnectRequest,
+  createTunnelForwardRequest,
+  type CaptunServerShard as CaptunServerShardInstance,
+} from "../worker.js";
+import {
   GATEWAY_CONNECT_QUERY_PARAM,
   getTunnelNameFromUrl,
   getTunnelUrl,
@@ -10,7 +14,6 @@ import {
   RESERVED_TUNNEL_NAMES,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
-  TUNNEL_URL_HEADER,
 } from "../routing.js";
 import {
   decidePublicTunnelAdmission,
@@ -24,79 +27,18 @@ import {
 } from "./rate-limit.js";
 import { hostedCaptunResponse } from "./site.js";
 
+export const CaptunServerShard = createCaptunServerShard<HostedCaptunEnv>(
+  decidePublicTunnelAdmission,
+);
 export { HostedRateLimiter };
 
 export type HostedCaptunEnv = PublicGatewayPolicyEnv &
   HostedRateLimitEnv & {
-    CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
+    CaptunServerShard: DurableObjectNamespace<CaptunServerShardInstance<HostedCaptunEnv>>;
     CAPTUN_SECRET?: string;
     SHARD_COUNT?: string;
     CUSTOM_HOSTNAME?: string;
   };
-
-const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
-
-type ActiveTunnel = {
-  url: string;
-  token?: string;
-  fetcher: FetcherStub;
-};
-
-export class CaptunServerShard extends DurableObject<HostedCaptunEnv> {
-  private tunnels = new Map<string, ActiveTunnel>();
-
-  async fetch(request: Request): Promise<Response> {
-    const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
-    if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
-
-    const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
-    if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
-
-    const activeTunnel = this.tunnels.get(tunnelName);
-    const admission = decidePublicTunnelAdmission({
-      request,
-      env: this.env,
-      activeToken: activeTunnel?.token,
-    });
-    if (!admission.ok) return admission.response;
-
-    activeTunnel?.fetcher[Symbol.dispose]();
-    const { response, fetcher } = acceptFetcherCapability({
-      onDisconnect: () => {
-        if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
-      },
-    });
-    const tunnel = { url: tunnelUrl, token: admission.token, fetcher };
-    this.tunnels.set(tunnelName, tunnel);
-    queueMicrotask(() => {
-      void fetcher.ready({ url: tunnel.url, token: tunnel.token });
-    });
-    return response;
-  }
-
-  diagnoseConnect(tunnelName: string, request: Request): Response {
-    const admission = decidePublicTunnelAdmission({
-      request,
-      env: this.env,
-      activeToken: this.tunnels.get(tunnelName)?.token,
-    });
-    if (!admission.ok) return admission.response;
-    return new Response(null, {
-      status: 204,
-      headers: { "cache-control": "no-store" },
-    });
-  }
-
-  async forward(tunnelName: string, request: Request): Promise<Response> {
-    const tunnel = this.tunnels.get(tunnelName)?.fetcher;
-    if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
-    try {
-      return await tunnel.fetch(request);
-    } catch {
-      return new Response("Tunnel fetch failed\n", { status: 502 });
-    }
-  }
-}
 
 export default {
   async fetch(request: Request, env: HostedCaptunEnv): Promise<Response> {
@@ -130,18 +72,14 @@ export default {
     });
     if (rateLimited) return rateLimited;
 
-    const shard = env.CaptunServerShard.getByName(
-      captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
-    );
+    const shard = captunServerShard(env, tunnelName);
     const forwarded = new Request(request.url, request);
     const tunnelUrl = getTunnelUrl({
       reqUrl: request.url,
       customHostname: env.CUSTOM_HOSTNAME,
       tunnelName,
     });
-    const headers = new Headers(forwarded.headers);
-    headers.set(TUNNEL_URL_HEADER, tunnelUrl);
-    return shard.forward(tunnelName, new Request(forwarded, { headers }));
+    return shard.forward(tunnelName, createTunnelForwardRequest(forwarded, tunnelUrl));
   },
 } satisfies ExportedHandler<HostedCaptunEnv>;
 
@@ -157,18 +95,13 @@ async function connectTunnel(request: Request, env: HostedCaptunEnv) {
     return new Response("Missing tunnel name\n", { status: 404 });
   }
 
-  const shard = env.CaptunServerShard.getByName(
-    captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
-  );
+  const shard = captunServerShard(env, tunnelName);
   const tunnelUrl = getTunnelUrl({
     reqUrl: request.url,
     customHostname: env.CUSTOM_HOSTNAME,
     tunnelName,
   });
-  const headers = new Headers(request.headers);
-  headers.set(TUNNEL_NAME_HEADER, tunnelName);
-  headers.set(TUNNEL_URL_HEADER, tunnelUrl);
-  const connectRequest = new Request(request, { headers });
+  const connectRequest = createTunnelConnectRequest({ request, tunnelName, tunnelUrl });
 
   if (diagnostic) {
     const rateLimited = await hostedRateLimitDiagnosticResponse({

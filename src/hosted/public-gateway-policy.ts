@@ -1,12 +1,9 @@
 import { CONNECT_TOKEN_QUERY_PARAM } from "../routing.js";
+import type { TunnelAdmission } from "../worker.js";
 
 export type PublicGatewayPolicyEnv = {
   CAPTUN_TOKEN?: string;
 };
-
-export type TunnelAdmission =
-  | { ok: true; token: string | undefined }
-  | { ok: false; response: Response };
 
 export function decidePublicTunnelAdmission(input: {
   request: Request;
