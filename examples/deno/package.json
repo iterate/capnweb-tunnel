@@ -1,0 +1,8 @@
+{
+  "name": "@captun/deno-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "deno check --config deno.json --node-modules-dir=auto --no-lock --sloppy-imports server.ts"
+  }
+}

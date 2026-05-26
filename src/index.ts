@@ -5,6 +5,10 @@ import {
   HOSTED_CAPTUN_GATEWAY,
   TUNNEL_NAME_QUERY_PARAM,
 } from "./routing.js";
+import { acceptFetcherCapabilityFromSocket } from "./server-core.js";
+import type { Fetcher, TunnelReady } from "./server-core.js";
+export type { Fetcher, FetcherStub } from "./server-core.js";
+export { acceptFetcherCapabilityFromSocket } from "./server-core.js";
 
 /** Fetch is all you need!
  *
@@ -12,22 +16,13 @@ import {
  * The gateway can then call fetch on the client like normal, with Request and
  * Response objects crossing the WebSocket RPC boundary transparently.
  **/
-export interface Fetcher {
-  fetch(request: Request): Response | Promise<Response>;
-}
-
 export type CaptunTunnel = Disposable & {
   url: string;
   token?: string;
 };
 
-export type FetcherStub = Fetcher &
-  Disposable & {
-    ready(tunnel: { url: string; token?: string }): void | Promise<void>;
-  };
-
 type TunnelClientCapability = Fetcher & {
-  ready(tunnel: { url: string; token?: string }): void | Promise<void>;
+  ready(tunnel: TunnelReady): void | Promise<void>;
 };
 
 const TUNNEL_READY_TIMEOUT_MS = 5_000;
@@ -41,7 +36,7 @@ export async function createCaptunTunnel(
   },
 ): Promise<CaptunTunnel> {
   const connect = gatewayConnectRequest(options);
-  const ready = Promise.withResolvers<{ url: string; token?: string }>();
+  const ready = Promise.withResolvers<TunnelReady>();
   const socket = createWebSocket(connect.url);
   const fetcher = new TunnelTargetFetcher({
     fetch: options.fetch,
@@ -79,12 +74,9 @@ function randomTunnelName() {
 
 class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
   private fetcher: Fetcher;
-  private onReady: (tunnel: { url: string; token?: string }) => void;
+  private onReady: (tunnel: TunnelReady) => void;
 
-  constructor(options: {
-    fetch: Fetcher["fetch"];
-    ready: (tunnel: { url: string; token?: string }) => void;
-  }) {
+  constructor(options: { fetch: Fetcher["fetch"]; ready: (tunnel: TunnelReady) => void }) {
     super();
     this.fetcher = { fetch: options.fetch };
     this.onReady = options.ready;
@@ -94,7 +86,7 @@ class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
     return this.fetcher.fetch(request);
   }
 
-  ready(tunnel: { url: string; token?: string }) {
+  ready(tunnel: TunnelReady) {
     this.onReady(tunnel);
   }
 }
@@ -134,7 +126,7 @@ async function waitUntilOpen(socket: WebSocket) {
   });
 }
 
-async function waitUntilReady(promise: Promise<{ url: string; token?: string }>) {
+async function waitUntilReady(promise: Promise<TunnelReady>) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -163,21 +155,5 @@ export function acceptFetcherCapability(options: { onDisconnect?: () => void } =
   return {
     fetcher,
     response: new Response(null, { status: 101, webSocket: clientSocket }),
-  };
-}
-
-export function acceptFetcherCapabilityFromSocket(
-  socket: WebSocket,
-  options: { onDisconnect?: () => void } = {},
-): FetcherStub {
-  const remote = newWebSocketRpcSession<TunnelClientCapability>(socket) as FetcherStub & {
-    onRpcBroken(callback: () => void): void;
-  };
-  remote.onRpcBroken(() => options.onDisconnect?.());
-
-  return {
-    fetch: (request) => remote.fetch(request),
-    ready: (tunnel) => remote.ready(tunnel),
-    [Symbol.dispose]: () => remote[Symbol.dispose](),
   };
 }

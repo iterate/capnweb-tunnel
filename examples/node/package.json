@@ -1,0 +1,13 @@
+{
+  "name": "@captun/node-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@whatwg-node/server": "^0.10.18",
+    "captun": "workspace:*",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

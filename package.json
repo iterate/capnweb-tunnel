@@ -21,6 +21,18 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./bun": {
+      "types": "./src/bun.ts",
+      "import": "./src/bun.ts"
+    },
+    "./deno": {
+      "types": "./src/deno.ts",
+      "import": "./src/deno.ts"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "import": "./src/node.ts"
+    },
     "./worker": {
       "types": "./src/worker.ts",
       "import": "./src/worker.ts"
@@ -34,6 +46,18 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./bun": {
+        "types": "./dist/bun.d.ts",
+        "import": "./dist/bun.js"
+      },
+      "./deno": {
+        "types": "./dist/deno.d.ts",
+        "import": "./dist/deno.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
       },
       "./worker": {
         "types": "./dist/worker.d.ts",
