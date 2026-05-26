@@ -1,11 +1,13 @@
 import {
   captunServerShard,
-  createCaptunServerShard,
   createTunnelConnectRequest,
   createTunnelForwardRequest,
-  type CaptunServerShard as CaptunServerShardInstance,
+  CaptunServerShard as CloudflareTunnelGatewayShard,
+  type TunnelAdmission,
+  type TunnelAdmissionInput,
 } from "../worker.js";
 import {
+  CONNECT_TOKEN_QUERY_PARAM,
   GATEWAY_CONNECT_QUERY_PARAM,
   getTunnelNameFromUrl,
   getTunnelUrl,
@@ -16,10 +18,6 @@ import {
   TUNNEL_NAME_QUERY_PARAM,
 } from "../routing.js";
 import {
-  decidePublicTunnelAdmission,
-  type PublicGatewayPolicyEnv,
-} from "./public-gateway-policy.js";
-import {
   HostedRateLimiter,
   hostedRateLimitDiagnosticResponse,
   hostedRateLimitResponse,
@@ -27,18 +25,38 @@ import {
 } from "./rate-limit.js";
 import { hostedCaptunResponse } from "./site.js";
 
-export const CaptunServerShard = createCaptunServerShard<HostedCaptunEnv>(
-  decidePublicTunnelAdmission,
-);
+export class CaptunServerShard extends CloudflareTunnelGatewayShard<HostedCaptunEnv> {
+  protected decideTunnelAdmission(input: TunnelAdmissionInput<HostedCaptunEnv>): TunnelAdmission {
+    const configuredToken = input.env.CAPTUN_TOKEN;
+    const token = connectToken(input.request) || undefined;
+    if (configuredToken) {
+      if (!token || !constantTimeEqual(token, configuredToken)) {
+        return { ok: false, response: reject("Unauthorized\n", 401) };
+      }
+      return { ok: true, token };
+    }
+
+    if (!token) return { ok: false, response: reject("Missing tunnel token\n", 400) };
+    if (!/^[a-zA-Z0-9._~-]{1,128}$/.test(token)) {
+      return { ok: false, response: reject("Invalid tunnel token\n", 400) };
+    }
+    if (input.activeToken && input.activeToken !== token) {
+      return { ok: false, response: reject("Tunnel name is already connected\n", 409) };
+    }
+
+    return { ok: true, token };
+  }
+}
+
 export { HostedRateLimiter };
 
-export type HostedCaptunEnv = PublicGatewayPolicyEnv &
-  HostedRateLimitEnv & {
-    CaptunServerShard: DurableObjectNamespace<CaptunServerShardInstance<HostedCaptunEnv>>;
-    CAPTUN_SECRET?: string;
-    SHARD_COUNT?: string;
-    CUSTOM_HOSTNAME?: string;
-  };
+export type HostedCaptunEnv = HostedRateLimitEnv & {
+  CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
+  CAPTUN_TOKEN?: string;
+  CAPTUN_SECRET?: string;
+  SHARD_COUNT?: string;
+  CUSTOM_HOSTNAME?: string;
+};
 
 export default {
   async fetch(request: Request, env: HostedCaptunEnv): Promise<Response> {
@@ -132,4 +150,29 @@ function isGatewayConnectRequest(request: Request) {
 function isConnectDiagnostic(request: Request) {
   if (request.headers.get("upgrade") === "websocket") return false;
   return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
+}
+
+function connectToken(request: Request) {
+  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+function reject(body: string, status: number) {
+  return new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+function constantTimeEqual(actual: string, expected: string) {
+  const actualBytes = new TextEncoder().encode(actual);
+  const expectedBytes = new TextEncoder().encode(expected);
+  if (actualBytes.length !== expectedBytes.length) return false;
+  let diff = 0;
+  for (let index = 0; index < actualBytes.length; index++) {
+    diff |= actualBytes[index]! ^ expectedBytes[index]!;
+  }
+  return diff === 0;
 }

@@ -23,18 +23,7 @@ export type CaptunEnv = {
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
 
-export type CaptunServerShard<Env = CaptunEnv> = DurableObject<Env> & CaptunServerShardRpc;
-
-export type CaptunServerShardRpc = {
-  diagnoseConnect(tunnelName: string, request: Request): Promise<Response>;
-  forward(tunnelName: string, request: Request): Promise<Response>;
-};
-
-export type CaptunServerShardClass<Env> = {
-  new (ctx: DurableObjectState, env: Env): CaptunServerShard<Env>;
-};
-
-type CaptunShardBindingEnv<Env> = {
+type CaptunShardBindingEnv<Env extends { CAPTUN_TOKEN?: string }> = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard<Env>>;
   SHARD_COUNT?: string;
 };
@@ -55,10 +44,6 @@ export type TunnelAdmissionInput<Env> = {
   activeToken: string | undefined;
 };
 
-export type TunnelAdmissionPolicy<Env> = (
-  input: TunnelAdmissionInput<Env>,
-) => TunnelAdmission | Promise<TunnelAdmission>;
-
 /**
  * A shard Durable Object owns many named tunnels.
  *
@@ -67,72 +52,85 @@ export type TunnelAdmissionPolicy<Env> = (
  * more objects, which adds cold starts when new shards wake up but gives better
  * aggregate throughput for lots of concurrent large responses.
  */
-export const CaptunServerShard = createCaptunServerShard<CaptunEnv>(decideTrustedTunnelAdmission);
+export class CaptunServerShard<
+  Env extends { CAPTUN_TOKEN?: string } = CaptunEnv,
+> extends DurableObject<Env> {
+  private tunnels = new Map<string, ActiveTunnel>();
 
-export function createCaptunServerShard<Env>(
-  decideTunnelAdmission: TunnelAdmissionPolicy<Env>,
-): CaptunServerShardClass<Env> {
-  return class CaptunServerShard extends DurableObject<Env> implements CaptunServerShardRpc {
-    private tunnels = new Map<string, ActiveTunnel>();
-
-    // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
-    // is special-cased by the Workers runtime around `stub.fetch(...)` — a 101
-    // Response with an attached `webSocket` does NOT survive a DO RPC method
-    // return (verified empirically: the client side errors with "WebSocket
-    // connection failed"). So connect goes through fetch with the tunnel name
-    // in a header; everything else uses the `forward` RPC below.
-    async fetch(request: Request): Promise<Response> {
-      const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
-      if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
-
-      const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
-      if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
-
-      const activeTunnel = this.tunnels.get(tunnelName);
-      const admission = await decideTunnelAdmission({
-        request,
-        env: this.env,
-        activeToken: activeTunnel?.token,
-      });
-      if (!admission.ok) return admission.response;
-
-      activeTunnel?.fetcher[Symbol.dispose]();
-      const { response, fetcher } = acceptFetcherCapability({
-        onDisconnect: () => {
-          if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
-        },
-      });
-      const tunnel = { url: tunnelUrl, token: admission.token, fetcher };
-      this.tunnels.set(tunnelName, tunnel);
-      queueMicrotask(() => {
-        void fetcher.ready({ url: tunnel.url, token: tunnel.token });
-      });
-      return response;
-    }
-
-    async diagnoseConnect(tunnelName: string, request: Request): Promise<Response> {
-      const admission = await decideTunnelAdmission({
-        request,
-        env: this.env,
-        activeToken: this.tunnels.get(tunnelName)?.token,
-      });
-      if (!admission.ok) return admission.response;
-      return new Response(null, {
-        status: 204,
-        headers: { "cache-control": "no-store" },
-      });
-    }
-
-    async forward(tunnelName: string, request: Request): Promise<Response> {
-      const tunnel = this.tunnels.get(tunnelName)?.fetcher;
-      if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
-      try {
-        return await tunnel.fetch(request);
-      } catch {
-        return new Response("Tunnel fetch failed\n", { status: 502 });
+  protected decideTunnelAdmission(input: TunnelAdmissionInput<Env>): TunnelAdmission {
+    const expected = input.env.CAPTUN_TOKEN;
+    if (expected) {
+      // Constant-time comparison to avoid leaking the gateway token via timing.
+      const actual = new TextEncoder().encode(connectToken(input.request) || "");
+      const want = new TextEncoder().encode(expected);
+      if (!constantTimeEqual(actual, want)) {
+        return { ok: false, response: new Response("Unauthorized\n", { status: 401 }) };
       }
     }
-  };
+
+    return {
+      ok: true,
+      token: expected ? connectToken(input.request) || undefined : undefined,
+    };
+  }
+
+  // The DO's `fetch` only handles the WebSocket upgrade. The upgrade hand-off
+  // is special-cased by the Workers runtime around `stub.fetch(...)` — a 101
+  // Response with an attached `webSocket` does NOT survive a DO RPC method
+  // return (verified empirically: the client side errors with "WebSocket
+  // connection failed"). So connect goes through fetch with the tunnel name
+  // in a header; everything else uses the `forward` RPC below.
+  async fetch(request: Request): Promise<Response> {
+    const tunnelName = request.headers.get(TUNNEL_NAME_HEADER);
+    if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
+
+    const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
+    if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
+
+    const activeTunnel = this.tunnels.get(tunnelName);
+    const admission = await this.decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeToken: activeTunnel?.token,
+    });
+    if (!admission.ok) return admission.response;
+
+    activeTunnel?.fetcher[Symbol.dispose]();
+    const { response, fetcher } = acceptFetcherCapability({
+      onDisconnect: () => {
+        if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
+      },
+    });
+    const tunnel = { url: tunnelUrl, token: admission.token, fetcher };
+    this.tunnels.set(tunnelName, tunnel);
+    queueMicrotask(() => {
+      void fetcher.ready({ url: tunnel.url, token: tunnel.token });
+    });
+    return response;
+  }
+
+  async diagnoseConnect(tunnelName: string, request: Request): Promise<Response> {
+    const admission = await this.decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeToken: this.tunnels.get(tunnelName)?.token,
+    });
+    if (!admission.ok) return admission.response;
+    return new Response(null, {
+      status: 204,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+
+  async forward(tunnelName: string, request: Request): Promise<Response> {
+    const tunnel = this.tunnels.get(tunnelName)?.fetcher;
+    if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
+    try {
+      return await tunnel.fetch(request);
+    } catch {
+      return new Response("Tunnel fetch failed\n", { status: 502 });
+    }
+  }
 }
 
 export default {
@@ -203,24 +201,7 @@ function connectToken(request: Request) {
   return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
 }
 
-function decideTrustedTunnelAdmission(input: TunnelAdmissionInput<CaptunEnv>): TunnelAdmission {
-  const expected = input.env.CAPTUN_TOKEN;
-  if (expected) {
-    // Constant-time comparison to avoid leaking the gateway token via timing.
-    const actual = new TextEncoder().encode(connectToken(input.request) || "");
-    const want = new TextEncoder().encode(expected);
-    if (!constantTimeEqual(actual, want)) {
-      return { ok: false, response: new Response("Unauthorized\n", { status: 401 }) };
-    }
-  }
-
-  return {
-    ok: true,
-    token: expected ? connectToken(input.request) || undefined : undefined,
-  };
-}
-
-export function captunServerShard<Env>(
+export function captunServerShard<Env extends { CAPTUN_TOKEN?: string }>(
   env: CaptunShardBindingEnv<Env>,
   tunnelName: string,
 ): DurableObjectStub<CaptunServerShard<Env>> {

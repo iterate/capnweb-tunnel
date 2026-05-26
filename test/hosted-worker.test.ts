@@ -282,6 +282,40 @@ test("Hosted Captun does not trust spoofable forwarded IP headers for rate limit
   expect(second).toMatchObject({ status: 429 });
 });
 
+test("Hosted Captun accepts the configured gateway token when token auth is enabled", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture({
+    CAPTUN_TOKEN: "secret",
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _tokenTunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=secret",
+    responseText: "configured token\n",
+    clientIp: "203.0.113.65",
+  });
+
+  const response = await fixture.worker.fetch("https://demo.captun.sh/hello", {
+    headers: { "cf-connecting-ip": "203.0.113.66" },
+  });
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.text()).toBe("configured token\n");
+});
+
+test("Hosted Captun rejects invalid anonymous ownership tokens", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture({
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+
+  const response = await fixture.worker.fetch(
+    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=no%20spaces",
+    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.67" } },
+  );
+
+  expect(response).toMatchObject({ status: 400 });
+  expect(await response.text()).toBe("Invalid tunnel token\n");
+});
+
 test("Hosted Captun rejects a different token while a tunnel is active", async () => {
   await using fixture = await createHostedCaptunWorkerFixture({
     HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
