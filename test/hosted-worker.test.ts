@@ -94,9 +94,9 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   );
   expect(html).toEqual(expect.stringContaining('// your "server" is this browser tab!'));
   expect(html).toEqual(expect.stringContaining("window.chatMessages"));
-  expect(html).toEqual(
+  expect(textareaValue(html, "demo-source")).toEqual(
     expect.stringContaining(
-      "window.chatMessages.join(\"\\n\").replace(/&/g, '&amp').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#039;').replace(/`/g, '&#96;')",
+      "window.chatMessages.join(\"\\n\").replace(/&/g, '&amp').replace(/</g, '&lt').replace(/>/g, '&gt').replace(/\"/g, '&quot').replace(/'/g, '&#039').replace(/`/g, '&#96')",
     ),
   );
   expect(html).toEqual(expect.stringContaining("document.cookie"));
@@ -517,4 +517,18 @@ class TestTunnelFetcher extends RpcTarget {
   }
 
   ready() {}
+}
+
+function textareaValue(html: string, id: string) {
+  const match = html.match(new RegExp(`<textarea id="${id}"[^>]*>([\\s\\S]*?)</textarea>`));
+  if (!match) throw new Error(`Missing textarea #${id}`);
+  return match[1]!.replace(/&(?:amp|lt|gt|quot);|&#(?:0?39|96);/g, (entity) => {
+    if (entity === "&amp;") return "&";
+    if (entity === "&lt;") return "<";
+    if (entity === "&gt;") return ">";
+    if (entity === "&quot;") return '"';
+    if (entity === "&#039;" || entity === "&#39;") return "'";
+    if (entity === "&#96;") return "`";
+    return entity;
+  });
 }
