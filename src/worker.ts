@@ -16,6 +16,7 @@ import {
 type CaptunEnv = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
   CAPTUN_TOKEN?: string;
+  CAPTUN_SECRET?: string;
   SHARD_COUNT?: string;
   CUSTOM_HOSTNAME?: string;
 };
@@ -91,6 +92,8 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
 
 export default {
   fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+    if ("CAPTUN_SECRET" in env) throw new Error("CAPTUN_SECRET has been renamed to CAPTUN_TOKEN");
+
     if (isGatewayConnectRequest(request)) {
       return connectTunnel(request, env);
     }

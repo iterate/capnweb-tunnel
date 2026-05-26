@@ -24,10 +24,14 @@ import {
 } from "./tunnel-health.js";
 import { deployWorker, openInBrowser, runDeployWizard, waitForCertWithSpinner } from "./deploy.js";
 
-export type Config = {
-  gateway: string;
-  token?: string;
-};
+export const configSchema = z
+  .object({
+    gateway: z.url(),
+    token: z.string().optional(),
+  })
+  .strict();
+
+export type Config = z.infer<typeof configSchema>;
 
 type TunnelCliInput = {
   target: string;
@@ -385,7 +389,7 @@ function esc(value: string): string {
 
 async function readConfig() {
   try {
-    return JSON.parse(await readFile(configPath, "utf8")) as Config;
+    return configSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;

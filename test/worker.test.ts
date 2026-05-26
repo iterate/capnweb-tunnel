@@ -364,3 +364,11 @@ test("Captun Worker requires the configured token before accepting a tunnel clie
   expect(response).toMatchObject({ status: 401 });
   expect(await response.text()).toBe("Unauthorized\n");
 });
+
+test("Captun Worker rejects the legacy CAPTUN_SECRET binding", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_SECRET: "legacy-secret" });
+
+  await expect(fixture.worker.fetch(`${fixture.origin}/missing/hello`)).rejects.toThrow(
+    "CAPTUN_SECRET has been renamed to CAPTUN_TOKEN",
+  );
+});
