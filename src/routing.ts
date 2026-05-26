@@ -3,6 +3,7 @@ export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
 export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
 export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
 export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
+export const TUNNEL_CONNECT_DIAGNOSTIC_HEADER = "x-captun-connect-diagnostic";
 export const RESERVED_TUNNEL_NAMES = [
   "account",
   "accounts",

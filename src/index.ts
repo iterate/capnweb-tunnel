@@ -3,8 +3,11 @@ import {
   CONNECT_TOKEN_QUERY_PARAM,
   GATEWAY_CONNECT_QUERY_PARAM,
   HOSTED_CAPTUN_GATEWAY,
+  HOSTED_CAPTUN_HOSTNAME,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
 } from "./routing.js";
+import { randomConnectToken } from "./token.js";
 
 /** Fetch is all you need!
  *
@@ -21,6 +24,19 @@ export type CaptunTunnel = Disposable & {
   token?: string;
 };
 
+export class CaptunTunnelConnectError extends Error {
+  response: { status: number; statusText: string; body: string } | undefined;
+
+  constructor(
+    message: string,
+    response: { status: number; statusText: string; body: string } | undefined,
+  ) {
+    super(message);
+    this.name = "CaptunTunnelConnectError";
+    this.response = response;
+  }
+}
+
 export type FetcherStub = Fetcher &
   Disposable & {
     ready(tunnel: { url: string; token?: string }): void | Promise<void>;
@@ -31,6 +47,7 @@ type TunnelClientCapability = Fetcher & {
 };
 
 const TUNNEL_READY_TIMEOUT_MS = 5_000;
+const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
 
 /** Creates a public tunnel by exposing a local fetch implementation to a Tunnel Gateway. */
 export async function createCaptunTunnel(
@@ -49,7 +66,7 @@ export async function createCaptunTunnel(
   });
   const session = newWebSocketRpcSession(socket, fetcher);
   try {
-    await waitUntilOpen(socket);
+    await waitUntilOpen(socket, connect.url);
     const tunnel = await waitUntilReady(ready.promise);
     return {
       url: tunnel.url,
@@ -65,10 +82,15 @@ export async function createCaptunTunnel(
 function gatewayConnectRequest(options: { gateway?: string | URL; name?: string; token?: string }) {
   const name = options.name || randomTunnelName();
   const url = new URL(options.gateway || HOSTED_CAPTUN_GATEWAY);
+  const token = options.token || (isHostedCaptunGateway(url) ? randomConnectToken() : undefined);
   url.searchParams.set(GATEWAY_CONNECT_QUERY_PARAM, "1");
   url.searchParams.set(TUNNEL_NAME_QUERY_PARAM, name);
-  if (options.token) url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, options.token);
-  return { url: url.toString(), name, token: options.token };
+  if (token) url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, token);
+  return { url: url.toString(), name, token };
+}
+
+function isHostedCaptunGateway(url: URL) {
+  return url.hostname === HOSTED_CAPTUN_HOSTNAME;
 }
 
 function randomTunnelName() {
@@ -105,7 +127,7 @@ function createWebSocket(url: string | URL) {
   return new WebSocket(connectUrl.href);
 }
 
-async function waitUntilOpen(socket: WebSocket) {
+async function waitUntilOpen(socket: WebSocket, connectUrl: string) {
   if (socket.readyState === WebSocket.OPEN) return;
   if (socket.readyState !== WebSocket.CONNECTING) {
     throw new Error("WebSocket closed before opening");
@@ -120,18 +142,57 @@ async function waitUntilOpen(socket: WebSocket) {
     socket.addEventListener("open", () => settle(resolve), { signal: listeners.signal });
     socket.addEventListener(
       "error",
-      () => settle(() => reject(new Error("WebSocket connection failed"))),
+      () =>
+        settle(() => {
+          void webSocketConnectionFailedError(connectUrl).then(reject);
+        }),
       { signal: listeners.signal },
     );
     socket.addEventListener(
       "close",
       (event) => {
         listeners.abort();
-        reject(new Error(`WebSocket closed before opening: ${event.code} ${event.reason}`));
+        void webSocketConnectionFailedError(connectUrl).then((error) => {
+          reject(
+            error.response
+              ? error
+              : new Error(`WebSocket closed before opening: ${event.code} ${event.reason}`),
+          );
+        });
       },
       { signal: listeners.signal },
     );
   });
+}
+
+async function webSocketConnectionFailedError(connectUrl: string) {
+  const response = await readWebSocketRejection(connectUrl);
+  if (!response) return new CaptunTunnelConnectError("WebSocket connection failed", undefined);
+  return new CaptunTunnelConnectError(
+    `WebSocket connection failed: ${response.status} ${response.statusText}: ${response.body}`.trim(),
+    response,
+  );
+}
+
+async function readWebSocketRejection(connectUrl: string) {
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS);
+  try {
+    const response = await fetch(connectUrl, {
+      headers: { [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1" },
+      signal: abort.signal,
+    });
+    if (response.ok) return undefined;
+    return {
+      status: response.status,
+      statusText: response.statusText || "Rejected",
+      body: (await response.text()).trim(),
+    };
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function waitUntilReady(promise: Promise<{ url: string; token?: string }>) {

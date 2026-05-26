@@ -1,24 +1,31 @@
 import { DurableObject } from "cloudflare:workers";
+import { decideTunnelAdmission } from "./hosted-admission.js";
 import { acceptFetcherCapability, type FetcherStub } from "./index.js";
 import {
   captunShardName,
-  CONNECT_TOKEN_QUERY_PARAM,
   GATEWAY_CONNECT_QUERY_PARAM,
   HOSTED_CAPTUN_HOSTNAME,
   getTunnelNameFromUrl,
   getTunnelUrl,
   isValidTunnelName,
   RESERVED_TUNNEL_NAMES,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
   TUNNEL_URL_HEADER,
 } from "./routing.js";
 
 type CaptunEnv = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard>;
+  HostedRateLimiter?: DurableObjectNamespace<HostedRateLimiter>;
   CAPTUN_TOKEN?: string;
   CAPTUN_SECRET?: string;
   SHARD_COUNT?: string;
   CUSTOM_HOSTNAME?: string;
+  HOSTED_RATE_LIMIT_WINDOW_SECONDS?: string;
+  HOSTED_CONNECTS_PER_IP_PER_WINDOW?: string;
+  HOSTED_REQUESTS_PER_IP_PER_WINDOW?: string;
+  HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW?: string;
+  HOSTED_RATE_LIMIT_DISABLED?: string;
 };
 
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
@@ -28,6 +35,24 @@ type ActiveTunnel = {
   url: string;
   token?: string;
   fetcher: FetcherStub;
+};
+
+const DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS = 60;
+const DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW = 30;
+const DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW = 600;
+const DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW = 1200;
+const HOSTED_RATE_LIMIT_DIAGNOSTIC_WINDOW_MS = 2_000;
+
+type HostedRateLimitKind = "connect" | "request";
+
+type HostedRateLimitInput = { limit: number; windowSeconds: number };
+
+type HostedRateLimitResult = { ok: true } | { ok: false; limit: number; retryAfterSeconds: number };
+
+type HostedRateLimitBucket = {
+  count: number;
+  resetAt: number;
+  lastRejectedAt?: number;
 };
 
 /**
@@ -54,29 +79,39 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
     const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
     if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
 
-    const expected = this.env.CAPTUN_TOKEN;
-    if (expected) {
-      // Constant-time comparison to avoid leaking the gateway token via timing.
-      const actual = new TextEncoder().encode(connectToken(request) || "");
-      const want = new TextEncoder().encode(expected);
-      if (!constantTimeEqual(actual, want)) {
-        return new Response("Unauthorized\n", { status: 401 });
-      }
-    }
+    const activeTunnel = this.tunnels.get(tunnelName);
+    const admission = decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeToken: activeTunnel?.token,
+    });
+    if (!admission.ok) return admission.response;
 
-    const token = expected ? connectToken(request) || undefined : undefined;
-    this.tunnels.get(tunnelName)?.fetcher[Symbol.dispose]();
+    activeTunnel?.fetcher[Symbol.dispose]();
     const { response, fetcher } = acceptFetcherCapability({
       onDisconnect: () => {
         if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
       },
     });
-    const tunnel = { url: tunnelUrl, token, fetcher };
+    const tunnel = { url: tunnelUrl, token: admission.token, fetcher };
     this.tunnels.set(tunnelName, tunnel);
     queueMicrotask(() => {
       void fetcher.ready({ url: tunnel.url, token: tunnel.token });
     });
     return response;
+  }
+
+  diagnoseConnect(tunnelName: string, request: Request): Response {
+    const admission = decideTunnelAdmission({
+      request,
+      env: this.env,
+      activeToken: this.tunnels.get(tunnelName)?.token,
+    });
+    if (!admission.ok) return admission.response;
+    return new Response(null, {
+      status: 204,
+      headers: { "cache-control": "no-store" },
+    });
   }
 
   async forward(tunnelName: string, request: Request): Promise<Response> {
@@ -90,8 +125,55 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
   }
 }
 
+export class HostedRateLimiter extends DurableObject<CaptunEnv> {
+  private bucket: HostedRateLimitBucket | undefined;
+
+  check(input: HostedRateLimitInput): HostedRateLimitResult {
+    const now = Date.now();
+    const bucket = this.activeBucket(now, now + input.windowSeconds * 1000);
+    if (bucket.count >= input.limit) {
+      bucket.lastRejectedAt = now;
+      return {
+        ok: false,
+        limit: input.limit,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+      };
+    }
+
+    bucket.count++;
+    return { ok: true };
+  }
+
+  diagnose(input: HostedRateLimitInput): HostedRateLimitResult {
+    const now = Date.now();
+    const bucket = this.bucket;
+    if (
+      bucket &&
+      bucket.count >= input.limit &&
+      bucket.resetAt > now &&
+      bucket.lastRejectedAt &&
+      now - bucket.lastRejectedAt <= HOSTED_RATE_LIMIT_DIAGNOSTIC_WINDOW_MS
+    ) {
+      return {
+        ok: false,
+        limit: input.limit,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+      };
+    }
+
+    return { ok: true };
+  }
+
+  private activeBucket(now: number, resetAt: number): HostedRateLimitBucket {
+    if (this.bucket && this.bucket.resetAt > now) return this.bucket;
+    const bucket: HostedRateLimitBucket = { count: 0, resetAt };
+    this.bucket = bucket;
+    return bucket;
+  }
+}
+
 export default {
-  fetch(request: Request, env: CaptunEnv): Response | Promise<Response> {
+  async fetch(request: Request, env: CaptunEnv): Promise<Response> {
     if ("CAPTUN_SECRET" in env) throw new Error("CAPTUN_SECRET has been renamed to CAPTUN_TOKEN");
 
     if (isGatewayConnectRequest(request)) {
@@ -120,6 +202,14 @@ export default {
       return new Response("Reserved Captun tunnel name\n", { status: 404 });
     }
 
+    const rateLimited = await hostedRateLimitResponse({
+      env,
+      request,
+      tunnelName,
+      kind: "request",
+    });
+    if (rateLimited) return rateLimited;
+
     const shard = env.CaptunServerShard.getByName(
       captunShardName(tunnelName, Number(env.SHARD_COUNT || 1)),
     );
@@ -137,8 +227,9 @@ export default {
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
-function connectTunnel(request: Request, env: CaptunEnv) {
-  if (request.headers.get("upgrade") !== "websocket") {
+async function connectTunnel(request: Request, env: CaptunEnv) {
+  const diagnostic = isConnectDiagnostic(request);
+  if (!diagnostic && request.headers.get("upgrade") !== "websocket") {
     return new Response("Expected WebSocket upgrade\n", { status: 400 });
   }
 
@@ -159,24 +250,176 @@ function connectTunnel(request: Request, env: CaptunEnv) {
   const headers = new Headers(request.headers);
   headers.set(TUNNEL_NAME_HEADER, tunnelName);
   headers.set(TUNNEL_URL_HEADER, tunnelUrl);
-  return shard.fetch(new Request(request, { headers }));
+  const connectRequest = new Request(request, { headers });
+
+  if (diagnostic) {
+    const rateLimited = await hostedRateLimitDiagnosticResponse({
+      env,
+      request,
+      tunnelName,
+      kind: "connect",
+    });
+    if (rateLimited) return rateLimited;
+    return shard.diagnoseConnect(tunnelName, connectRequest);
+  }
+
+  const rateLimited = await hostedRateLimitResponse({
+    env,
+    request,
+    tunnelName,
+    kind: "connect",
+  });
+  if (rateLimited) return rateLimited;
+
+  return shard.fetch(connectRequest);
 }
 
 function isGatewayConnectRequest(request: Request) {
   return new URL(request.url).searchParams.get(GATEWAY_CONNECT_QUERY_PARAM) === "1";
 }
 
-function connectToken(request: Request) {
-  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+function isConnectDiagnostic(request: Request) {
+  if (request.headers.get("upgrade") === "websocket") return false;
+  return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
 }
 
-function constantTimeEqual(actual: Uint8Array, expected: Uint8Array) {
-  if (actual.length !== expected.length) return false;
-  let diff = 0;
-  for (let index = 0; index < actual.length; index++) {
-    diff |= actual[index]! ^ expected[index]!;
+async function hostedRateLimitResponse(input: {
+  env: CaptunEnv;
+  request: Request;
+  tunnelName: string;
+  kind: HostedRateLimitKind;
+}): Promise<Response | undefined> {
+  if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  if (!input.env.HostedRateLimiter) {
+    return hostedRateLimiterMissingResponse(input.env);
   }
-  return diff === 0;
+
+  const config = hostedRateLimitConfig(input.env);
+  const checks = hostedRateLimitChecks({
+    kind: input.kind,
+    clientKey: hostedClientKey(input.request),
+    tunnelName: input.tunnelName,
+    config,
+  });
+  for (const check of checks) {
+    const limiter = input.env.HostedRateLimiter.getByName(hostedRateLimiterName(check.key));
+    const result = await limiter.check({
+      limit: check.limit,
+      windowSeconds: config.windowSeconds,
+    });
+    if (!result.ok) return hostedRateLimitedResponse(result);
+  }
+
+  return undefined;
+}
+
+async function hostedRateLimitDiagnosticResponse(input: {
+  env: CaptunEnv;
+  request: Request;
+  tunnelName: string;
+  kind: HostedRateLimitKind;
+}): Promise<Response | undefined> {
+  if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return undefined;
+  if (!input.env.HostedRateLimiter) {
+    return hostedRateLimiterMissingResponse(input.env);
+  }
+
+  const config = hostedRateLimitConfig(input.env);
+  const checks = hostedRateLimitChecks({
+    kind: input.kind,
+    clientKey: hostedClientKey(input.request),
+    tunnelName: input.tunnelName,
+    config,
+  });
+  for (const check of checks) {
+    const limiter = input.env.HostedRateLimiter.getByName(hostedRateLimiterName(check.key));
+    const result = await limiter.diagnose({
+      limit: check.limit,
+      windowSeconds: config.windowSeconds,
+    });
+    if (!result.ok) return hostedRateLimitedResponse(result);
+  }
+
+  return undefined;
+}
+
+function hostedRateLimiterMissingResponse(env: CaptunEnv) {
+  if (env.HOSTED_RATE_LIMIT_DISABLED === "1") return undefined;
+  return new Response("Hosted rate limiter is not configured\n", {
+    status: 503,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+function hostedRateLimitedResponse(result: Extract<HostedRateLimitResult, { ok: false }>) {
+  return new Response(`Rate limit exceeded. Try again in ${result.retryAfterSeconds}s.\n`, {
+    status: 429,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": String(result.retryAfterSeconds),
+      "x-captun-rate-limit": String(result.limit),
+    },
+  });
+}
+
+function hostedClientKey(request: Request) {
+  return request.headers.get("cf-connecting-ip") || "unknown";
+}
+
+function hostedRateLimitChecks(input: {
+  kind: HostedRateLimitKind;
+  clientKey: string;
+  tunnelName: string;
+  config: ReturnType<typeof hostedRateLimitConfig>;
+}) {
+  if (input.kind === "connect") {
+    return [{ key: `connect:ip:${input.clientKey}`, limit: input.config.connectsPerIp }];
+  }
+
+  return [
+    { key: `request:ip:${input.clientKey}`, limit: input.config.requestsPerIp },
+    { key: `request:tunnel:${input.tunnelName}`, limit: input.config.requestsPerTunnel },
+  ];
+}
+
+function hostedRateLimiterName(key: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index++) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `bucket-${(hash >>> 0).toString(36)}`;
+}
+
+function hostedRateLimitConfig(env: CaptunEnv) {
+  return {
+    windowSeconds: positiveInteger(
+      env.HOSTED_RATE_LIMIT_WINDOW_SECONDS,
+      DEFAULT_HOSTED_RATE_LIMIT_WINDOW_SECONDS,
+    ),
+    connectsPerIp: positiveInteger(
+      env.HOSTED_CONNECTS_PER_IP_PER_WINDOW,
+      DEFAULT_HOSTED_CONNECTS_PER_IP_PER_WINDOW,
+    ),
+    requestsPerIp: positiveInteger(
+      env.HOSTED_REQUESTS_PER_IP_PER_WINDOW,
+      DEFAULT_HOSTED_REQUESTS_PER_IP_PER_WINDOW,
+    ),
+    requestsPerTunnel: positiveInteger(
+      env.HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW,
+      DEFAULT_HOSTED_REQUESTS_PER_TUNNEL_PER_WINDOW,
+    ),
+  };
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return parsed;
 }
 
 function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | undefined {
@@ -429,7 +672,8 @@ console.log(tunnel.url);</textarea>
 const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "https://esm.sh/capnweb@0.8.0";
 
 export async function createCaptunTunnel(options) {
-  const socket = new WebSocket(gatewayConnectUrl(options));
+  const connect = gatewayConnectUrl(options);
+  const socket = new WebSocket(connect.url);
   const readyPromise = waitForReady();
   const tunnelTargetFetcher = new TunnelTargetFetcher(options.fetch, readyPromise.ready);
   const session = newWebSocketRpcSession(socket, tunnelTargetFetcher);
@@ -437,7 +681,7 @@ export async function createCaptunTunnel(options) {
   const tunnel = await readyPromise.promise;
   return {
     url: tunnel.url,
-    token: tunnel.token || options.token,
+    token: tunnel.token || connect.token,
     close: () => disposeSession(session),
   };
 }
@@ -461,10 +705,11 @@ class TunnelTargetFetcher extends RpcTarget {
 function gatewayConnectUrl(options) {
   const url = new URL(options.gateway || "https://captun.sh");
   url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
+  const token = options.token || (url.hostname === "captun.sh" ? randomConnectToken() : undefined);
   url.searchParams.set("captun-connect", "1");
   url.searchParams.set("captun-name", options.name || randomTunnelName());
-  if (options.token) url.searchParams.set("captun-token", options.token);
-  return url;
+  if (token) url.searchParams.set("captun-token", token);
+  return { url, token };
 }
 
 function waitUntilOpen(socket) {
@@ -506,6 +751,12 @@ function waitForReady() {
 
 function randomTunnelName() {
   const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomConnectToken() {
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
