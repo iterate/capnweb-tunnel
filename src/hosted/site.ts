@@ -74,7 +74,7 @@ const WWW_LANDING_PAGE = `<!doctype html>
     #demo-editor .cm-scroller { min-height: 300px; }
     button { margin: 12px 0; padding: 9px 12px; font: inherit; color: #fff; background: #111; border: 1px solid #111; cursor: pointer; }
     button:disabled { opacity: 0.55; cursor: wait; }
-    .status-group { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .status-group { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
     .icon-button { width: 36px; height: 36px; margin: 0; padding: 0; align-items: center; justify-content: center; background: #fff; color: #111; line-height: 1; }
     iframe { width: 100%; height: 180px; border: 1px solid #ddd; background: #fff; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -203,6 +203,7 @@ console.log(tunnel.url);</textarea>
     });
 
     button.addEventListener("click", async () => {
+      const startedAt = performance.now();
       button.disabled = true;
       reload.disabled = true;
       status.textContent = "connecting";
@@ -217,7 +218,7 @@ console.log(tunnel.url);</textarea>
         link.textContent = tunnel.url;
         urlRow.classList.remove("hidden");
         frame.src = tunnel.url + "/";
-        status.textContent = "connected";
+        status.textContent = "connected in " + Math.round(performance.now() - startedAt) + "ms";
         reload.disabled = false;
       } catch (caught) {
         status.textContent = "failed";
