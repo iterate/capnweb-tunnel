@@ -124,7 +124,7 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces (`createCaptunTunnel`, `acceptFetcherCapability`, `acceptFetcherCapabilityFromSocket`, `Fetcher`, and `FetcherStub`) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a deployable Cloudflare Tunnel Gateway, also copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc).
+The core client/server pieces (`createCaptunTunnel`, `acceptFetcherCapability`, `acceptFetcherCapabilityFromSocket`, `Fetcher`, and `FetcherStub`) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a self-hosted Cloudflare Tunnel Gateway, copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc). The Iterate-operated hosted service is separate: its product surface lives under [src/hosted](./src/hosted), with [wrangler.hosted.jsonc](./wrangler.hosted.jsonc) as its deployment config.
 
 ## Advanced CLI Usage
 
