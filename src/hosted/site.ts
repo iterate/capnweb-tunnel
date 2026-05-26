@@ -32,6 +32,15 @@ function wwwCaptunResponse(url: URL): Response {
     });
   }
 
+  if (url.pathname === "/favicon.svg") {
+    return new Response(WWW_FAVICON, {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=86400",
+      },
+    });
+  }
+
   return new Response(WWW_LANDING_PAGE, {
     headers: {
       "content-type": "text/html; charset=utf-8",
@@ -46,6 +55,7 @@ const WWW_LANDING_PAGE = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>captun</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -108,7 +118,7 @@ console.log(tunnel.url);</textarea>
       window.chatMessages.push(await request.text());
       return Response.json({ ok: true });
     }
-    const messages = window.chatMessages.join("\\n");
+    const messages = window.chatMessages.join("\\n").replace(/&/g, '&amp').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;').replace(/\`/g, '&#96;');
     return new Response(\`
       <script>
         let username = document.cookie.match(/username=([^;]+)/)?.[1];
@@ -244,6 +254,12 @@ console.log(tunnel.url);</textarea>
   </script>
 </body>
 </html>`;
+
+const WWW_FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#111"/>
+  <path d="M14 52V34a18 18 0 0 1 36 0v18h-8V34a10 10 0 0 0-20 0v18z" fill="#fff"/>
+  <path d="M28 52V36a4 4 0 0 1 8 0v16z" fill="#111"/>
+</svg>`;
 
 const WWW_BROWSER_MODULE = `import { newWebSocketRpcSession, RpcTarget } from "https://esm.sh/capnweb@0.8.0";
 
