@@ -1,28 +1,21 @@
 import { expect, test } from "vitest";
 
-import { decideTunnelAdmission, type HostedAdmissionEnv } from "../src/hosted-admission.js";
+import {
+  decidePublicTunnelAdmission,
+  type PublicGatewayPolicyEnv,
+} from "../src/hosted/public-gateway-policy.js";
 
-test("hosted tunnel admission allows self-hosted connects without tokens", () => {
-  const admission = decideTunnelAdmission({
-    request: new Request("https://captun.example.com/?captun-connect=1&captun-name=demo"),
-    env: { CUSTOM_HOSTNAME: "captun.example.com" },
-    activeToken: undefined,
-  });
-
-  expect(admission).toMatchObject({ ok: true, token: undefined });
-});
-
-test("hosted tunnel admission checks configured tokens before public-hosted policy", async () => {
-  const rejected = decideTunnelAdmission({
+test("public gateway policy checks configured tokens before anonymous ownership policy", async () => {
+  const rejected = decidePublicTunnelAdmission({
     request: new Request("https://captun.sh/?captun-connect=1&captun-name=demo"),
-    env: { CUSTOM_HOSTNAME: "captun.sh", CAPTUN_TOKEN: "secret" },
+    env: { CAPTUN_TOKEN: "secret" },
     activeToken: undefined,
   });
-  const accepted = decideTunnelAdmission({
+  const accepted = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=secret",
     ),
-    env: { CUSTOM_HOSTNAME: "captun.sh", CAPTUN_TOKEN: "secret" },
+    env: { CAPTUN_TOKEN: "secret" },
     activeToken: undefined,
   });
 
@@ -33,25 +26,25 @@ test("hosted tunnel admission checks configured tokens before public-hosted poli
   expect(accepted).toMatchObject({ ok: true, token: "secret" });
 });
 
-test("hosted tunnel admission ignores active anonymous tokens when token auth is configured", () => {
-  const admission = decideTunnelAdmission({
+test("public gateway policy ignores active anonymous tokens when token auth is configured", () => {
+  const admission = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=secret",
     ),
-    env: { CUSTOM_HOSTNAME: "captun.sh", CAPTUN_TOKEN: "secret" },
+    env: { CAPTUN_TOKEN: "secret" },
     activeToken: "anonymous-a",
   });
 
   expect(admission).toMatchObject({ ok: true, token: "secret" });
 });
 
-test("hosted tunnel admission requires anonymous tokens on captun.sh", async () => {
-  const missing = decideTunnelAdmission({
+test("public gateway policy requires anonymous ownership tokens", async () => {
+  const missing = decidePublicTunnelAdmission({
     request: new Request("https://captun.sh/?captun-connect=1&captun-name=demo"),
     env: hostedEnv(),
     activeToken: undefined,
   });
-  const invalid = decideTunnelAdmission({
+  const invalid = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=no spaces",
     ),
@@ -70,15 +63,15 @@ test("hosted tunnel admission requires anonymous tokens on captun.sh", async () 
   expect(await invalid.response.text()).toBe("Invalid tunnel token\n");
 });
 
-test("hosted tunnel admission allows first and same-token anonymous connects", () => {
-  const first = decideTunnelAdmission({
+test("public gateway policy allows first and same-token anonymous connects", () => {
+  const first = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
     ),
     env: hostedEnv(),
     activeToken: undefined,
   });
-  const sameToken = decideTunnelAdmission({
+  const sameToken = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
     ),
@@ -90,8 +83,8 @@ test("hosted tunnel admission allows first and same-token anonymous connects", (
   expect(sameToken).toMatchObject({ ok: true, token: "token-a" });
 });
 
-test("hosted tunnel admission rejects different active anonymous tokens", async () => {
-  const admission = decideTunnelAdmission({
+test("public gateway policy rejects different active anonymous tokens", async () => {
+  const admission = decidePublicTunnelAdmission({
     request: new Request(
       "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
     ),
@@ -106,6 +99,6 @@ test("hosted tunnel admission rejects different active anonymous tokens", async 
   expect(await admission.response.text()).toBe("Tunnel name is already connected\n");
 });
 
-function hostedEnv(): HostedAdmissionEnv {
-  return { CUSTOM_HOSTNAME: "captun.sh" };
+function hostedEnv(): PublicGatewayPolicyEnv {
+  return {};
 }

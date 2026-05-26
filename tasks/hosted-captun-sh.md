@@ -5,7 +5,7 @@ size: medium
 
 # Hosted captun.sh
 
-Status summary: Initial hosted deployment is live on `captun.sh`. The follow-up PR now adds anonymous tunnel tokens, same-token reconnects, different-token `409`s, and hosted-only Durable Object rate-limit buckets. The main missing work is still a proper auth/payment control plane plus richer resource caps and observability.
+Status summary: Initial hosted deployment is live on `captun.sh`. The follow-up PR now adds anonymous tunnel tokens, same-token reconnects, different-token `409`s, and hosted-only Durable Object rate-limit buckets under `src/hosted/`. The main missing work is still a proper auth/payment control plane plus richer resource caps and observability.
 
 ## Initial public-hosted slice
 
@@ -22,7 +22,7 @@ Status summary: Initial hosted deployment is live on `captun.sh`. The follow-up 
 
 - [ ] Use cryptographic random names for free hosted tunnels and keep friendly/custom subdomains behind auth or a paid reservation model.
 - [x] Add per-session tunnel ownership: first client claims a tunnel name, the same token can reconnect, and a different token gets `409` instead of evicting the active tunnel. _Hosted `captun.sh` now requires a generated `captun-token`; `CaptunServerShard` keeps the active tunnel token and rejects mismatched reconnects._
-- [x] Add hosted throttles on connect attempts and forwarded requests. _Added a `HostedRateLimiter` Durable Object binding with per-IP connect/request buckets and per-tunnel request buckets for `CUSTOM_HOSTNAME=captun.sh` only._
+- [x] Add hosted throttles on connect attempts and forwarded requests. _Added a `HostedRateLimiter` Durable Object binding with per-IP connect/request buckets and per-tunnel request buckets in the hosted Worker entrypoint._
 - [ ] Add broader Durable Object backed limits for active tunnels, concurrent tunnels per IP/account, and suspicious reconnect churn.
 - [ ] Add basic resource caps: max tunnel lifetime, idle timeout, in-flight request cap, request body size limit, and response streaming guardrails.
 - [ ] Add observability for rejected connects, `429`s, high-volume tunnel names, high-volume IPs, and top error classes.

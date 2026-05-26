@@ -1,17 +1,16 @@
-import { CONNECT_TOKEN_QUERY_PARAM, HOSTED_CAPTUN_HOSTNAME } from "./routing.js";
+import { CONNECT_TOKEN_QUERY_PARAM } from "../routing.js";
 
-export type HostedAdmissionEnv = {
+export type PublicGatewayPolicyEnv = {
   CAPTUN_TOKEN?: string;
-  CUSTOM_HOSTNAME?: string;
 };
 
 export type TunnelAdmission =
   | { ok: true; token: string | undefined }
   | { ok: false; response: Response };
 
-export function decideTunnelAdmission(input: {
+export function decidePublicTunnelAdmission(input: {
   request: Request;
-  env: HostedAdmissionEnv;
+  env: PublicGatewayPolicyEnv;
   activeToken: string | undefined;
 }): TunnelAdmission {
   const configuredToken = input.env.CAPTUN_TOKEN;
@@ -22,8 +21,6 @@ export function decideTunnelAdmission(input: {
     }
     return { ok: true, token };
   }
-
-  if (input.env.CUSTOM_HOSTNAME !== HOSTED_CAPTUN_HOSTNAME) return { ok: true, token: undefined };
 
   if (!token) return { ok: false, response: reject("Missing tunnel token\n", 400) };
   if (!/^[a-zA-Z0-9._~-]{1,128}$/.test(token)) {
