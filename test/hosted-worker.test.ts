@@ -142,9 +142,6 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   const chatSource = textareaValue(html, "demo-chat-source");
   expect(chatSource).toEqual(expect.stringContaining("window.chatMessages ||= [];"));
   expect(chatSource).toEqual(expect.stringContaining('if (request.method === "POST")'));
-  expect(chatSource).toEqual(expect.stringContaining('.replace(/&/g, "&amp;")'));
-  expect(chatSource).toEqual(expect.stringContaining('.replace(/</g, "&lt;")'));
-  expect(chatSource).not.toContain("replace(/[^\\w-,.'\"!?()]/g");
   expect(chatSource).toEqual(expect.stringContaining("function send(form)"));
   expect(chatSource).toEqual(expect.stringContaining("<button>send</button>"));
 

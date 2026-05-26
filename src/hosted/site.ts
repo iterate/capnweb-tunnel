@@ -118,13 +118,7 @@ function chatRoomDemoSource() {
         return Response.json({ ok: true });
       }
 
-      const messages = window.chatMessages
-        .join("\n")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+      const messages = window.chatMessages.join("\n").replace(/[^\w-,.'"!?()]/g, "");
 
       return new Response(
         [
