@@ -59,7 +59,7 @@ export class CaptunServerShard extends DurableObject<CaptunEnv> {
       // Constant-time comparison to avoid leaking the gateway token via timing.
       const actual = new TextEncoder().encode(connectToken(request) || "");
       const want = new TextEncoder().encode(expected);
-      if (actual.length !== want.length || !crypto.subtle.timingSafeEqual(actual, want)) {
+      if (!constantTimeEqual(actual, want)) {
         return new Response("Unauthorized\n", { status: 401 });
       }
     }
@@ -168,6 +168,15 @@ function isGatewayConnectRequest(request: Request) {
 
 function connectToken(request: Request) {
   return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+function constantTimeEqual(actual: Uint8Array, expected: Uint8Array) {
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let index = 0; index < actual.length; index++) {
+    diff |= actual[index]! ^ expected[index]!;
+  }
+  return diff === 0;
 }
 
 function hostedCaptunResponse(request: Request, env: CaptunEnv): Response | undefined {
