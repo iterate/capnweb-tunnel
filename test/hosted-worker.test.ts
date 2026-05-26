@@ -12,6 +12,22 @@ test("Hosted Captun redirects the apex hostname to www", async () => {
   expect(response.headers.get("location")).toBe("https://www.captun.sh/docs?x=1");
 });
 
+test("Hosted Captun lets apex gateway connects reach the tunnel gateway", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture();
+
+  const response = await fixture.worker.fetch(
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: { upgrade: "websocket" },
+      redirect: "manual",
+    },
+  );
+
+  expect(response).toMatchObject({ status: 101 });
+  response.webSocket?.accept();
+  response.webSocket?.close();
+});
+
 test("Hosted Captun serves a static landing page on www", async () => {
   await using fixture = await createHostedCaptunWorkerFixture();
 
