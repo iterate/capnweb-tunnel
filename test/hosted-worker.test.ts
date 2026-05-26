@@ -142,6 +142,9 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   const chatSource = textareaValue(html, "demo-chat-source");
   expect(chatSource).toEqual(expect.stringContaining("window.chatMessages ||= [];"));
   expect(chatSource).toEqual(expect.stringContaining('if (request.method === "POST")'));
+  expect(chatSource).toEqual(expect.stringContaining('.replace(/&/g, "&amp;")'));
+  expect(chatSource).toEqual(expect.stringContaining('.replace(/</g, "&lt;")'));
+  expect(chatSource).not.toContain("replace(/[^\\w-,.'\"!?()]/g");
   expect(chatSource).toEqual(expect.stringContaining("function send(form)"));
   expect(chatSource).toEqual(expect.stringContaining("<button>send</button>"));
 
@@ -226,6 +229,10 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   expect(html).toEqual(expect.stringContaining("text-size-adjust: 100%"));
   expect(html).toEqual(expect.stringContaining("function currentSource()"));
   expect(html).toEqual(expect.stringContaining("async function evaluateDemo()"));
+  expect(html).not.toContain("async function refreshTunnelFromSource()");
+  expect(html).not.toContain('source.addEventListener("input"');
+  expect(html).not.toContain("EditorView.updateListener");
+  expect(html).not.toContain("docChanged");
   expect(html).toEqual(expect.stringContaining('"return (async () =>'));
   expect(html).not.toContain("gatewayForCurrentPage");
   expect(html).not.toContain("options.gateway");
@@ -238,6 +245,8 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   expect(html).toEqual(expect.stringContaining("frame.src = tunnelUrl;"));
   expect(html).toEqual(expect.stringContaining("const startedAt = performance.now();"));
   expect(html).toEqual(expect.stringContaining("if (tunnel) tunnel[Symbol.dispose]();"));
+  expect(html).toEqual(expect.stringContaining("await closeMcpTransports();"));
+  expect(html).toEqual(expect.stringContaining("async function closeMcpTransports()"));
   expect(html).not.toContain("tunnel.close()");
   expect(html).toEqual(
     expect.stringContaining(

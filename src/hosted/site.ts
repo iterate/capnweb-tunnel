@@ -118,7 +118,13 @@ function chatRoomDemoSource() {
         return Response.json({ ok: true });
       }
 
-      const messages = window.chatMessages.join("\n").replace(/[^\w-,.'"!?()]/g, "");
+      const messages = window.chatMessages
+        .join("\n")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 
       return new Response(
         [
@@ -269,19 +275,6 @@ function landingPageScriptSource() {
     activeFetch = capturedFetch;
   }
 
-  async function refreshTunnelFromSource() {
-    if (!tunnel) return;
-    try {
-      await evaluateDemo();
-      status.textContent = "updated";
-      error.textContent = "";
-      showTunnelTarget(tunnel.url);
-    } catch (caught: any) {
-      status.textContent = "edit has an error";
-      error.textContent = caught && caught.stack ? caught.stack : String(caught);
-    }
-  }
-
   function switchSnippet(name: string) {
     const snippet = snippets[name];
     if (!snippet) return;
@@ -294,7 +287,6 @@ function landingPageScriptSource() {
       );
     }
     setSource(snippet.source);
-    if (!editor) void refreshTunnelFromSource();
   }
 
   function setSource(nextSource: string) {
@@ -320,7 +312,6 @@ function landingPageScriptSource() {
     frame.src = tunnelUrl;
   }
 
-  source.addEventListener("input", () => void refreshTunnelFromSource());
   for (const snippetButton of snippetButtons) {
     snippetButton.addEventListener("click", () =>
       switchSnippet(snippetButton.dataset.demoSnippet!),
@@ -339,6 +330,7 @@ function landingPageScriptSource() {
 
     try {
       if (tunnel) tunnel[Symbol.dispose]();
+      await closeMcpTransports();
       await evaluateDemo();
       const { createCaptunTunnel } = await captunBrowser;
       const options = { fetch: (request: Request) => activeFetch(request) };
@@ -354,6 +346,13 @@ function landingPageScriptSource() {
       button.disabled = false;
     }
   });
+
+  async function closeMcpTransports() {
+    for (const transport of window.mcpTransports?.values() || []) {
+      await transport.close();
+    }
+    window.mcpTransports = new Map();
+  }
 
   function previewHtml(url: string) {
     return (
@@ -382,13 +381,7 @@ function landingPageScriptSource() {
       });
       editor = new EditorView({
         doc: source.value,
-        extensions: [
-          basicSetup,
-          javascript(),
-          EditorView.updateListener.of((update: { docChanged: boolean }) => {
-            if (update.docChanged) void refreshTunnelFromSource();
-          }),
-        ],
+        extensions: [basicSetup, javascript()],
         parent: editorHost,
       });
       fromCodeSource.classList.add("enhanced");
