@@ -184,6 +184,8 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   expect(mcpSource).not.toContain("alert(");
   expect(mcpSource).not.toContain("my_funky_search");
   expect(mcpSource).toEqual(expect.stringContaining("transport.handleRequest(request)"));
+  expect(mcpSource).toEqual(expect.stringContaining("onsessionclosed: (sessionId) => {"));
+  expect(mcpSource).toEqual(expect.stringContaining("window.mcpTransports?.delete(sessionId);"));
   expect(mcpSource).toEqual(
     expect.stringContaining(
       'if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));',
@@ -202,7 +204,7 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
   );
   expect(mcpSource).toEqual(
     expect.stringContaining(
-      'response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")',
+      'response.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")',
     ),
   );
   expect(mcpSource).toEqual(

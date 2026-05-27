@@ -195,6 +195,9 @@ async function mcpServerDemoSource() {
 
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse: true,
+      onsessionclosed: (sessionId) => {
+        window.mcpTransports?.delete(sessionId);
+      },
       sessionIdGenerator: () => crypto.randomUUID(),
     });
     await mcpServer.connect(transport);
@@ -202,7 +205,7 @@ async function mcpServerDemoSource() {
   }
   function withCors(response: Response) {
     response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     // prettier-ignore
     response.headers.set("Access-Control-Allow-Headers", "accept, authorization, content-type, mcp-protocol-version, mcp-session-id");
     response.headers.set("Access-Control-Expose-Headers", "mcp-session-id");
