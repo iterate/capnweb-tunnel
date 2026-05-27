@@ -117,6 +117,15 @@ export function isValidTunnelName(name: string): boolean {
   return true;
 }
 
+export function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  );
+}
+
 /** Maps a tunnel name to a stable Durable Object shard name. */
 export function captunShardName(tunnelName: string, shardCount: number) {
   if (!Number.isFinite(shardCount) || shardCount <= 1) return "tunnel-shard-0";

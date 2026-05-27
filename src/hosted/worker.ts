@@ -12,6 +12,7 @@ import {
   getTunnelNameFromUrl,
   getTunnelUrl,
   HOSTED_CAPTUN_HOSTNAME,
+  isLoopbackHostname,
   isValidTunnelName,
   RESERVED_TUNNEL_NAMES,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
@@ -72,8 +73,9 @@ export default {
     const hostedResponse = hostedCaptunResponse(request);
     if (hostedResponse) return hostedResponse;
 
+    const customHostname = customHostnameForRequest(request, env);
     const tunnelName = getTunnelNameFromUrl({
-      customHostname: env.CUSTOM_HOSTNAME,
+      customHostname,
       url: request.url,
     });
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
@@ -91,10 +93,10 @@ export default {
     if (rateLimited) return rateLimited;
 
     const shard = captunServerShard(env, tunnelName);
-    const forwarded = new Request(request.url, request);
+    const forwarded = createForwardedRequest(request, customHostname);
     const tunnelUrl = getTunnelUrl({
       reqUrl: request.url,
-      customHostname: env.CUSTOM_HOSTNAME,
+      customHostname,
       tunnelName,
     });
     const response = await shard.forward(
@@ -117,10 +119,11 @@ async function connectTunnel(request: Request, env: HostedCaptunEnv) {
     return new Response("Missing tunnel name\n", { status: 404 });
   }
 
+  const customHostname = customHostnameForRequest(request, env);
   const shard = captunServerShard(env, tunnelName);
   const tunnelUrl = getTunnelUrl({
     reqUrl: request.url,
-    customHostname: env.CUSTOM_HOSTNAME,
+    customHostname,
     tunnelName,
   });
   const connectRequest = createTunnelConnectRequest({ request, tunnelName, tunnelUrl });
@@ -158,6 +161,20 @@ function isConnectDiagnostic(request: Request) {
 
 function connectToken(request: Request) {
   return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+function customHostnameForRequest(request: Request, env: HostedCaptunEnv) {
+  const url = new URL(request.url);
+  if (isLoopbackHostname(url.hostname)) return undefined;
+  return env.CUSTOM_HOSTNAME;
+}
+
+function createForwardedRequest(request: Request, customHostname: string | undefined) {
+  const url = new URL(request.url);
+  if (!customHostname) {
+    url.pathname = url.pathname.match(/^\/[^/]+(\/.*)?$/)?.[1] || "/";
+  }
+  return new Request(url, request);
 }
 
 function stripSetCookieHeadersOutsideTunnel(response: Response, tunnelHostname: string) {

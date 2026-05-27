@@ -21,6 +21,7 @@ export async function createMiniflareWorkerFixture(options: {
     format: "esm",
     platform: "neutral",
     target: "es2022",
+    keepNames: false,
     external: ["cloudflare:workers"],
   });
 

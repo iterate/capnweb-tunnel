@@ -83,6 +83,10 @@ test("Hosted Captun serves the browser demo module on www", async () => {
   expect(module).toEqual(expect.stringContaining("captun-connect"));
   expect(module).toEqual(expect.stringContaining("captun-token"));
   expect(module).toEqual(expect.stringContaining("randomConnectToken"));
+  expect(module).toEqual(
+    expect.stringContaining("[Symbol.dispose]: () => session[Symbol.dispose]()"),
+  );
+  expect(module).not.toContain("close: () => disposeSession(session)");
   expect(module).not.toEqual(expect.stringContaining("__captun-connect"));
 });
 
@@ -100,27 +104,116 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
     html.indexOf(
       'This works in <em>any</em> environment supported by <a href="https://github.com/cloudflare/capnweb">capnweb</a>',
     ),
-  ).toBeLessThan(
-    html.indexOf("Edit the fetch function, create a tunnel, then the iframe below will load"),
-  );
+  ).toBeLessThan(html.indexOf('id="demo-description"'));
   expect(html).toEqual(
     expect.stringContaining(
       'This works in <em>any</em> environment supported by <a href="https://github.com/cloudflare/capnweb">capnweb</a>',
     ),
   );
-  expect(html).toEqual(expect.stringContaining('// your "server" is this browser tab!'));
-  expect(html).toEqual(expect.stringContaining("window.chatMessages"));
-  expect(textareaValue(html, "demo-source")).toEqual(
+  expect(html).toEqual(
     expect.stringContaining(
-      "window.chatMessages.join(\"\\n\").replace(/&/g, '&amp').replace(/</g, '&lt').replace(/>/g, '&gt').replace(/\"/g, '&quot').replace(/'/g, '&#039').replace(/`/g, '&#96')",
+      '<p id="demo-description">Return a tiny text response from this browser tab.</p>',
     ),
   );
-  expect(html).toEqual(expect.stringContaining("document.cookie"));
-  expect(html).toEqual(expect.stringContaining("username ||= "));
-  expect(html).toEqual(expect.stringContaining("function send(form)"));
-  expect(html).toEqual(expect.stringContaining('onsubmit="send(this); return false"'));
-  expect(html).toEqual(expect.stringContaining("<button>send</button>"));
-  expect(html).toEqual(expect.stringContaining("Response.json({ ok: true })"));
+  expect(html).toEqual(expect.stringContaining('class="snippet-tabs"'));
+  expect(html).toEqual(
+    expect.stringContaining(
+      '<button class="snippet-tab" type="button" data-demo-snippet="hello" aria-pressed="true">hello world</button>',
+    ),
+  );
+  expect(html).toEqual(
+    expect.stringContaining(
+      '<button class="snippet-tab" type="button" data-demo-snippet="chat" aria-pressed="false">chat room</button>',
+    ),
+  );
+  expect(html).toEqual(
+    expect.stringContaining(
+      '<button class="snippet-tab" type="button" data-demo-snippet="mcp" aria-pressed="false">mcp server</button>',
+    ),
+  );
+  const demoSource = textareaValue(html, "demo-source");
+  expect(demoSource).toEqual(
+    `createCaptunTunnel({
+  fetch: () => new Response("hello world from this browser tab\\n")
+});`,
+  );
+  expect(demoSource).not.toContain("@modelcontextprotocol");
+
+  const chatSource = textareaValue(html, "demo-chat-source");
+  expect(chatSource).toEqual(expect.stringContaining("window.chatMessages ||= [];"));
+  expect(chatSource).toEqual(expect.stringContaining('if (request.method === "POST")'));
+  expect(chatSource).toEqual(expect.stringContaining("function send(form)"));
+  expect(chatSource).toEqual(expect.stringContaining("<button>send</button>"));
+
+  const mcpSource = textareaValue(html, "demo-mcp-source");
+  expect(mcpSource.indexOf('import("https://esm.sh/zod@3.25.76")')).toBeLessThan(
+    mcpSource.indexOf(
+      'import("https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76")',
+    ),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'import("https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/mcp.js?deps=zod@3.25.76")',
+    ),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'import(\n  "https://esm.sh/@modelcontextprotocol/sdk@1.29.0/server/webStandardStreamableHttp.js?deps=zod@3.25.76"',
+    ),
+  );
+  expect(mcpSource).toEqual(expect.stringContaining('import("https://esm.sh/zod@3.25.76")'));
+  expect(mcpSource).toEqual(expect.stringContaining("new McpServer"));
+  expect(mcpSource).toEqual(expect.stringContaining("WebStandardStreamableHTTPServerTransport"));
+  expect(mcpSource).toEqual(expect.stringContaining('"ask_question"'));
+  expect(mcpSource).toEqual(
+    expect.stringContaining("await new Promise((resolve) => setTimeout(resolve, 3000));"),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining('const answer = window.prompt(question) || "";'),
+  );
+  expect(mcpSource).toEqual(expect.stringContaining("window.mcpTransports = new Map();"));
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      "const transport = window.mcpTransports.get(sessionId) || await createMcpTransport();",
+    ),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining("if (responseSessionId) window.mcpTransports.set"),
+  );
+  expect(mcpSource).not.toContain('"alert"');
+  expect(mcpSource).not.toContain("alert(");
+  expect(mcpSource).not.toContain("my_funky_search");
+  expect(mcpSource).toEqual(expect.stringContaining("transport.handleRequest(request)"));
+  expect(mcpSource).toEqual(expect.stringContaining("onsessionclosed: (sessionId) => {"));
+  expect(mcpSource).toEqual(expect.stringContaining("window.mcpTransports?.delete(sessionId);"));
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));',
+    ),
+  );
+  expect(mcpSource).toEqual(expect.stringContaining("return withCors(response);"));
+  expect(mcpSource).toEqual(expect.stringContaining("function withCors(response)"));
+  expect(mcpSource).not.toContain('request.method === "DELETE"');
+  expect(mcpSource).toEqual(
+    expect.stringContaining('response.headers.set("Access-Control-Allow-Origin", "*")'),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'response.headers.set("Access-Control-Allow-Headers", "accept, authorization, content-type, mcp-protocol-version, mcp-session-id")',
+    ),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'response.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")',
+    ),
+  );
+  expect(mcpSource).toEqual(
+    expect.stringContaining(
+      'response.headers.set("Access-Control-Expose-Headers", "mcp-session-id")',
+    ),
+  );
+  expect(html).not.toContain("function browserDemoFetch(fetcher)");
+  expect(html).toEqual(expect.stringContaining("capturedFetch = options.fetch;"));
   expect(html).toEqual(expect.stringContaining('<textarea id="demo-source" spellcheck="false">'));
   expect(html).toEqual(
     expect.stringContaining(
@@ -133,10 +226,27 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
     ),
   );
   expect(html).toEqual(expect.stringContaining("text-size-adjust: 100%"));
-  expect(html).toEqual(expect.stringContaining('style="font-size:16px" autofocus'));
   expect(html).toEqual(expect.stringContaining("function currentSource()"));
-  expect(html).toEqual(expect.stringContaining('frame.src = tunnel.url + "/"'));
+  expect(html).toEqual(expect.stringContaining("async function evaluateDemo()"));
+  expect(html).not.toContain("async function refreshTunnelFromSource()");
+  expect(html).not.toContain('source.addEventListener("input"');
+  expect(html).not.toContain("EditorView.updateListener");
+  expect(html).not.toContain("docChanged");
+  expect(html).toEqual(expect.stringContaining('"return (async () =>'));
+  expect(html).not.toContain("gatewayForCurrentPage");
+  expect(html).not.toContain("options.gateway");
+  expect(html).toEqual(expect.stringContaining("function switchSnippet(name)"));
+  expect(html).not.toContain("function tunnelUrlForActiveSnippet");
+  expect(html).not.toContain('path: "/mcp"');
+  expect(html).toEqual(expect.stringContaining("function showTunnelTarget(tunnelUrl)"));
+  expect(html).toEqual(expect.stringContaining("link.href = tunnelUrl;"));
+  expect(html).toEqual(expect.stringContaining("frame.srcdoc = previewHtml(tunnelUrl);"));
+  expect(html).toEqual(expect.stringContaining("frame.src = tunnelUrl;"));
   expect(html).toEqual(expect.stringContaining("const startedAt = performance.now();"));
+  expect(html).toEqual(expect.stringContaining("if (tunnel) tunnel[Symbol.dispose]();"));
+  expect(html).toEqual(expect.stringContaining("await closeMcpTransports();"));
+  expect(html).toEqual(expect.stringContaining("async function closeMcpTransports()"));
+  expect(html).not.toContain("tunnel.close()");
   expect(html).toEqual(
     expect.stringContaining(
       'status.textContent = "connected in " + Math.round(performance.now() - startedAt) + "ms";',
@@ -147,6 +257,45 @@ test("Hosted Captun landing page includes an in-browser tunnel demo", async () =
     expect.stringContaining('const captunBrowser = import("/captun.browser.js");'),
   );
   expect(html).not.toContain('import { createCaptunTunnel } from "/captun.browser.js";');
+});
+
+test("Hosted Captun serves the browser demo on loopback dev origins", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture();
+
+  const page = await fixture.worker.fetch(`${fixture.origin}/`);
+  const browserModule = await fixture.worker.fetch(`${fixture.origin}/captun.browser.js`);
+
+  expect(page).toMatchObject({ status: 200 });
+  expect(page.headers.get("content-type")).toContain("text/html");
+  expect(await page.text()).toEqual(expect.stringContaining("<h2>Try it in this tab</h2>"));
+  expect(browserModule).toMatchObject({ status: 200 });
+  expect(browserModule.headers.get("content-type")).toContain("application/javascript");
+});
+
+test("Hosted Captun uses folder tunnel routing on loopback dev origins", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture({
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+  using _tunnel = await createDirectWorkerTunnel({
+    fixture,
+    url: `${fixture.origin}/?captun-connect=1&captun-name=demo&captun-token=token-a`,
+    response: (request) =>
+      Response.json({
+        path: new URL(request.url).pathname,
+        query: new URL(request.url).search,
+      }),
+    clientIp: "203.0.113.5",
+  });
+
+  const response = await fixture.worker.fetch(`${fixture.origin}/demo/mcp?session=1`, {
+    headers: { "cf-connecting-ip": "203.0.113.6" },
+  });
+
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.json()).toMatchObject({
+    path: "/mcp",
+    query: "?session=1",
+  });
 });
 
 test("Hosted Captun landing page loads CodeMirror for the browser demo editor", async () => {
@@ -569,7 +718,7 @@ test.each([
 async function createDirectWorkerTunnel(options: {
   fixture: any;
   url: string;
-  response: string | (() => Response);
+  response: string | ((request: Request) => Response);
   clientIp: string;
 }) {
   const response = await options.fixture.worker.fetch(options.url, {
@@ -592,16 +741,16 @@ async function createDirectWorkerTunnel(options: {
 }
 
 class TestTunnelFetcher extends RpcTarget {
-  private response: string | (() => Response);
+  private response: string | ((request: Request) => Response);
 
-  constructor(response: string | (() => Response)) {
+  constructor(response: string | ((request: Request) => Response)) {
     super();
     this.response = response;
   }
 
-  fetch() {
+  fetch(request: Request) {
     if (typeof this.response === "string") return new Response(this.response);
-    return this.response();
+    return this.response(request);
   }
 
   ready() {}

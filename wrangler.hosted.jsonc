@@ -1,9 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "captun-public",
+  "account_id": "04b3b57291ef2626c6a8daa9d47065a7",
   "main": "src/hosted/worker.ts",
   "compatibility_date": "2026-05-15",
+  "keep_names": false,
   "workers_dev": false,
+  "routes": [
+    { "pattern": "captun.sh/*", "zone_name": "captun.sh" },
+    { "pattern": "*.captun.sh/*", "zone_name": "captun.sh" },
+  ],
   "preview_urls": false,
   "observability": {
     "enabled": true,
