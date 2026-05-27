@@ -13,11 +13,14 @@ import { createCli, yamlTableConsoleLogger } from "trpc-cli";
 import { z } from "zod/v4";
 import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
-import { CaptunTunnelConnectError, createCaptunTunnel } from "../index.js";
+import {
+  CaptunTunnelConnectError,
+  createCaptunTunnel,
+  HOSTED_CAPTUN_GATEWAY,
+  randomConnectToken,
+} from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
-import { HOSTED_CAPTUN_GATEWAY, HOSTED_CAPTUN_HOSTNAME } from "../routing.js";
-import { randomConnectToken } from "../token.js";
 import {
   captunHealthResponse,
   confirmTunnelHealth,
@@ -447,7 +450,7 @@ function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
 
   const name = input.name || randomName();
   const target = normalizeTarget(input.target);
-  const token = input.token || config?.token || hostedGatewayToken(gateway);
+  const token = input.token || config?.token || randomConnectToken();
 
   return {
     name,
@@ -456,11 +459,6 @@ function resolveTunnel(input: TunnelCliInput, config?: Config): ResolvedTunnel {
     token,
     requestLogs: input.requestLogs,
   };
-}
-
-function hostedGatewayToken(gateway: string) {
-  if (new URL(gateway).hostname !== HOSTED_CAPTUN_HOSTNAME) return undefined;
-  return randomConnectToken();
 }
 
 function normalizeTarget(target: string) {

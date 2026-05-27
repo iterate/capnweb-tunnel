@@ -100,6 +100,37 @@
   },
   "overrides": [
     {
+      "files": ["src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": ".*",
+                "message": "Root library source may only import capnweb."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "examples/**",
+        "oxlint-plugin-captun.js",
+        "scripts/**",
+        "src/cli/**",
+        "src/hosted/**",
+        "src/server/**",
+        "src/worker/**",
+        "test/**"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
       "files": ["**/test/**", "**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}"],
       "rules": {
         "captun/helpers-after-tests": "error",

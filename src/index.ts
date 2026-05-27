@@ -1,17 +1,55 @@
+// oxlint-disable-next-line no-restricted-imports -- this is the only import we do
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
-import {
-  CONNECT_TOKEN_QUERY_PARAM,
-  GATEWAY_CONNECT_QUERY_PARAM,
-  HOSTED_CAPTUN_GATEWAY,
-  HOSTED_CAPTUN_HOSTNAME,
-  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
-  TUNNEL_NAME_QUERY_PARAM,
-} from "./routing.js";
-import { acceptFetcherCapabilityFromSocket } from "./server-core.js";
-import type { Fetcher, TunnelReady } from "./server-core.js";
-import { randomConnectToken } from "./token.js";
-export type { Fetcher, FetcherStub } from "./server-core.js";
-export { acceptFetcherCapabilityFromSocket } from "./server-core.js";
+
+export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
+export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
+export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
+export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
+export const TUNNEL_CONNECT_DIAGNOSTIC_HEADER = "x-captun-connect-diagnostic";
+
+export interface Fetcher {
+  fetch(request: Request): Response | Promise<Response>;
+}
+
+export type TunnelReady = {
+  url: string;
+  token?: string;
+};
+
+export interface FetcherStub extends Fetcher, Disposable {
+  ready(tunnel: TunnelReady): void | Promise<void>;
+}
+
+export interface RemoteFetcherCapability extends FetcherStub {
+  onRpcBroken(callback: () => void): void;
+}
+
+export function fetcherStubFromRemoteCapability(
+  remote: RemoteFetcherCapability,
+  options: { onDisconnect?: () => void },
+): FetcherStub {
+  remote.onRpcBroken(() => options.onDisconnect?.());
+
+  return {
+    fetch: (request) => remote.fetch(request),
+    ready: (tunnel) => remote.ready(tunnel),
+    [Symbol.dispose]: () => remote[Symbol.dispose](),
+  };
+}
+
+export function acceptFetcherCapabilityFromSocket(
+  socket: WebSocket,
+  options: { onDisconnect?: () => void } = {},
+): FetcherStub {
+  const remote = newWebSocketRpcSession<FetcherStub>(socket);
+  return fetcherStubFromRemoteCapability(remote, options);
+}
+
+export function randomConnectToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 /** Fetch is all you need!
  *
@@ -41,6 +79,19 @@ type TunnelClientCapability = Fetcher & {
   ready(tunnel: TunnelReady): void | Promise<void>;
 };
 
+type WorkerWebSocket = WebSocket & {
+  accept(): void;
+};
+
+type WorkerWebSocketPairConstructor = new () => {
+  0: WorkerWebSocket;
+  1: WorkerWebSocket;
+};
+
+type WebSocketResponseInit = ResponseInit & {
+  webSocket: WebSocket;
+};
+
 const TUNNEL_READY_TIMEOUT_MS = 5_000;
 const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
 
@@ -52,20 +103,19 @@ export async function createCaptunTunnel(
     token?: string;
   },
 ): Promise<CaptunTunnel> {
-  const connect = gatewayConnectRequest(options);
+  const connectUrl = gatewayConnectRequest(options);
   const ready = Promise.withResolvers<TunnelReady>();
-  const socket = createWebSocket(connect.url);
+  const socket = createWebSocket(connectUrl);
   const fetcher = new TunnelTargetFetcher({
     fetch: options.fetch,
     ready: (tunnel) => ready.resolve(tunnel),
   });
   const session = newWebSocketRpcSession(socket, fetcher);
   try {
-    await waitUntilOpen(socket, connect.url);
+    await waitUntilOpen(socket, connectUrl);
     const tunnel = await waitUntilReady(ready.promise);
     return {
-      url: tunnel.url,
-      token: tunnel.token || connect.token,
+      ...tunnel,
       [Symbol.dispose]: () => session[Symbol.dispose](),
     };
   } catch (error) {
@@ -77,15 +127,11 @@ export async function createCaptunTunnel(
 function gatewayConnectRequest(options: { gateway?: string | URL; name?: string; token?: string }) {
   const name = options.name || randomTunnelName();
   const url = new URL(options.gateway || HOSTED_CAPTUN_GATEWAY);
-  const token = options.token || (isHostedCaptunGateway(url) ? randomConnectToken() : undefined);
+  const token = options.token || randomConnectToken();
   url.searchParams.set(GATEWAY_CONNECT_QUERY_PARAM, "1");
   url.searchParams.set(TUNNEL_NAME_QUERY_PARAM, name);
-  if (token) url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, token);
-  return { url: url.toString(), name, token };
-}
-
-function isHostedCaptunGateway(url: URL) {
-  return url.hostname === HOSTED_CAPTUN_HOSTNAME;
+  url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, token);
+  return url.toString();
 }
 
 function randomTunnelName() {
@@ -206,15 +252,19 @@ async function waitUntilReady(promise: Promise<TunnelReady>) {
 
 /** Creates a Worker WebSocket upgrade response and matching fetcher stub. */
 export function acceptFetcherCapability(options: { onDisconnect?: () => void } = {}) {
-  const pair = new WebSocketPair();
+  const WorkerWebSocketPair = (
+    globalThis as typeof globalThis & { WebSocketPair: WorkerWebSocketPairConstructor }
+  ).WebSocketPair;
+  const pair = new WorkerWebSocketPair();
   const clientSocket = pair[0];
   const serverSocket = pair[1];
+  const responseInit: WebSocketResponseInit = { status: 101, webSocket: clientSocket };
 
   serverSocket.accept();
   const fetcher = acceptFetcherCapabilityFromSocket(serverSocket, options);
 
   return {
     fetcher,
-    response: new Response(null, { status: 101, webSocket: clientSocket }),
+    response: new Response(null, responseInit),
   };
 }

@@ -1,4 +1,4 @@
-import { acceptFetcherCapabilityFromSocket } from "./server-core.js";
+import { acceptFetcherCapabilityFromSocket } from "../index.js";
 
 /** A type `import('ws').WebSocket` conforms to. This will be cast internally before passing to `capnweb` */
 export interface WSWebSocketLike {

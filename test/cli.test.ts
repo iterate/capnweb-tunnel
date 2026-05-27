@@ -79,7 +79,7 @@ test("CLI tunnel connect errors keep DNS guidance for unrelated 409 responses", 
   });
 });
 
-test("CLI tunnel retries reuse the same generated hosted token", async () => {
+test("CLI tunnel retries reuse the same generated client token for any gateway", async () => {
   await using target = await createTestServer(defaultTargetHandler);
   const tokens: Array<string | undefined> = [];
 
@@ -101,7 +101,7 @@ test("CLI tunnel retries reuse the same generated hosted token", async () => {
 
   await client.tunnel({
     target: String(target.port),
-    gateway: "https://captun.sh",
+    gateway: "https://custom.example.com",
     name: "demo",
     requestLogs: false,
   });

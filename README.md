@@ -67,7 +67,7 @@ That's all you need! No local ports, just a fetch function.
 
 ## Advanced usage
 
-The captun [worker.ts](./src/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
+The captun [worker.ts](./src/server/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:
 
 ```ts
 import { DurableObject } from "cloudflare:workers";
@@ -124,10 +124,10 @@ export default {
 } satisfies ExportedHandler<WeatherReporterEnv>;
 ```
 
-The core client/server pieces (`createCaptunTunnel`, `acceptFetcherCapability`, `acceptFetcherCapabilityFromSocket`, `Fetcher`, and `FetcherStub`) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a self-hosted Cloudflare Tunnel Gateway, copy or adapt [src/worker.ts](./src/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc). The Iterate-operated hosted service is separate: its product surface lives under [src/hosted](./src/hosted), with [wrangler.hosted.jsonc](./wrangler.hosted.jsonc) as its deployment config.
+The core client/server pieces (`createCaptunTunnel`, `acceptFetcherCapability`, `acceptFetcherCapabilityFromSocket`, `Fetcher`, and `FetcherStub`) live in [src/index.ts](./src/index.ts) — small TypeScript wrappers around [Cap'n Web](https://github.com/cloudflare/capnweb). For a self-hosted Cloudflare Tunnel Gateway, copy or adapt [src/server/worker.ts](./src/server/worker.ts) and the Durable Object binding in [wrangler.jsonc](./wrangler.jsonc). The Iterate-operated hosted service is separate: its product surface lives under [src/hosted](./src/hosted), with [wrangler.hosted.jsonc](./wrangler.hosted.jsonc) as its deployment config.
 
-Runtime adapters for accepting Fetcher Capabilities outside Cloudflare Workers live under
-`captun/node`, `captun/bun`, and `captun/deno`. See [examples/node](./examples/node),
+Runtime Adapters for accepting Fetcher Capabilities outside Cloudflare Workers are implemented under
+`src/server` and exported as `captun/node`, `captun/bun`, and `captun/deno`. See [examples/node](./examples/node),
 [examples/bun](./examples/bun), and [examples/deno](./examples/deno) for the same small
 weather egress test running in each runtime.
 
@@ -151,7 +151,7 @@ By default the worker routes `/my-tunnel/foo/bar` to the capnweb session for "my
 
 Running `npx captun deploy` interactively walks you through where the tunnel URLs should live. There are four options, and which one is best for you depends on the kind of apps you want to tunnel to and whether you already have a domain on Cloudflare.
 
-Routing is controlled by a single Worker env var, `CUSTOM_HOSTNAME`. When unset (workers.dev deploys), tunnels use folder routing: the first path segment is the tunnel name. When set (custom-domain deploys), tunnels use subdomain routing — the _last_ DNS label before `CUSTOM_HOSTNAME` is the tunnel name, and anything to the left of it is ignored. The deploy wizard sets `CUSTOM_HOSTNAME` for you; the parsing logic lives in `getTunnelNameFromUrl` in [src/routing.ts](./src/routing.ts).
+Routing is controlled by a single Worker env var, `CUSTOM_HOSTNAME`. When unset (workers.dev deploys), tunnels use folder routing: the first path segment is the tunnel name. When set (custom-domain deploys), tunnels use subdomain routing — the _last_ DNS label before `CUSTOM_HOSTNAME` is the tunnel name, and anything to the left of it is ignored. The deploy wizard sets `CUSTOM_HOSTNAME` for you; the parsing logic lives in `getTunnelNameFromUrl` in [src/server/tunnel-addressing.ts](./src/server/tunnel-addressing.ts).
 
 #### 1. `<tunnel>.<account>.workers.dev/<tunnel-name>` (default)
 

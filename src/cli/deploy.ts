@@ -529,7 +529,7 @@ export async function deployWorker(
       string,
       unknown
     >;
-    const worker = resolve(packageRoot, "dist/worker.js");
+    const worker = resolve(packageRoot, "dist/server/worker.js");
     baseConfig.main = worker;
     if (input.name) baseConfig.name = input.name;
     if (input.accountId) baseConfig.account_id = input.accountId;

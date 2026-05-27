@@ -5,26 +5,26 @@ import {
   CaptunServerShard as CloudflareTunnelGatewayShard,
   type TunnelAdmission,
   type TunnelAdmissionInput,
-} from "../worker.js";
+} from "../server/worker.js";
 import {
   CONNECT_TOKEN_QUERY_PARAM,
   GATEWAY_CONNECT_QUERY_PARAM,
-  getTunnelNameFromUrl,
-  getTunnelUrl,
-  HOSTED_CAPTUN_HOSTNAME,
-  isLoopbackHostname,
-  isValidTunnelName,
-  RESERVED_TUNNEL_NAMES,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
-} from "../routing.js";
+} from "../index.js";
+import {
+  getTunnelNameFromUrl,
+  getTunnelUrl,
+  isValidTunnelName,
+} from "../server/tunnel-addressing.js";
 import {
   HostedRateLimiter,
   hostedRateLimitDiagnosticResponse,
   hostedRateLimitResponse,
   type HostedRateLimitEnv,
 } from "./rate-limit.js";
-import { hostedCaptunResponse } from "./site.js";
+import { isHostedReservedTunnelName } from "./reserved-tunnel-names.js";
+import { hostedCaptunResponse, HOSTED_CAPTUN_HOSTNAME, isLoopbackHostname } from "./site.js";
 
 export class CaptunServerShard extends CloudflareTunnelGatewayShard<HostedCaptunEnv> {
   protected decideTunnelAdmission(input: TunnelAdmissionInput<HostedCaptunEnv>): TunnelAdmission {
@@ -80,7 +80,7 @@ export default {
     });
     if (!tunnelName) return new Response("Missing tunnel name\n", { status: 404 });
 
-    if (RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+    if (isHostedReservedTunnelName(tunnelName)) {
       return new Response("Reserved Captun tunnel name\n", { status: 404 });
     }
 
@@ -115,7 +115,7 @@ async function connectTunnel(request: Request, env: HostedCaptunEnv) {
 
   const url = new URL(request.url);
   const tunnelName = url.searchParams.get(TUNNEL_NAME_QUERY_PARAM) || "";
-  if (!isValidTunnelName(tunnelName) || RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+  if (!isValidTunnelName(tunnelName) || isHostedReservedTunnelName(tunnelName)) {
     return new Response("Missing tunnel name\n", { status: 404 });
   }
 
