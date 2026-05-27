@@ -1,4 +1,4 @@
-import { acceptFetcherCapabilityFromSocket } from "./server-core.js";
+import { acceptFetcherCapabilityFromSocket } from "../index.js";
 
 export function acceptFetcherCapabilityFromDenoSocket(
   socket: WebSocket,

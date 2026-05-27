@@ -1,6 +1,6 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import { expect, test } from "vitest";
-import { TUNNEL_CONNECT_DIAGNOSTIC_HEADER } from "../src/routing.js";
+import { TUNNEL_CONNECT_DIAGNOSTIC_HEADER } from "../src/index.js";
 import { createHostedCaptunWorkerFixture, createMiniflareWorkerFixture } from "./miniflare.js";
 
 test("Hosted Captun redirects the apex hostname to www", async () => {

@@ -2,7 +2,7 @@ import {
   fetcherStubFromRemoteCapability,
   type RemoteFetcherCapability,
   type TunnelReady,
-} from "./server-core.js";
+} from "../index.js";
 
 // @ts-ignore -- capnweb exports separate types for bun but this lib is built from node. it'll work at runtime though.
 import { newBunWebSocketRpcHandler } from "capnweb";

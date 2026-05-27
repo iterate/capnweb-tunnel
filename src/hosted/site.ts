@@ -1,5 +1,7 @@
-import { HOSTED_CAPTUN_HOSTNAME, isLoopbackHostname, RESERVED_TUNNEL_NAMES } from "../routing.js";
 import { WWW_BROWSER_MODULE } from "./browser-module.generated.js";
+import { isHostedReservedTunnelName } from "./reserved-tunnel-names.js";
+
+export const HOSTED_CAPTUN_HOSTNAME = "captun.sh";
 
 declare const createCaptunTunnel: typeof import("../index.js").createCaptunTunnel;
 
@@ -38,9 +40,18 @@ export function hostedCaptunResponse(request: Request): Response | undefined {
   if (subdomain === "www") {
     return wwwCaptunResponse(url);
   }
-  if (RESERVED_TUNNEL_NAMES.includes(subdomain)) {
+  if (isHostedReservedTunnelName(subdomain)) {
     return new Response("Reserved Captun tunnel name\n", { status: 404 });
   }
+}
+
+export function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  );
 }
 
 function isWwwCaptunPath(pathname: string) {

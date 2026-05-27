@@ -1,16 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
-import { acceptFetcherCapability, type FetcherStub } from "./index.js";
 import {
-  captunShardName,
+  acceptFetcherCapability,
   CONNECT_TOKEN_QUERY_PARAM,
   GATEWAY_CONNECT_QUERY_PARAM,
+  TUNNEL_NAME_QUERY_PARAM,
+  type FetcherStub,
+} from "../index.js";
+import {
+  captunShardName,
   getTunnelNameFromUrl,
   getTunnelUrl,
   isValidTunnelName,
-  RESERVED_TUNNEL_NAMES,
-  TUNNEL_NAME_QUERY_PARAM,
   TUNNEL_URL_HEADER,
-} from "./routing.js";
+} from "./tunnel-addressing.js";
 
 export type CaptunEnv = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard<CaptunEnv>>;
@@ -22,6 +24,7 @@ export type CaptunEnv = {
 
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
+const CUSTOM_HOSTNAME_RESERVED_TUNNEL_NAMES = ["captun", "gateway"];
 
 type CaptunShardBindingEnv<Env extends { CAPTUN_TOKEN?: string }> = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard<Env>>;
@@ -156,7 +159,7 @@ export default {
       : url.pathname.match(/^\/[^/]+(\/.*)?$/)?.[1] || "/";
     url.pathname = forwardedPath;
 
-    if (RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+    if (isCustomHostnameReservedTunnelName(tunnelName, env)) {
       return new Response("Reserved Captun tunnel name\n", { status: 404 });
     }
 
@@ -180,7 +183,7 @@ function connectTunnel(request: Request, env: CaptunEnv) {
 
   const url = new URL(request.url);
   const tunnelName = url.searchParams.get(TUNNEL_NAME_QUERY_PARAM) || "";
-  if (!isValidTunnelName(tunnelName) || RESERVED_TUNNEL_NAMES.includes(tunnelName)) {
+  if (!isValidTunnelName(tunnelName) || isCustomHostnameReservedTunnelName(tunnelName, env)) {
     return new Response("Missing tunnel name\n", { status: 404 });
   }
 
@@ -199,6 +202,11 @@ function isGatewayConnectRequest(request: Request) {
 
 function connectToken(request: Request) {
   return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+function isCustomHostnameReservedTunnelName(tunnelName: string, env: { CUSTOM_HOSTNAME?: string }) {
+  if (!env.CUSTOM_HOSTNAME) return false;
+  return CUSTOM_HOSTNAME_RESERVED_TUNNEL_NAMES.includes(tunnelName);
 }
 
 export function captunServerShard<Env extends { CAPTUN_TOKEN?: string }>(

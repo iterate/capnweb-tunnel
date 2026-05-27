@@ -23,20 +23,20 @@
       "import": "./src/index.ts"
     },
     "./bun": {
-      "types": "./src/bun.ts",
-      "import": "./src/bun.ts"
+      "types": "./src/server/bun.ts",
+      "import": "./src/server/bun.ts"
     },
     "./deno": {
-      "types": "./src/deno.ts",
-      "import": "./src/deno.ts"
+      "types": "./src/server/deno.ts",
+      "import": "./src/server/deno.ts"
     },
     "./node": {
-      "types": "./src/node.ts",
-      "import": "./src/node.ts"
+      "types": "./src/server/node.ts",
+      "import": "./src/server/node.ts"
     },
     "./worker": {
-      "types": "./src/worker.ts",
-      "import": "./src/worker.ts"
+      "types": "./src/server/worker.ts",
+      "import": "./src/server/worker.ts"
     }
   },
   "publishConfig": {
@@ -49,20 +49,20 @@
         "import": "./dist/index.js"
       },
       "./bun": {
-        "types": "./dist/bun.d.ts",
-        "import": "./dist/bun.js"
+        "types": "./dist/server/bun.d.ts",
+        "import": "./dist/server/bun.js"
       },
       "./deno": {
-        "types": "./dist/deno.d.ts",
-        "import": "./dist/deno.js"
+        "types": "./dist/server/deno.d.ts",
+        "import": "./dist/server/deno.js"
       },
       "./node": {
-        "types": "./dist/node.d.ts",
-        "import": "./dist/node.js"
+        "types": "./dist/server/node.d.ts",
+        "import": "./dist/server/node.js"
       },
       "./worker": {
-        "types": "./dist/worker.d.ts",
-        "import": "./dist/worker.js"
+        "types": "./dist/server/worker.d.ts",
+        "import": "./dist/server/worker.js"
       }
     }
   },

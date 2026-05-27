@@ -128,8 +128,8 @@ _Avoid_: Agent layer, agent product
 - `createCaptunTunnel` should return a reusable `token` when the **Tunnel Gateway** provides or accepts one.
 - New code should not support `/__captun-connect`; connect intent belongs in Captun query parameters on the **Gateway Connect Request**.
 - Default custom-domain **Self-Hosted Deployments** should choose a **Gateway** hostname inside the wildcard tunnel route and make that hostname a **Reserved Tunnel Name**.
-- `captun`, `gateway`, and `tunnel` should be **Reserved Tunnel Names** by default, along with a small set of likely future **Control Plane** names.
-- **Reserved Tunnel Names** apply to the **Hosted Service** and to wizard-generated **Self-Hosted Deployments**. Manual/custom deployments may change the list.
+- `captun` and `gateway` should be **Reserved Tunnel Names** for custom-domain **Self-Hosted Deployments** created by the wizard, because those labels can be the **Gateway** hostname inside the wildcard route.
+- The **Hosted Service** owns a broader **Reserved Tunnel Name** list, including likely future **Control Plane** names such as `billing`, `dashboard`, and `tunnel`.
 - A **Self-Hosted Deployment** runs a **Tunnel Gateway** in a user's own infrastructure.
 - The current deploy wizard creates a **Cloudflare Tunnel Gateway**, but future runtime gateways could also be **Self-Hosted Deployments**.
 - The **Hosted Service** is a public **Tunnel Gateway** operated for untrusted users.

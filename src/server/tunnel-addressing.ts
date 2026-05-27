@@ -1,34 +1,3 @@
-export const HOSTED_CAPTUN_HOSTNAME = "captun.sh";
-export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
-export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
-export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
-export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
-export const TUNNEL_CONNECT_DIAGNOSTIC_HEADER = "x-captun-connect-diagnostic";
-export const RESERVED_TUNNEL_NAMES = [
-  "account",
-  "accounts",
-  "admin",
-  "api",
-  "app",
-  "auth",
-  "billing",
-  "captun",
-  "dash",
-  "dashboard",
-  "docs",
-  "gateway",
-  "gateways",
-  "iterate",
-  "login",
-  "payment",
-  "payments",
-  "status",
-  "support",
-  "tunnel",
-  "tunnels",
-  "www",
-];
-
 /**
  * Extracts a tunnel name from an incoming request URL.
  *
@@ -44,8 +13,8 @@ export const RESERVED_TUNNEL_NAMES = [
  *   cert (Cloudflare ACM) lets every subdomain land in one named tunnel.
  *
  *   With `customHostname = "tunnels.mydomain.com"`:
- *     `https://banana.tunnels.mydomain.com/x` → `banana`
- *     `https://some-subdomain.banana.tunnels.mydomain.com/x` → `banana`
+ *     `https://banana.tunnels.mydomain.com/x` -> `banana`
+ *     `https://some-subdomain.banana.tunnels.mydomain.com/x` -> `banana`
  *
  *   With `customHostname = "banana.tunnels.mydomain.com"` instead, the same URL
  *   maps to `some-subdomain` — useful for routing arbitrary subdomains into a
@@ -115,15 +84,6 @@ export const TUNNEL_URL_HEADER = "x-captun-tunnel-url";
 export function isValidTunnelName(name: string): boolean {
   if (!name) return false;
   return true;
-}
-
-export function isLoopbackHostname(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname === "[::1]"
-  );
 }
 
 /** Maps a tunnel name to a stable Durable Object shard name. */

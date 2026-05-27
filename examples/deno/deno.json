@@ -1,6 +1,6 @@
 {
   "imports": {
-    "captun/deno": "../../src/deno.ts",
+    "captun/deno": "../../src/server/deno.ts",
     "capnweb": "npm:capnweb@0.8.0"
   }
 }

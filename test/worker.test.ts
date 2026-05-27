@@ -8,7 +8,7 @@ import {
   getTunnelNameFromUrl,
   getTunnelUrl,
   TUNNEL_URL_HEADER,
-} from "../src/routing.js";
+} from "../src/server/tunnel-addressing.js";
 import { createCaptunWorkerFixture } from "./miniflare.js";
 
 const tunnelNameCases: Array<
@@ -158,6 +158,22 @@ test("Captun Worker verifies health through a connected tunnel client", async ()
   expect(await response.json()).toEqual({ ok: true });
 });
 
+test("createCaptunTunnel only returns a gateway-confirmed token", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+
+  using tunnel = await createCaptunTunnel({
+    gateway: fixture.origin,
+    name: "demo",
+    token: "client-generated-token",
+    fetch: () => new Response("pong\n"),
+  });
+
+  expect(tunnel).toMatchObject({
+    url: `${fixture.origin}/demo`,
+    token: undefined,
+  });
+});
+
 test("Captun Worker returns 502 when the tunnel client fetch throws", async () => {
   await using fixture = await createCaptunWorkerFixture({});
   using _tunnel = await createCaptunTunnel({
@@ -204,6 +220,29 @@ test("Captun Worker ignores hosted rate-limit bindings in self-hosted folder rou
   expect(first).toMatchObject({ status: 503 });
   expect(second).toMatchObject({ status: 503 });
 });
+
+test("Captun Worker does not apply hosted reserved names to self-hosted folder routing", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+
+  const response = await fixture.worker.fetch(`${fixture.origin}/billing/hello`);
+
+  expect(response).toMatchObject({ status: 503 });
+  expect(await response.text()).toBe("No tunnel client connected\n");
+});
+
+test.each(["captun", "gateway"])(
+  "Captun Worker reserves %s for self-hosted custom-domain routing",
+  async (tunnelName) => {
+    await using fixture = await createCaptunWorkerFixture({
+      CUSTOM_HOSTNAME: "example.com",
+    });
+
+    const response = await fixture.worker.fetch(`https://${tunnelName}.example.com/hello`);
+
+    expect(response).toMatchObject({ status: 404 });
+    expect(await response.text()).toBe("Reserved Captun tunnel name\n");
+  },
+);
 
 test("Captun Worker rejects missing tunnel names before Durable Object dispatch", async () => {
   await using fixture = await createCaptunWorkerFixture({});
