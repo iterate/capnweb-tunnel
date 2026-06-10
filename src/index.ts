@@ -4,8 +4,19 @@ import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
 export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
 export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
+/** Legacy Connect Token transport. Tokens ride in `Sec-WebSocket-Protocol` now
+ * so they stay out of URL-shaped log fields; the gateway still accepts this
+ * query param from old clients. */
 export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
 export const TUNNEL_CONNECT_DIAGNOSTIC_HEADER = "x-captun-connect-diagnostic";
+/** Connect Token transport for plain HTTP requests (the diagnostic probe, curl). */
+export const CONNECT_TOKEN_HEADER = "x-captun-connect-token";
+/** Marker subprotocol offered on every connect; the gateway echoes it on the
+ * 101 response (browsers and strict clients abort the handshake otherwise). */
+export const CONNECT_PROTOCOL = "captun";
+/** Connect Token subprotocol: `captun-token.<base64url(token)>`. base64url
+ * because RFC 6455 limits subprotocol values to HTTP token characters. */
+export const CONNECT_TOKEN_PROTOCOL_PREFIX = "captun-token.";
 
 export interface Fetcher {
   fetch(request: Request): Response | Promise<Response>;
@@ -49,6 +60,60 @@ export function randomConnectToken() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Reads the Connect Token from wherever the client sent it, in order of
+ * preference: the `captun-token.<base64url>` subprotocol (WebSocket connects),
+ * the `x-captun-connect-token` header (diagnostic probes, curl), or the legacy
+ * `captun-token` query param (old clients).
+ */
+export function connectTokenFromRequest(request: Request): string | null {
+  for (const protocol of offeredSubprotocols(request)) {
+    if (protocol.startsWith(CONNECT_TOKEN_PROTOCOL_PREFIX)) {
+      const token = base64UrlDecode(protocol.slice(CONNECT_TOKEN_PROTOCOL_PREFIX.length));
+      if (token !== null) return token;
+    }
+  }
+  const headerToken = request.headers.get(CONNECT_TOKEN_HEADER);
+  if (headerToken) return headerToken;
+  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+}
+
+/**
+ * The subprotocol a server should select (and echo on the 101 response) for a
+ * captun connect request, or undefined when the client offered none. For
+ * runtimes that negotiate the subprotocol themselves, e.g.
+ * `Deno.upgradeWebSocket(request, { protocol: connectProtocolFromRequest(request) })`.
+ * `acceptFetcherCapability` does this automatically when given the request.
+ */
+export function connectProtocolFromRequest(request: Request): string | undefined {
+  return offeredSubprotocols(request).includes(CONNECT_PROTOCOL) ? CONNECT_PROTOCOL : undefined;
+}
+
+function offeredSubprotocols(request: Request) {
+  const header = request.headers.get("sec-websocket-protocol");
+  if (!header) return [];
+  return header
+    .split(",")
+    .map((protocol) => protocol.trim())
+    .filter(Boolean);
+}
+
+function base64UrlEncode(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(value: string) {
+  try {
+    const binary = atob(value.replaceAll("-", "+").replaceAll("_", "/"));
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  } catch {
+    return null;
+  }
 }
 
 /** Fetch is all you need!
@@ -103,16 +168,16 @@ export async function createCaptunTunnel(
     token?: string;
   },
 ): Promise<CaptunTunnel> {
-  const connectUrl = gatewayConnectRequest(options);
+  const connect = gatewayConnectRequest(options);
   const ready = Promise.withResolvers<TunnelReady>();
-  const socket = createWebSocket(connectUrl);
+  const socket = createWebSocket(connect.url, connect.protocols);
   const fetcher = new TunnelTargetFetcher({
     fetch: options.fetch,
     ready: (tunnel) => ready.resolve(tunnel),
   });
   const session = newWebSocketRpcSession(socket, fetcher);
   try {
-    await waitUntilOpen(socket, connectUrl);
+    await waitUntilOpen(socket, connect);
     const tunnel = await waitUntilReady(ready.promise);
     return {
       ...tunnel,
@@ -124,14 +189,30 @@ export async function createCaptunTunnel(
   }
 }
 
-function gatewayConnectRequest(options: { gateway?: string | URL; name?: string; token?: string }) {
+type GatewayConnectRequest = {
+  url: string;
+  token: string;
+  protocols: string[];
+};
+
+function gatewayConnectRequest(options: {
+  gateway?: string | URL;
+  name?: string;
+  token?: string;
+}): GatewayConnectRequest {
   const name = options.name || randomTunnelName();
   const url = new URL(options.gateway || HOSTED_CAPTUN_GATEWAY);
   const token = options.token || randomConnectToken();
   url.searchParams.set(GATEWAY_CONNECT_QUERY_PARAM, "1");
   url.searchParams.set(TUNNEL_NAME_QUERY_PARAM, name);
-  url.searchParams.set(CONNECT_TOKEN_QUERY_PARAM, token);
-  return url.toString();
+  // The token deliberately stays out of the URL — URLs are logged by default
+  // (gateway request logs, logpush, exception traces). It rides in the
+  // Sec-WebSocket-Protocol header instead.
+  return {
+    url: url.toString(),
+    token,
+    protocols: [CONNECT_PROTOCOL, CONNECT_TOKEN_PROTOCOL_PREFIX + base64UrlEncode(token)],
+  };
 }
 
 function randomTunnelName() {
@@ -159,13 +240,13 @@ class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
   }
 }
 
-function createWebSocket(url: string | URL) {
+function createWebSocket(url: string | URL, protocols: string[]) {
   const connectUrl = new URL(url);
   connectUrl.protocol = connectUrl.protocol === "https:" ? "wss:" : "ws:";
-  return new WebSocket(connectUrl.href);
+  return new WebSocket(connectUrl.href, protocols);
 }
 
-async function waitUntilOpen(socket: WebSocket, connectUrl: string) {
+async function waitUntilOpen(socket: WebSocket, connect: GatewayConnectRequest) {
   if (socket.readyState === WebSocket.OPEN) return;
   if (socket.readyState !== WebSocket.CONNECTING) {
     throw new Error("WebSocket closed before opening");
@@ -182,7 +263,7 @@ async function waitUntilOpen(socket: WebSocket, connectUrl: string) {
       "error",
       () =>
         settle(() => {
-          void webSocketConnectionFailedError(connectUrl).then(reject);
+          void webSocketConnectionFailedError(connect).then(reject);
         }),
       { signal: listeners.signal },
     );
@@ -190,7 +271,7 @@ async function waitUntilOpen(socket: WebSocket, connectUrl: string) {
       "close",
       (event) => {
         listeners.abort();
-        void webSocketConnectionFailedError(connectUrl).then((error) => {
+        void webSocketConnectionFailedError(connect).then((error) => {
           reject(
             error.response
               ? error
@@ -203,8 +284,8 @@ async function waitUntilOpen(socket: WebSocket, connectUrl: string) {
   });
 }
 
-async function webSocketConnectionFailedError(connectUrl: string) {
-  const response = await readWebSocketRejection(connectUrl);
+async function webSocketConnectionFailedError(connect: GatewayConnectRequest) {
+  const response = await readWebSocketRejection(connect);
   if (!response) return new CaptunTunnelConnectError("WebSocket connection failed", undefined);
   return new CaptunTunnelConnectError(
     `WebSocket connection failed: ${response.status} ${response.statusText}: ${response.body}`.trim(),
@@ -212,12 +293,15 @@ async function webSocketConnectionFailedError(connectUrl: string) {
   );
 }
 
-async function readWebSocketRejection(connectUrl: string) {
+async function readWebSocketRejection(connect: GatewayConnectRequest) {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(connectUrl, {
-      headers: { [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1" },
+    const response = await fetch(connect.url, {
+      headers: {
+        [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
+        [CONNECT_TOKEN_HEADER]: connect.token,
+      },
       signal: abort.signal,
     });
     if (response.ok) return undefined;
@@ -250,8 +334,17 @@ async function waitUntilReady(promise: Promise<TunnelReady>) {
   }
 }
 
-/** Creates a Worker WebSocket upgrade response and matching fetcher stub. */
-export function acceptFetcherCapability(options: { onDisconnect?: () => void } = {}) {
+/**
+ * Creates a Worker WebSocket upgrade response and matching fetcher stub.
+ *
+ * Pass the upgrade `request` so the 101 response echoes the `captun`
+ * subprotocol when the client offered one — browsers and strict WebSocket
+ * clients abort the handshake if the server doesn't select an offered
+ * subprotocol. The token-bearing subprotocol is never echoed.
+ */
+export function acceptFetcherCapability(
+  options: { request?: Request; onDisconnect?: () => void } = {},
+) {
   const WorkerWebSocketPair = (
     globalThis as typeof globalThis & { WebSocketPair: WorkerWebSocketPairConstructor }
   ).WebSocketPair;
@@ -259,6 +352,9 @@ export function acceptFetcherCapability(options: { onDisconnect?: () => void } =
   const clientSocket = pair[0];
   const serverSocket = pair[1];
   const responseInit: WebSocketResponseInit = { status: 101, webSocket: clientSocket };
+  if (options.request && offeredSubprotocols(options.request).includes(CONNECT_PROTOCOL)) {
+    responseInit.headers = { "sec-websocket-protocol": CONNECT_PROTOCOL };
+  }
 
   serverSocket.accept();
   const fetcher = acceptFetcherCapabilityFromSocket(serverSocket, options);

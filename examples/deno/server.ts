@@ -1,3 +1,4 @@
+import { connectProtocolFromRequest } from "captun";
 import { acceptFetcherCapabilityFromDenoSocket } from "captun/deno";
 
 let egressTunnel: ReturnType<typeof acceptFetcherCapabilityFromDenoSocket> | undefined;
@@ -23,7 +24,9 @@ const server = Deno.serve(
     }
 
     if (url.pathname === "/__intercept-egress-traffic") {
-      const { socket, response } = Deno.upgradeWebSocket(request);
+      const { socket, response } = Deno.upgradeWebSocket(request, {
+        protocol: connectProtocolFromRequest(request),
+      });
       socket.addEventListener("open", () => {
         const tunnel = acceptFetcherCapabilityFromDenoSocket(socket, {
           onDisconnect: () => {

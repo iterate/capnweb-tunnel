@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   acceptFetcherCapability,
-  CONNECT_TOKEN_QUERY_PARAM,
+  connectTokenFromRequest,
   GATEWAY_CONNECT_QUERY_PARAM,
+  TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
   type FetcherStub,
 } from "../index.js";
@@ -64,7 +65,7 @@ export class CaptunServerShard<
     const expected = input.env.CAPTUN_TOKEN;
     if (expected) {
       // Constant-time comparison to avoid leaking the gateway token via timing.
-      const actual = new TextEncoder().encode(connectToken(input.request) || "");
+      const actual = new TextEncoder().encode(connectTokenFromRequest(input.request) || "");
       const want = new TextEncoder().encode(expected);
       if (!constantTimeEqual(actual, want)) {
         return { ok: false, response: new Response("Unauthorized\n", { status: 401 }) };
@@ -73,7 +74,7 @@ export class CaptunServerShard<
 
     return {
       ok: true,
-      token: expected ? connectToken(input.request) || undefined : undefined,
+      token: expected ? connectTokenFromRequest(input.request) || undefined : undefined,
     };
   }
 
@@ -90,6 +91,11 @@ export class CaptunServerShard<
     const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
     if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
 
+    // Non-upgrade requests are diagnostic probes: run admission, skip the upgrade.
+    if (request.headers.get("upgrade") !== "websocket") {
+      return this.diagnoseConnect(tunnelName, request);
+    }
+
     const activeTunnel = this.tunnels.get(tunnelName);
     const admission = await this.decideTunnelAdmission({
       request,
@@ -100,6 +106,7 @@ export class CaptunServerShard<
 
     activeTunnel?.fetcher[Symbol.dispose]();
     const { response, fetcher } = acceptFetcherCapability({
+      request,
       onDisconnect: () => {
         if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
       },
@@ -177,7 +184,8 @@ export default {
 } satisfies ExportedHandler<CaptunEnv>;
 
 function connectTunnel(request: Request, env: CaptunEnv) {
-  if (request.headers.get("upgrade") !== "websocket") {
+  const diagnostic = isConnectDiagnostic(request);
+  if (!diagnostic && request.headers.get("upgrade") !== "websocket") {
     return new Response("Expected WebSocket upgrade\n", { status: 400 });
   }
 
@@ -193,6 +201,8 @@ function connectTunnel(request: Request, env: CaptunEnv) {
     tunnelName,
   });
   const shard = captunServerShard(env, tunnelName);
+  // Diagnostic probes (no upgrade header) take the same path; the shard's
+  // fetch runs admission without upgrading.
   return shard.fetch(createTunnelConnectRequest({ request, tunnelName, tunnelUrl }));
 }
 
@@ -200,8 +210,9 @@ function isGatewayConnectRequest(request: Request) {
   return new URL(request.url).searchParams.get(GATEWAY_CONNECT_QUERY_PARAM) === "1";
 }
 
-function connectToken(request: Request) {
-  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+function isConnectDiagnostic(request: Request) {
+  if (request.headers.get("upgrade") === "websocket") return false;
+  return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
 }
 
 function isCustomHostnameReservedTunnelName(tunnelName: string, env: { CUSTOM_HOSTNAME?: string }) {
