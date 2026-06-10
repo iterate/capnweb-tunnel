@@ -17,7 +17,7 @@ high-value **Gateway Secret** as its token leaks it into log storage. Flagged by
 secret.
 
 WebSocket clients can't set arbitrary headers (browsers especially), but they
-*can* offer subprotocols, and smuggling credentials through
+_can_ offer subprotocols, and smuggling credentials through
 `Sec-WebSocket-Protocol` is a well-established pattern (Kubernetes exec API,
 graphql-ws, orpc's WS transport). Headers don't land in URL-shaped log fields.
 
