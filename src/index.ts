@@ -4,10 +4,6 @@ import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 export const HOSTED_CAPTUN_GATEWAY = "https://captun.sh";
 export const GATEWAY_CONNECT_QUERY_PARAM = "captun-connect";
 export const TUNNEL_NAME_QUERY_PARAM = "captun-name";
-/** Legacy Connect Token transport. Tokens ride in `Sec-WebSocket-Protocol` now
- * so they stay out of URL-shaped log fields; the gateway still accepts this
- * query param from old clients. */
-export const CONNECT_TOKEN_QUERY_PARAM = "captun-token";
 export const TUNNEL_CONNECT_DIAGNOSTIC_HEADER = "x-captun-connect-diagnostic";
 /** Connect Token transport for plain HTTP requests (the diagnostic probe, curl). */
 export const CONNECT_TOKEN_HEADER = "x-captun-connect-token";
@@ -63,10 +59,10 @@ export function randomConnectToken() {
 }
 
 /**
- * Reads the Connect Token from wherever the client sent it, in order of
- * preference: the `captun-token.<base64url>` subprotocol (WebSocket connects),
- * the `x-captun-connect-token` header (diagnostic probes, curl), or the legacy
- * `captun-token` query param (old clients).
+ * Reads the Connect Token from where the client sent it: the
+ * `captun-token.<base64url>` subprotocol (WebSocket connects) or the
+ * `x-captun-connect-token` header (diagnostic probes, curl). Never the URL —
+ * URLs are logged by default.
  */
 export function connectTokenFromRequest(request: Request): string | null {
   for (const protocol of offeredSubprotocols(request)) {
@@ -75,9 +71,7 @@ export function connectTokenFromRequest(request: Request): string | null {
       if (token !== null) return token;
     }
   }
-  const headerToken = request.headers.get(CONNECT_TOKEN_HEADER);
-  if (headerToken) return headerToken;
-  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
+  return request.headers.get(CONNECT_TOKEN_HEADER);
 }
 
 /**

@@ -306,15 +306,17 @@ test("createCaptunTunnel diagnoses a wrong token as 401", async () => {
   ).rejects.toThrow(/401 Unauthorized/);
 });
 
-test("Captun Worker still admits legacy clients that send the token as a query param", async () => {
-  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "legacy-token" });
+test("Captun Worker ignores tokens sent as a query param", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "right-token" });
 
+  // Even the correct token is rejected when it arrives via the URL: URLs are
+  // logged by default, so the URL is not a Connect Token transport.
   const response = await fixture.worker.fetch(
-    `${fixture.origin}/?captun-connect=1&captun-name=legacy&captun-token=legacy-token`,
+    `${fixture.origin}/?captun-connect=1&captun-name=legacy&captun-token=right-token`,
     { headers: { upgrade: "websocket" } },
   );
 
-  expect(response).toMatchObject({ status: 101 });
+  expect(response).toMatchObject({ status: 401 });
 });
 
 test("Captun Worker echoes the captun subprotocol on the 101 response", async () => {
@@ -352,11 +354,11 @@ test("createCaptunTunnel keeps the Connect Token out of the URL", async () => {
   );
 });
 
-test("connectTokenFromRequest prefers subprotocol, then header, then query param", () => {
+test("connectTokenFromRequest prefers subprotocol, then header, and never the URL", () => {
   const url = "https://gateway.example/?captun-token=from-query";
   const subprotocols = `captun, captun-token.${Buffer.from("from subprotocol ✨").toString("base64url")}`;
 
-  expect(connectTokenFromRequest(new Request(url))).toBe("from-query");
+  expect(connectTokenFromRequest(new Request(url))).toBe(null);
   expect(
     connectTokenFromRequest(
       new Request(url, { headers: { "x-captun-connect-token": "from-header" } }),
@@ -375,9 +377,14 @@ test("connectTokenFromRequest prefers subprotocol, then header, then query param
   // Malformed base64url falls through to the next transport.
   expect(
     connectTokenFromRequest(
-      new Request(url, { headers: { "sec-websocket-protocol": "captun, captun-token.%%%" } }),
+      new Request(url, {
+        headers: {
+          "sec-websocket-protocol": "captun, captun-token.%%%",
+          "x-captun-connect-token": "from-header",
+        },
+      }),
     ),
-  ).toBe("from-query");
+  ).toBe("from-header");
 });
 
 test("Captun Worker rejects the legacy CAPTUN_SECRET binding", async () => {
