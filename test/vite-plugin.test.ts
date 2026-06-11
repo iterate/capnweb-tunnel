@@ -94,6 +94,22 @@ test.concurrent("passes redirects through to the public client", async ({ task }
   expect(response.headers.get("location")).toBe("/after");
 });
 
+test.concurrent("answers the reserved health path itself", async ({ task }) => {
+  await using worker = await createCaptunWorkerFixture({});
+  await using root = await createAppFixture();
+  const ready = Promise.withResolvers<TunnelReady>();
+  await using _server = await devServer({
+    root: root.path,
+    plugins: [
+      captun({ gateway: worker.origin, name: tunnelName(task.name), onTunnel: ready.resolve }),
+    ],
+  });
+
+  const tunnel = await ready.promise;
+  const response = await fetch(`${tunnel.url}/__captun/health`);
+  await expect(response.json()).resolves.toEqual({ ok: true });
+});
+
 test.concurrent("closes the tunnel when the server closes", async ({ expect, task }) => {
   await using worker = await createCaptunWorkerFixture({});
   await using root = await createAppFixture();

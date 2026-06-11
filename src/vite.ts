@@ -8,6 +8,7 @@ import {
   type CreateCaptunTunnelOptions,
   type TunnelReady,
 } from "./index.js";
+import { captunHealthResponse, isCaptunHealthRequest } from "./tunnel-health.js";
 
 /**
  * Options for the {@link captun} Vite plugin.
@@ -128,7 +129,9 @@ function localOrigin(protocol: "http" | "https", address: AddressInfo) {
 }
 
 function forwardToLocalServer(origin: string) {
-  return (request: Request): Promise<Response> => {
+  return (request: Request): Response | Promise<Response> => {
+    // The reserved health path is answered by every Tunnel Client itself.
+    if (isCaptunHealthRequest(request)) return captunHealthResponse();
     const url = new URL(request.url);
     const headers = new Headers(request.headers);
     // Node's fetch already refuses to forward the public host (a forbidden
