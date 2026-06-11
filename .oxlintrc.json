@@ -123,6 +123,7 @@
         "src/cli/**",
         "src/hosted/**",
         "src/server/**",
+        "src/vite.ts",
         "src/worker/**",
         "test/**"
       ],

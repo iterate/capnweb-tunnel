@@ -1,20 +1,13 @@
+import { captunHealthPath } from "../tunnel-health.js";
 import { CliFriendlyError } from "./cli-error.js";
 
-export const captunHealthPath = "/__captun/health";
+export { captunHealthPath, captunHealthResponse, isCaptunHealthRequest } from "../tunnel-health.js";
 
 export type TunnelHealthCheckOptions = {
   fetch?: typeof fetch;
   timeoutMs?: number;
   retryDelayMs?: number;
 };
-
-export function isCaptunHealthRequest(request: Request) {
-  return new URL(request.url).pathname === captunHealthPath;
-}
-
-export function captunHealthResponse() {
-  return Response.json({ ok: true });
-}
 
 export async function confirmTunnelHealth(
   tunnelUrl: string,

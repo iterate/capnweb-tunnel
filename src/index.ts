@@ -180,14 +180,36 @@ type WebSocketResponseInit = ResponseInit & {
 const TUNNEL_READY_TIMEOUT_MS = 5_000;
 const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
 
+/** Options for {@link createCaptunTunnel}. */
+export type CreateCaptunTunnelOptions = Fetcher & {
+  /**
+   * Low-level hook for forwarding public WebSockets, e.g. by dialing out to a
+   * separate local WebSocket server the way the CLI does. Without it, `fetch`
+   * handles WebSockets too: a returned Worker-style response with a
+   * `webSocket` is bridged automatically.
+   */
+  connectWebSocket?: WebSocketFetcher["connectWebSocket"];
+  /**
+   * Tunnel Gateway URL. Defaults to the hosted `https://captun.sh` service.
+   * After `npx captun deploy`, pass your own gateway URL here.
+   */
+  gateway?: string | URL;
+  /**
+   * Tunnel Name — the public routing key in the tunnel URL. A random name is
+   * generated when omitted.
+   */
+  name?: string;
+  /**
+   * Connect Token sent with the Gateway Connect Request: a Gateway Secret for
+   * self-hosted deployments, or an Ownership Token to reclaim a named tunnel
+   * on the hosted service. Random when omitted.
+   */
+  token?: string;
+};
+
 /** Creates a public tunnel by exposing a local fetch implementation to a Tunnel Gateway. */
 export async function createCaptunTunnel(
-  options: Fetcher & {
-    connectWebSocket?: WebSocketFetcher["connectWebSocket"];
-    gateway?: string | URL;
-    name?: string;
-    token?: string;
-  },
+  options: CreateCaptunTunnelOptions,
 ): Promise<CaptunTunnel> {
   const connect = gatewayConnectRequest(options);
   const ready = Promise.withResolvers<TunnelReady>();
