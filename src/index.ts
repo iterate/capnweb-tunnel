@@ -73,7 +73,7 @@ export function acceptFetcherCapabilityFromSocket(
   socket: WebSocket,
   options: { onDisconnect?: () => void } = {},
 ): FetcherStub {
-  const remote = newWebSocketRpcSession<FetcherStub>(socket) as unknown as RemoteFetcherCapability;
+  const remote = newWebSocketRpcSession<RemoteFetcherCapability>(socket);
   return fetcherStubFromRemoteCapability(remote, options);
 }
 
