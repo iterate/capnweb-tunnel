@@ -53,6 +53,8 @@ type ActiveTunnel = {
   url: string;
   token?: string;
   fetcher: FetcherStub;
+  /** Public WebSockets forwarded to this tunnel, closed when the tunnel client goes away. */
+  sockets: Set<WebSocket>;
 };
 
 export type TunnelAdmission =
@@ -128,14 +130,25 @@ export class CaptunServerShard<
     });
     if (!admission.ok) return admission.response;
 
-    activeTunnel?.fetcher[Symbol.dispose]();
+    if (activeTunnel) {
+      activeTunnel.fetcher[Symbol.dispose]();
+      closeTunnelSockets(activeTunnel);
+    }
     const { response, fetcher } = acceptFetcherCapability({
       request,
       onDisconnect: () => {
-        if (this.tunnels.get(tunnelName)?.fetcher === fetcher) this.tunnels.delete(tunnelName);
+        const active = this.tunnels.get(tunnelName);
+        if (active?.fetcher !== fetcher) return;
+        this.tunnels.delete(tunnelName);
+        closeTunnelSockets(active);
       },
     });
-    const tunnel = { url: tunnelUrl, token: admission.token, fetcher };
+    const tunnel: ActiveTunnel = {
+      url: tunnelUrl,
+      token: admission.token,
+      fetcher,
+      sockets: new Set(),
+    };
     this.tunnels.set(tunnelName, tunnel);
     queueMicrotask(() => {
       void fetcher.ready({ url: tunnel.url, token: tunnel.token });
@@ -157,13 +170,13 @@ export class CaptunServerShard<
   }
 
   async forward(tunnelName: string, request: Request): Promise<Response> {
-    const tunnel = this.tunnels.get(tunnelName)?.fetcher;
+    const tunnel = this.tunnels.get(tunnelName);
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
       if (isWebSocketUpgradeRequest(request)) {
         return await forwardWebSocket(tunnel, request);
       }
-      return await tunnel.fetch(request);
+      return await tunnel.fetcher.fetch(request);
     } catch {
       return new Response("Tunnel fetch failed\n", { status: 502 });
     }
@@ -281,7 +294,7 @@ export function createTunnelForwardRequest(
   return new Request(request, { headers });
 }
 
-async function forwardWebSocket(tunnel: FetcherStub, request: Request) {
+async function forwardWebSocket(tunnel: ActiveTunnel, request: Request) {
   const WorkerWebSocketPair = (
     globalThis as typeof globalThis & { WebSocketPair: WorkerWebSocketPairConstructor }
   ).WebSocketPair;
@@ -291,7 +304,10 @@ async function forwardWebSocket(tunnel: FetcherStub, request: Request) {
 
   let result: WebSocketConnectResult;
   try {
-    result = await tunnel.connectWebSocket(request, webSocketHandleFromSocket(serverSocket));
+    result = await tunnel.fetcher.connectWebSocket(
+      request,
+      webSocketHandleFromSocket(serverSocket),
+    );
   } catch (error) {
     serverSocket.close(1011, "WebSocket tunnel failed");
     throw error;
@@ -304,11 +320,25 @@ async function forwardWebSocket(tunnel: FetcherStub, request: Request) {
   pipeWebSocketToHandle(serverSocket, result.socket);
   // The pipe dup()ed its own reference to the tunnel client's handle; release ours.
   (result.socket as Partial<Disposable>)[Symbol.dispose]?.();
+  tunnel.sockets.add(serverSocket);
+  serverSocket.addEventListener("close", () => tunnel.sockets.delete(serverSocket));
   return new Response(null, {
     status: 101,
     webSocket: pair[0],
     headers: result.protocol ? { "sec-websocket-protocol": result.protocol } : undefined,
   } as WebSocketResponseInit);
+}
+
+function closeTunnelSockets(tunnel: ActiveTunnel) {
+  for (const socket of tunnel.sockets) {
+    try {
+      // workerd allows close(1001) (going away) even though browser clients don't.
+      socket.close(1001, "Tunnel client disconnected");
+    } catch {
+      // Already closed.
+    }
+  }
+  tunnel.sockets.clear();
 }
 
 function constantTimeEqual(actual: Uint8Array, expected: Uint8Array) {

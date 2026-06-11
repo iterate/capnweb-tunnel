@@ -6,7 +6,11 @@ import { expect, test, vi } from "vitest";
 
 import { createCaptunCliRouter } from "../src/cli/bin.js";
 import { createCaptunTunnel } from "../src/index.js";
-import { createCaptunWorkerFixture, createMiniflareWorkerFixture } from "./miniflare.js";
+import {
+  createCaptunWorkerFixture,
+  createHostedCaptunWorkerFixture,
+  createMiniflareWorkerFixture,
+} from "./miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -196,7 +200,7 @@ test.concurrent("forwards WebSocket Cap'n Web RPC to a local fetch handler", asy
 
 // Binary frames are covered by the CLI test below: miniflare's getWorker()
 // fetch proxy used here corrupts binary WebSocket messages to "[object Blob]".
-test.concurrent("forwards WebSocket messages and close codes", async ({ task }) => {
+test.concurrent("forwards WebSocket messages, subprotocols, and close codes", async ({ task }) => {
   await using target = await createMiniflareWorkerFixture({
     entryPoint: "test/fixtures/capnweb-websocket-target.ts",
     durableObjects: {},
@@ -206,8 +210,9 @@ test.concurrent("forwards WebSocket messages and close codes", async ({ task }) 
     target.worker.fetch(request.url, request),
   );
 
-  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"), ["alpha", "beta"]);
   await waitForWebSocket(socket);
+  expect(socket).toMatchObject({ protocol: "alpha" });
   const closed = nextWebSocketClose(socket);
 
   socket.send("ping");
@@ -215,6 +220,91 @@ test.concurrent("forwards WebSocket messages and close codes", async ({ task }) 
 
   socket.send("close-with:4001 done");
   await expect(closed).resolves.toMatchObject({ code: 4001, reason: "done" });
+});
+
+test.concurrent("forwards concurrent WebSockets over one tunnel without cross-talk", async ({
+  task,
+}) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using tunnel = await createTunnelFixture(task.name, (request) =>
+    target.worker.fetch(request.url, request),
+  );
+
+  const first = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  const second = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await Promise.all([waitForWebSocket(first), waitForWebSocket(second)]);
+
+  first.send("from-first");
+  second.send("from-second");
+  await expect(nextWebSocketMessage(first).then(webSocketMessageText)).resolves.toBe(
+    "echo:from-first",
+  );
+  await expect(nextWebSocketMessage(second).then(webSocketMessageText)).resolves.toBe(
+    "echo:from-second",
+  );
+
+  first.close();
+  second.close();
+  await delay(50);
+});
+
+test.concurrent("fails the public WebSocket when the local server rejects it", async ({ task }) => {
+  await using tunnel = await createTunnelFixture(
+    task.name,
+    () => new Response("No WebSockets here\n", { status: 404 }),
+  );
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await expect(waitForWebSocket(socket)).rejects.toThrow();
+});
+
+test.concurrent("closes public WebSockets when the tunnel client disconnects", async ({ task }) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using server = await createServerFixture();
+  const tunnel = await createCaptunTunnel({
+    gateway: server.gateway,
+    name: tunnelName(task.name),
+    token: server.token,
+    fetch: (request) => target.worker.fetch(request.url, request),
+  });
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(socket);
+  const closed = nextWebSocketClose(socket);
+
+  tunnel[Symbol.dispose]();
+  await expect(closed).resolves.toMatchObject({ code: 1001 });
+});
+
+test.concurrent("forwards WebSockets through the hosted gateway", async ({ task }) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using gateway = await createHostedCaptunWorkerFixture();
+  using tunnel = await createCaptunTunnel({
+    gateway: gateway.origin,
+    name: tunnelName(task.name),
+    fetch: (request) => target.worker.fetch(request.url, request),
+  });
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(socket);
+  socket.send("hosted");
+  await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
+    "echo:hosted",
+  );
+  socket.close();
+  await delay(50);
 });
 
 test("CLI tunnels WebSocket traffic to a local target", async ({ task }) => {
@@ -242,9 +332,10 @@ test("CLI tunnels WebSocket traffic to a local target", async ({ task }) => {
   });
 
   const tunnel = await ready.promise;
-  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"), ["alpha", "beta"]);
   try {
     await waitForWebSocket(socket);
+    expect(socket).toMatchObject({ protocol: "alpha" });
     socket.send("hello-from-cli");
     await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
       "echo:hello-from-cli",
@@ -259,6 +350,62 @@ test("CLI tunnels WebSocket traffic to a local target", async ({ task }) => {
     await expect(closed).resolves.toMatchObject({ code: 4001, reason: "done" });
   } finally {
     socket.close();
+    await delay(50);
+    shutdown.resolve();
+    await runTunnel;
+  }
+});
+
+// Captun through Captun: the CLI exposes an entire inner gateway through an
+// outer tunnel, so public traffic crosses two gateways and two tunnel clients
+// before reaching the worker. (The inner tunnel still connects to its gateway
+// directly: a Gateway Connect Request cannot ride through a tunnel because
+// gateways claim any request carrying the connect query param before tunnel
+// routing.)
+test("tunnels Captun through Captun", async ({ task }) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using inner = await createTunnelFixture(`${task.name} inner`, (request) =>
+    target.worker.fetch(request.url, request),
+  );
+
+  // The outer tunnel exposes the inner gateway like any local server.
+  await using outerServer = await createServerFixture();
+  const ready = Promise.withResolvers<{ url: string }>();
+  const shutdown = Promise.withResolvers<void>();
+  const router = createCaptunCliRouter({
+    readConfig: async () => undefined,
+    waitForShutdown: () => shutdown.promise,
+    onTunnelReady: ({ url }) => ready.resolve({ url }),
+  });
+  const runTunnel = createRouterClient(router).tunnel({
+    target: new URL(inner.url).origin,
+    gateway: outerServer.gateway,
+    name: tunnelName(`${task.name} outer`),
+    token: outerServer.token,
+    requestLogs: false,
+  });
+
+  const outer = await ready.promise;
+  const nestedUrl = `${outer.url}${new URL(inner.url).pathname}`;
+  const rpc = newWebSocketRpcSession<{ ping(value: string): Promise<string> }>(
+    `${nestedUrl}/rpc`.replace(/^http/, "ws"),
+  );
+  const socket = new WebSocket(`${nestedUrl}/ws`.replace(/^http/, "ws"));
+  try {
+    await expect(rpc.ping("captun-through-captun")).resolves.toBe("pong:captun-through-captun");
+
+    await waitForWebSocket(socket);
+    socket.send("through-two-tunnels");
+    await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
+      "echo:through-two-tunnels",
+    );
+  } finally {
+    socket.close();
+    rpc[Symbol.dispose]();
     await delay(50);
     shutdown.resolve();
     await runTunnel;

@@ -455,8 +455,11 @@ export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle
     if (finished) return;
     finished = true;
     enqueue(() => {
-      forward(remote.close(code, reason));
-      disposeStub(remote);
+      try {
+        forward(remote.close(code, reason));
+      } finally {
+        disposeStub(remote);
+      }
     });
   };
 

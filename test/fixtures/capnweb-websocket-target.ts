@@ -17,14 +17,14 @@ export default {
     if (url.pathname === "/rpc") {
       return newWorkersWebSocketRpcResponse(request, new DummyCapability());
     }
-    if (url.pathname === "/ws") return webSocketEchoResponse();
+    if (url.pathname === "/ws") return webSocketEchoResponse(request);
 
     return new Response("Not found\n", { status: 404 });
   },
 };
 
 /** Echoes text as `echo:<text>`, binary untouched, and `close-with:<code> <reason>` as a close. */
-function webSocketEchoResponse() {
+function webSocketEchoResponse(request: Request) {
   const WorkerWebSocketPair = (
     globalThis as typeof globalThis & { WebSocketPair: WorkerWebSocketPairConstructor }
   ).WebSocketPair;
@@ -47,8 +47,11 @@ function webSocketEchoResponse() {
       socket.send(`echo:${event.data}`);
     })();
   });
+  // Select the first offered subprotocol so tests can assert negotiation.
+  const protocol = request.headers.get("sec-websocket-protocol")?.split(",")[0]?.trim();
   return new Response(null, {
     status: 101,
     webSocket: pair[0],
+    headers: protocol ? { "sec-websocket-protocol": protocol } : undefined,
   } as ResponseInit & { webSocket: WebSocket });
 }
