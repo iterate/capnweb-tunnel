@@ -332,10 +332,23 @@ test("CLI tunnels WebSocket traffic to a local target", async ({ task }) => {
   });
 
   const tunnel = await ready.promise;
-  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"), ["alpha", "beta"]);
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"), {
+    protocols: ["alpha", "beta"],
+    headers: { cookie: "session=tunnel-test", authorization: "Bearer tunnel-test" },
+    // Node's WebSocket (undici) accepts { protocols, headers }; the DOM type doesn't.
+  } as unknown as string[]);
   try {
     await waitForWebSocket(socket);
     expect(socket).toMatchObject({ protocol: "alpha" });
+
+    socket.send("handshake-headers");
+    await expect(
+      nextWebSocketMessage(socket).then(webSocketMessageText).then(JSON.parse),
+    ).resolves.toMatchObject({
+      cookie: "session=tunnel-test",
+      authorization: "Bearer tunnel-test",
+    });
+
     socket.send("hello-from-cli");
     await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
       "echo:hello-from-cli",

@@ -608,14 +608,15 @@ async function connectTargetWebSocket(
 
   const targetUrl = new URL(`${tunnel.target}${url.pathname}${url.search}`);
   targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
-  const targetSocket = new WebSocket(
-    targetUrl,
-    request.headers
+  const targetSocket = new WebSocket(targetUrl, {
+    protocols: request.headers
       .get("sec-websocket-protocol")
       ?.split(",")
       .map((protocol) => protocol.trim())
       .filter(Boolean),
-  );
+    headers: forwardedHandshakeHeaders(request.headers),
+    // Node's WebSocket (undici) accepts { protocols, headers }; the DOM type doesn't.
+  } as unknown as string[]);
 
   try {
     await waitForWebSocketOpen(targetSocket);
@@ -638,6 +639,22 @@ async function connectTargetWebSocket(
     protocol: targetSocket.protocol || undefined,
     socket: webSocketHandleFromSocket(targetSocket),
   };
+}
+
+/**
+ * Handshake headers to forward to the local WebSocket server, so cookie or
+ * token auth behaves the same as tunneled HTTP requests. Hop-by-hop headers
+ * and the Sec-WebSocket-* family stay out: the local WebSocket client
+ * negotiates its own handshake (subprotocols are passed separately).
+ */
+function forwardedHandshakeHeaders(headers: Headers) {
+  const skip = new Set(["connection", "host", "keep-alive", "te", "trailer", "upgrade"]);
+  const forwarded: Record<string, string> = {};
+  for (const [name, value] of headers) {
+    if (skip.has(name) || name.startsWith("sec-websocket-") || name.startsWith("proxy-")) continue;
+    forwarded[name] = value;
+  }
+  return forwarded;
 }
 
 async function waitForWebSocketOpen(socket: WebSocket) {

@@ -44,6 +44,15 @@ function webSocketEchoResponse(request: Request) {
         socket.close(Number(code), reason.join(" "));
         return;
       }
+      if (event.data === "handshake-headers") {
+        socket.send(
+          JSON.stringify({
+            cookie: request.headers.get("cookie"),
+            authorization: request.headers.get("authorization"),
+          }),
+        );
+        return;
+      }
       socket.send(`echo:${event.data}`);
     })();
   });
