@@ -15,13 +15,16 @@ import { color } from "./ansi.js";
 import { CliFriendlyError } from "./cli-error.js";
 import {
   CaptunTunnelConnectError,
-  createWebSocketForwardResponse,
   createCaptunTunnel,
-  type Fetcher,
-  type WebSocketFetcher,
-  type WebSocketForwardResult,
   HOSTED_CAPTUN_GATEWAY,
+  isWebSocketUpgradeRequest,
+  pipeWebSocketToHandle,
   randomConnectToken,
+  webSocketHandleFromSocket,
+  type Fetcher,
+  type WebSocketConnectResult,
+  type WebSocketFetcher,
+  type WebSocketHandle,
 } from "../index.js";
 import { assertLocalTargetAcceptingConnections } from "./local-target.js";
 import { withSpinner } from "./spinner.js";
@@ -544,7 +547,7 @@ async function connectTunnelWithRetry(
 function makeTunnelFetcher(tunnel: ResolvedTunnel): Fetcher & WebSocketFetcher {
   return {
     fetch: async (request: Request) => {
-      if (request.headers.get("upgrade") === "websocket") {
+      if (isWebSocketUpgradeRequest(request)) {
         return new Response("Use connectWebSocket for WebSocket tunnel requests\n", {
           status: 400,
         });
@@ -583,20 +586,28 @@ function makeTunnelFetcher(tunnel: ResolvedTunnel): Fetcher & WebSocketFetcher {
       }
     },
 
-    connectWebSocket: (request) => connectTargetWebSocket(tunnel, request),
+    connectWebSocket: (request, remote) => connectTargetWebSocket(tunnel, request, remote),
   };
 }
 
 async function connectTargetWebSocket(
   tunnel: ResolvedTunnel,
   request: Request,
-): Promise<WebSocketForwardResult> {
+  remote: WebSocketHandle,
+): Promise<WebSocketConnectResult> {
   const url = new URL(request.url);
   const requestStartedAt = performance.now();
-  const rayId = request.headers.get("cf-ray") || "-";
+  const log = (status: number) =>
+    logRequest(tunnel.requestLogs, {
+      method: request.method,
+      path: `${url.pathname}${url.search}`,
+      rayId: request.headers.get("cf-ray") || "-",
+      status,
+      startedAt: requestStartedAt,
+    });
+
   const targetUrl = new URL(`${tunnel.target}${url.pathname}${url.search}`);
   targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
-
   const targetSocket = new WebSocket(
     targetUrl,
     request.headers
@@ -608,34 +619,25 @@ async function connectTargetWebSocket(
 
   try {
     await waitForWebSocketOpen(targetSocket);
-    logRequest(tunnel.requestLogs, {
-      method: request.method,
-      path: `${url.pathname}${url.search}`,
-      rayId,
-      status: 101,
-      startedAt: requestStartedAt,
-    });
-
-    return {
-      accepted: true,
-      headers: targetSocket.protocol ? [["sec-websocket-protocol", targetSocket.protocol]] : [],
-      response: createWebSocketForwardResponse(targetSocket, request.body),
-    };
   } catch {
     targetSocket.close();
-    const response = new Response(
-      `Request reached the captun cli, but ${targetUrl.origin} did not accept the WebSocket\n`,
-      { status: 502 },
-    );
-    logRequest(tunnel.requestLogs, {
-      method: request.method,
-      path: `${url.pathname}${url.search}`,
-      rayId,
-      status: response.status,
-      startedAt: requestStartedAt,
-    });
-    return { accepted: false, response };
+    log(502);
+    return {
+      accepted: false,
+      response: new Response(
+        `Request reached the captun cli, but ${targetUrl.origin} did not accept the WebSocket\n`,
+        { status: 502 },
+      ),
+    };
   }
+
+  log(101);
+  pipeWebSocketToHandle(targetSocket, remote);
+  return {
+    accepted: true,
+    protocol: targetSocket.protocol || undefined,
+    socket: webSocketHandleFromSocket(targetSocket),
+  };
 }
 
 async function waitForWebSocketOpen(socket: WebSocket) {

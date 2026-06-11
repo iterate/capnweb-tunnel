@@ -1,9 +1,4 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { createHash } from "node:crypto";
-import net from "node:net";
-import { dirname, resolve } from "node:path";
-import type { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
 
 import { createRouterClient } from "@orpc/server";
 import { newWebSocketRpcSession } from "capnweb";
@@ -13,7 +8,7 @@ import { createCaptunCliRouter } from "../src/cli/bin.js";
 import { createCaptunTunnel } from "../src/index.js";
 import { createCaptunWorkerFixture, createMiniflareWorkerFixture } from "./miniflare.js";
 
-vi.setConfig({ testTimeout: 25_000 });
+vi.setConfig({ testTimeout: 15_000 });
 
 test.concurrent("forwards HTTP", async ({ task }) => {
   await using tunnel = await createTunnelFixture(task.name, async (request) =>
@@ -199,8 +194,35 @@ test.concurrent("forwards WebSocket Cap'n Web RPC to a local fetch handler", asy
   await delay(50);
 });
 
-test("CLI tunnels WebSocket traffic to a local Bun server", async ({ task }) => {
-  await using app = await createBunWebSocketFixture();
+// Binary frames are covered by the CLI test below: miniflare's getWorker()
+// fetch proxy used here corrupts binary WebSocket messages to "[object Blob]".
+test.concurrent("forwards WebSocket messages and close codes", async ({ task }) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using tunnel = await createTunnelFixture(task.name, (request) =>
+    target.worker.fetch(request.url, request),
+  );
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(socket);
+  const closed = nextWebSocketClose(socket);
+
+  socket.send("ping");
+  await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe("echo:ping");
+
+  socket.send("close-with:4001 done");
+  await expect(closed).resolves.toMatchObject({ code: 4001, reason: "done" });
+});
+
+test("CLI tunnels WebSocket traffic to a local target", async ({ task }) => {
+  await using app = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
   await using server = await createServerFixture();
   const ready = Promise.withResolvers<{ url: string }>();
   const shutdown = Promise.withResolvers<void>();
@@ -212,7 +234,7 @@ test("CLI tunnels WebSocket traffic to a local Bun server", async ({ task }) => 
   const client = createRouterClient(router);
 
   const runTunnel = client.tunnel({
-    target: String(app.port),
+    target: app.origin,
     gateway: server.gateway,
     name: tunnelName(task.name),
     token: server.token,
@@ -224,7 +246,17 @@ test("CLI tunnels WebSocket traffic to a local Bun server", async ({ task }) => 
   try {
     await waitForWebSocket(socket);
     socket.send("hello-from-cli");
-    await expect(readWebSocketMessage(socket)).resolves.toBe("echo:hello-from-cli");
+    await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
+      "echo:hello-from-cli",
+    );
+
+    const bytes = new Uint8Array([0, 1, 2, 250, 255]);
+    socket.send(bytes);
+    await expect(nextWebSocketMessage(socket).then(webSocketMessageBytes)).resolves.toEqual(bytes);
+
+    const closed = nextWebSocketClose(socket);
+    socket.send("close-with:4001 done");
+    await expect(closed).resolves.toMatchObject({ code: 4001, reason: "done" });
   } finally {
     socket.close();
     await delay(50);
@@ -301,129 +333,6 @@ function sha256(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function createBunWebSocketFixture() {
-  const port = await getAvailablePort();
-  const server = spawn("bun", ["run", "test/fixtures/bun-websocket-server.js"], {
-    cwd: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
-    env: { ...process.env, PORT: String(port) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const output = captureOutput(server);
-
-  try {
-    await waitForTcp(port, server, output);
-    return {
-      port,
-      async [Symbol.asyncDispose]() {
-        await stopProcess(server);
-      },
-    };
-  } catch (error) {
-    await stopProcess(server);
-    throw new Error(
-      formatFixtureFailure(error instanceof Error ? error.message : String(error), output.logs()),
-    );
-  }
-}
-
-type ServerProcess = ChildProcessByStdio<null, Readable, Readable>;
-
-async function getAvailablePort(): Promise<number> {
-  return new Promise<number>((resolvePort, reject) => {
-    const server = net.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error(`Failed to allocate a local port: ${String(address)}`));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) reject(error);
-        else resolvePort(address.port);
-      });
-    });
-    server.on("error", reject);
-  });
-}
-
-async function waitForTcp(port: number, server: ServerProcess, output: CapturedProcessOutput) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 15_000) {
-    const error = output.error();
-    if (error) throw error;
-    if (server.exitCode !== null || server.signalCode) {
-      throw new Error(
-        `Bun server exited before port ${port} accepted connections\n\n${output.logs().trim() || "(none)"}`,
-      );
-    }
-
-    if (await canConnect(port)) return;
-
-    await delay(100);
-  }
-
-  throw new Error(`Timed out waiting for Bun server to accept connections on port ${port}`);
-}
-
-function canConnect(port: number) {
-  return new Promise<boolean>((resolveConnect) => {
-    const socket = net.connect(port, "127.0.0.1");
-    socket.once("connect", () => {
-      socket.destroy();
-      resolveConnect(true);
-    });
-    socket.once("error", () => {
-      socket.destroy();
-      resolveConnect(false);
-    });
-  });
-}
-
-function captureOutput(child: ServerProcess) {
-  const chunks: string[] = [];
-  let processError: Error | undefined;
-  const capture = (chunk: string | Buffer) => {
-    chunks.push(String(chunk));
-    if (chunks.length > 200) chunks.shift();
-  };
-  child.stdout.on("data", capture);
-  child.stderr.on("data", capture);
-  child.on("error", (error) => {
-    processError = error;
-    chunks.push(error.stack || error.message);
-  });
-
-  return {
-    logs: () => chunks.join(""),
-    error: () => processError,
-  };
-}
-
-interface CapturedProcessOutput {
-  logs(): string;
-  error(): Error | undefined;
-}
-
-function formatFixtureFailure(message: string, serverLogs: string) {
-  return [message, "", "Server logs:", serverLogs.trim() || "(none)"].join("\n");
-}
-
-async function stopProcess(child: ServerProcess): Promise<void> {
-  if (child.exitCode !== null || child.killed) return;
-
-  child.kill("SIGINT");
-  const exited = await Promise.race([
-    new Promise<boolean>((resolveExit) => child.once("exit", () => resolveExit(true))),
-    delay(5_000).then(() => false),
-  ]);
-
-  if (!exited && child.exitCode === null && !child.killed) {
-    child.kill("SIGKILL");
-    await new Promise<void>((resolveExit) => child.once("exit", () => resolveExit()));
-  }
-}
-
 function waitForWebSocket(socket: WebSocket) {
   if (socket.readyState === WebSocket.OPEN) return Promise.resolve();
   return new Promise<void>((resolveOpen, rejectOpen) => {
@@ -437,15 +346,9 @@ function waitForWebSocket(socket: WebSocket) {
   });
 }
 
-function readWebSocketMessage(socket: WebSocket) {
-  return new Promise<string>((resolveMessage, rejectMessage) => {
-    socket.addEventListener(
-      "message",
-      async (event) => {
-        resolveMessage(await webSocketMessageText(event.data));
-      },
-      { once: true },
-    );
+function nextWebSocketMessage(socket: WebSocket) {
+  return new Promise<unknown>((resolveMessage, rejectMessage) => {
+    socket.addEventListener("message", (event) => resolveMessage(event.data), { once: true });
     socket.addEventListener("error", () => rejectMessage(new Error("WebSocket error")), {
       once: true,
     });
@@ -455,12 +358,31 @@ function readWebSocketMessage(socket: WebSocket) {
   });
 }
 
+function nextWebSocketClose(socket: WebSocket) {
+  return new Promise<{ code: number; reason: string }>((resolveClose) => {
+    socket.addEventListener(
+      "close",
+      (event) => {
+        const { code, reason } = event as { code?: number; reason?: string };
+        resolveClose({ code: code ?? 0, reason: reason ?? "" });
+      },
+      { once: true },
+    );
+  });
+}
+
 async function webSocketMessageText(data: unknown) {
   if (typeof data === "string") return data;
-  if (data instanceof Blob) return data.text();
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (data instanceof Uint8Array) return new TextDecoder().decode(data);
-  return String(data);
+  return new TextDecoder().decode(await webSocketMessageBytes(data));
+}
+
+async function webSocketMessageBytes(data: unknown): Promise<Uint8Array> {
+  if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (data instanceof Uint8Array) return new Uint8Array(data);
+  throw new Error(
+    `Expected a binary WebSocket message, got ${typeof data}: ${JSON.stringify(data)?.slice(0, 200)}`,
+  );
 }
 
 function delay(ms: number): Promise<void> {

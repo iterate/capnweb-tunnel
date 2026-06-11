@@ -9,6 +9,7 @@ import {
 import {
   connectTokenFromRequest,
   GATEWAY_CONNECT_QUERY_PARAM,
+  isWebSocketUpgradeRequest,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
 } from "../index.js";
@@ -106,17 +107,16 @@ export default {
       tunnelName,
       tunnelUrl,
     });
-    const response =
-      request.headers.get("upgrade") === "websocket"
-        ? await shard.fetch(tunnelRequest)
-        : await shard.forward(tunnelName, tunnelRequest);
+    const response = isWebSocketUpgradeRequest(request)
+      ? await shard.fetch(tunnelRequest)
+      : await shard.forward(tunnelName, tunnelRequest);
     return stripSetCookieHeadersOutsideTunnel(response, new URL(tunnelUrl).hostname);
   },
 } satisfies ExportedHandler<HostedCaptunEnv>;
 
 async function connectTunnel(request: Request, env: HostedCaptunEnv) {
   const diagnostic = isConnectDiagnostic(request);
-  if (!diagnostic && request.headers.get("upgrade") !== "websocket") {
+  if (!diagnostic && !isWebSocketUpgradeRequest(request)) {
     return new Response("Expected WebSocket upgrade\n", { status: 400 });
   }
 
@@ -162,7 +162,7 @@ function isGatewayConnectRequest(request: Request) {
 }
 
 function isConnectDiagnostic(request: Request) {
-  if (request.headers.get("upgrade") === "websocket") return false;
+  if (isWebSocketUpgradeRequest(request)) return false;
   return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
 }
 
@@ -181,6 +181,9 @@ function createForwardedRequest(request: Request, customHostname: string | undef
 }
 
 function stripSetCookieHeadersOutsideTunnel(response: Response, tunnelHostname: string) {
+  // An upgraded response carries the webSocket and cannot be reconstructed.
+  if (response.status === 101) return response;
+
   const setCookies = setCookieHeaders(response.headers);
   if (setCookies.length === 0) return response;
 

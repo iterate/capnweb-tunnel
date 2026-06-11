@@ -19,7 +19,10 @@ export interface Fetcher {
 }
 
 export interface WebSocketFetcher {
-  connectWebSocket(request: Request): WebSocketForwardResult | Promise<WebSocketForwardResult>;
+  connectWebSocket(
+    request: Request,
+    remote: WebSocketHandle,
+  ): WebSocketConnectResult | Promise<WebSocketConnectResult>;
 }
 
 export type TunnelReady = {
@@ -37,12 +40,19 @@ export interface RemoteFetcherCapability extends FetcherStub {
 
 export type WebSocketMessage = string | Uint8Array;
 
-export type WebSocketFrame =
-  | { type: "message"; data: WebSocketMessage }
-  | { type: "close"; code?: number; reason?: string };
+/**
+ * A tunneled WebSocket as a Cap'n Web capability: each side of a tunneled
+ * connection holds a handle to the socket on the other side and forwards
+ * messages by calling it. Cap'n Web delivers calls in order, so no extra
+ * framing is needed.
+ */
+export interface WebSocketHandle {
+  send(message: WebSocketMessage): unknown;
+  close(code?: number, reason?: string): unknown;
+}
 
-export type WebSocketForwardResult =
-  | { accepted: true; headers?: Array<[string, string]>; response: Response }
+export type WebSocketConnectResult =
+  | { accepted: true; protocol?: string; socket: WebSocketHandle }
   | { accepted: false; response: Response };
 
 export function fetcherStubFromRemoteCapability(
@@ -53,7 +63,7 @@ export function fetcherStubFromRemoteCapability(
 
   return {
     fetch: (request) => remote.fetch(request),
-    connectWebSocket: async (request) => await remote.connectWebSocket(request),
+    connectWebSocket: (request, handle) => remote.connectWebSocket(request, handle),
     ready: (tunnel) => remote.ready(tunnel),
     [Symbol.dispose]: () => remote[Symbol.dispose](),
   };
@@ -256,17 +266,19 @@ class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
     this.onReady(tunnel);
   }
 
-  async connectWebSocket(request: Request) {
-    if (this.fetcher.connectWebSocket) return this.fetcher.connectWebSocket(request);
+  async connectWebSocket(request: Request, remote: WebSocketHandle) {
+    if (this.fetcher.connectWebSocket) return this.fetcher.connectWebSocket(request, remote);
 
     const response = await this.fetcher.fetch(createWebSocketUpgradeRequest(request));
-    const webSocket = responseWebSocket(response);
-    if (!webSocket) return { accepted: false as const, response };
+    const socket = responseWebSocket(response);
+    if (!socket) return { accepted: false as const, response };
 
+    acceptIfNeeded(socket);
+    pipeWebSocketToHandle(socket, remote);
     return {
       accepted: true as const,
-      headers: [...response.headers],
-      response: createWebSocketForwardResponse(webSocket, request.body),
+      protocol: response.headers.get("sec-websocket-protocol") || undefined,
+      socket: webSocketHandleFromSocket(socket),
     };
   }
 }
@@ -396,136 +408,112 @@ export function acceptFetcherCapability(
   };
 }
 
-export function createWebSocketForwardResponse(
-  socket: WebSocket,
-  incoming: ReadableStream<Uint8Array> | null,
-): Response {
-  acceptIfNeeded(socket);
-  if (incoming) {
-    void pipeFramesToWebSocket(incoming, socket);
-  }
-
-  return new Response(webSocketFramesFromSocket(socket), {
-    headers: { "content-type": "application/x-captun-websocket-frames" },
-  });
+export function isWebSocketUpgradeRequest(request: Request): boolean {
+  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
 }
 
-export async function pipeFramesToWebSocket(stream: ReadableStream<Uint8Array>, socket: WebSocket) {
-  for await (const frame of decodeWebSocketFrames(stream)) {
-    if (frame.type === "close") {
-      closeWebSocket(socket, frame.code, frame.reason);
-      return;
-    }
-    sendWebSocketMessage(socket, frame.data);
+/** Exposes a local WebSocket as a WebSocketHandle the other side of a tunnel can call. */
+export function webSocketHandleFromSocket(socket: WebSocket): WebSocketHandle {
+  return new SocketHandle(socket);
+}
+
+class SocketHandle extends RpcTarget implements WebSocketHandle {
+  constructor(private socket: WebSocket) {
+    super();
   }
+
+  send(message: WebSocketMessage) {
+    this.socket.send(message);
+  }
+
+  close(code?: number, reason?: string) {
+    closeWebSocket(this.socket, code, reason);
+  }
+}
+
+/**
+ * Forwards every message and the final close from a local WebSocket to the
+ * remote side's handle. Conversions are chained so messages arrive in order
+ * even when a runtime delivers binary frames as Blobs (async to read).
+ */
+export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle): void {
+  // Cap'n Web disposes stubs received as call arguments when the call
+  // returns; dup() keeps the capability alive for the socket's lifetime.
+  const remote = dupStub(handle);
+  const closeFailed = () => closeWebSocket(socket, 1011, "WebSocket tunnel failed");
+  let pending = Promise.resolve();
+  const enqueue = (action: () => void | Promise<void>) => {
+    pending = pending.then(action).catch(closeFailed);
+  };
+  // A failed forward means the tunnel side is gone; close our side too.
+  const forward = (call: unknown) => {
+    void Promise.resolve(call).catch(closeFailed);
+  };
+
+  let finished = false;
+  const finish = (code?: number, reason?: string) => {
+    if (finished) return;
+    finished = true;
+    enqueue(() => {
+      forward(remote.close(code, reason));
+      disposeStub(remote);
+    });
+  };
+
+  socket.addEventListener("message", (event) => {
+    if (finished) return;
+    enqueue(async () => {
+      forward(remote.send(await webSocketMessage(event.data)));
+    });
+  });
+  socket.addEventListener("close", (event) => finish(event.code, event.reason));
+  socket.addEventListener("error", () => finish(1011, "WebSocket error"));
+}
+
+type StubLike = { dup?(): unknown; [Symbol.dispose]?(): void };
+
+function dupStub(handle: WebSocketHandle): WebSocketHandle {
+  const dup = (handle as WebSocketHandle & StubLike).dup;
+  return typeof dup === "function" ? (dup.call(handle) as WebSocketHandle) : handle;
+}
+
+function disposeStub(handle: WebSocketHandle) {
+  (handle as WebSocketHandle & StubLike)[Symbol.dispose]?.();
+}
+
+/**
+ * Normalizes a message event payload to string | Uint8Array. Checks are
+ * realm-safe (no bare instanceof) because tunneled sockets can come from
+ * other contexts — e.g. miniflare delivers Blobs from its own realm — and
+ * the copy yields a true Uint8Array, which Cap'n Web's serializer requires
+ * (a Node Buffer's prototype is not Uint8Array.prototype).
+ */
+async function webSocketMessage(data: unknown): Promise<WebSocketMessage> {
+  if (typeof data === "string") return data;
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
+  }
+  if (Object.prototype.toString.call(data) === "[object ArrayBuffer]") {
+    return new Uint8Array(data as ArrayBuffer).slice();
+  }
+  if (typeof (data as Blob | null)?.arrayBuffer === "function") {
+    return new Uint8Array(await (data as Blob).arrayBuffer());
+  }
+  return String(data);
 }
 
 function closeWebSocket(socket: WebSocket, code?: number, reason?: string) {
-  if (code === undefined || code === 1000 || (code >= 3000 && code <= 4999)) {
-    socket.close(code, reason);
-    return;
-  }
-  socket.close();
-}
-
-export function webSocketFramesFromSocket(socket: WebSocket): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      socket.addEventListener("message", (event) => {
-        void webSocketFrameFromMessage(event.data).then((frame) => {
-          controller.enqueue(encodeWebSocketFrame(frame));
-        });
-      });
-      socket.addEventListener("close", (event) => {
-        controller.enqueue(
-          encodeWebSocketFrame({ type: "close", code: event.code, reason: event.reason }),
-        );
-        controller.close();
-      });
-      socket.addEventListener("error", (event) => {
-        controller.error(event instanceof ErrorEvent ? event.error : new Error("WebSocket error"));
-      });
-    },
-    cancel() {
-      socket.close(1000, "stream canceled");
-    },
-  });
-}
-
-export async function* decodeWebSocketFrames(
-  stream: ReadableStream<Uint8Array>,
-): AsyncIterable<WebSocketFrame> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const chunk of stream) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let newline = buffer.indexOf("\n");
-    while (newline !== -1) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      if (line) yield decodeWebSocketFrame(line);
-      newline = buffer.indexOf("\n");
+  // WebSocket.close() only accepts 1000 or 3000-4999; other codes (1001,
+  // 1011, ...) are receive-only and must fall back to a bare close.
+  try {
+    if (code === undefined || code === 1000 || (code >= 3000 && code <= 4999)) {
+      socket.close(code, reason);
+    } else {
+      socket.close();
     }
+  } catch {
+    // Already closed or closing.
   }
-  buffer += decoder.decode();
-  if (buffer) yield decodeWebSocketFrame(buffer);
-}
-
-export async function webSocketFrameFromMessage(data: unknown): Promise<WebSocketFrame> {
-  if (typeof data === "string" || data instanceof Uint8Array) {
-    return { type: "message", data };
-  }
-  if (data instanceof ArrayBuffer) return { type: "message", data: new Uint8Array(data) };
-  if (data instanceof Blob)
-    return { type: "message", data: new Uint8Array(await data.arrayBuffer()) };
-  return { type: "message", data: String(data) };
-}
-
-export function sendWebSocketMessage(socket: WebSocket, message: WebSocketMessage) {
-  if (typeof message === "string") {
-    socket.send(message);
-    return;
-  }
-  const bytes = new Uint8Array(message);
-  socket.send(bytes.buffer);
-}
-
-export function encodeWebSocketFrame(frame: WebSocketFrame): Uint8Array {
-  const encoded =
-    frame.type === "message"
-      ? {
-          type: "message",
-          text: typeof frame.data === "string" ? frame.data : undefined,
-          bytes: typeof frame.data === "string" ? undefined : base64Encode(frame.data),
-        }
-      : frame;
-  return new TextEncoder().encode(`${JSON.stringify(encoded)}\n`);
-}
-
-function decodeWebSocketFrame(line: string): WebSocketFrame {
-  const frame = JSON.parse(line) as {
-    type: "message" | "close";
-    text?: string;
-    bytes?: string;
-    code?: number;
-    reason?: string;
-  };
-  if (frame.type === "close") return { type: "close", code: frame.code, reason: frame.reason };
-  return {
-    type: "message",
-    data: frame.bytes ? base64Decode(frame.bytes) : frame.text || "",
-  };
-}
-
-function base64Encode(bytes: Uint8Array) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64Decode(value: string) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
 function acceptIfNeeded(socket: WebSocket) {
