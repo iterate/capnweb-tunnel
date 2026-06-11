@@ -304,6 +304,33 @@ test.concurrent("answers WebSockets Workers-style from a Node fetch handler", as
   await expect(serverClosed.promise).resolves.toMatchObject({ code: 4002 });
 });
 
+// The in-memory WebSocketPair accepts any value in send(), but only strings
+// and bytes can cross the tunnel. A bogus payload must fail that socket, not
+// reach the public client stringified as "[object Object]".
+test.concurrent("closes the socket instead of stringifying an untunnelable payload", async ({
+  task,
+}) => {
+  await using tunnel = await createTunnelFixture(task.name, (request) => {
+    if (!isWebSocketUpgradeRequest(request)) return new Response("http ok\n");
+
+    const pair = new WebSocketPair();
+    const server = pair[1];
+    server.accept();
+    server.addEventListener("message", () => {
+      server.send({ not: "a websocket payload" } as unknown as string);
+    });
+    return createWebSocketResponse(pair[0]);
+  });
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(socket);
+  const closed = nextWebSocketClose(socket);
+
+  socket.send("trigger");
+  await expect(nextWebSocketMessage(socket)).rejects.toThrow("WebSocket closed");
+  await closed;
+});
+
 test.concurrent("closes only the socket that sends an oversized message", async ({ task }) => {
   await using target = await createMiniflareWorkerFixture({
     entryPoint: "test/fixtures/capnweb-websocket-target.ts",
