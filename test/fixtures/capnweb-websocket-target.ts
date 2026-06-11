@@ -1,15 +1,12 @@
 import { newWorkersWebSocketRpcResponse, RpcTarget } from "capnweb";
 
+import type { WebSocketResponseInit, WorkerWebSocketPairConstructor } from "../../src/index.js";
+
 class DummyCapability extends RpcTarget {
   ping(value: string) {
     return `pong:${value}`;
   }
 }
-
-type WorkerWebSocketPairConstructor = new () => {
-  0: WebSocket;
-  1: WebSocket & { accept(): void };
-};
 
 export default {
   fetch(request: Request) {
@@ -62,5 +59,5 @@ function webSocketEchoResponse(request: Request) {
     status: 101,
     webSocket: pair[0],
     headers: protocol ? { "sec-websocket-protocol": protocol } : undefined,
-  } as ResponseInit & { webSocket: WebSocket });
+  } as WebSocketResponseInit);
 }

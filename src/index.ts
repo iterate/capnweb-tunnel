@@ -164,16 +164,16 @@ type TunnelClientCapability = Fetcher &
     ready(tunnel: TunnelReady): void | Promise<void>;
   };
 
-type WorkerWebSocket = WebSocket & {
+export type WorkerWebSocket = WebSocket & {
   accept(): void;
 };
 
-type WorkerWebSocketPairConstructor = new () => {
+export type WorkerWebSocketPairConstructor = new () => {
   0: WorkerWebSocket;
   1: WorkerWebSocket;
 };
 
-type WebSocketResponseInit = ResponseInit & {
+export type WebSocketResponseInit = ResponseInit & {
   webSocket: WebSocket;
 };
 

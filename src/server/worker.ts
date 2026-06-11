@@ -10,6 +10,8 @@ import {
   webSocketHandleFromSocket,
   type FetcherStub,
   type WebSocketConnectResult,
+  type WebSocketResponseInit,
+  type WorkerWebSocketPairConstructor,
 } from "../index.js";
 import {
   captunShardName,
@@ -30,19 +32,6 @@ export type CaptunEnv = {
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
 const CUSTOM_HOSTNAME_RESERVED_TUNNEL_NAMES = ["captun", "gateway"];
-
-type WorkerWebSocket = WebSocket & {
-  accept(): void;
-};
-
-type WorkerWebSocketPairConstructor = new () => {
-  0: WorkerWebSocket;
-  1: WorkerWebSocket;
-};
-
-type WebSocketResponseInit = ResponseInit & {
-  webSocket: WebSocket;
-};
 
 type CaptunShardBindingEnv<Env extends { CAPTUN_TOKEN?: string }> = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard<Env>>;
