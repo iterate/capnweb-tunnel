@@ -574,12 +574,22 @@ export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle
   socket.addEventListener("message", (event) => {
     if (finished) return;
     enqueue(async () => {
-      forward(remote.send(await webSocketMessage(event.data)));
+      const message = await webSocketMessage(event.data);
+      // Cap'n Web frames the tunnel leg as base64 JSON with a ~32MiB frame
+      // limit; an oversized message would kill the whole tunnel (closing
+      // every connection on it) instead of just this socket.
+      if ((typeof message === "string" ? message.length : message.byteLength) > MAX_MESSAGE_BYTES) {
+        closeWebSocket(socket, 4009, "Message too large to tunnel");
+        return;
+      }
+      forward(remote.send(message));
     });
   });
   socket.addEventListener("close", (event) => finish(event.code, event.reason));
   socket.addEventListener("error", () => finish(1011, "WebSocket error"));
 }
+
+const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 type StubLike = { dup?(): unknown; [Symbol.dispose]?(): void };
 

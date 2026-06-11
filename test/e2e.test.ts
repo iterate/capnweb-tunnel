@@ -304,6 +304,33 @@ test.concurrent("answers WebSockets Workers-style from a Node fetch handler", as
   await expect(serverClosed.promise).resolves.toMatchObject({ code: 4002 });
 });
 
+test.concurrent("closes only the socket that sends an oversized message", async ({ task }) => {
+  await using target = await createMiniflareWorkerFixture({
+    entryPoint: "test/fixtures/capnweb-websocket-target.ts",
+    durableObjects: {},
+    bindings: {},
+  });
+  await using tunnel = await createTunnelFixture(task.name, (request) =>
+    target.worker.fetch(request.url, request),
+  );
+
+  const oversized = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(oversized);
+  const closed = nextWebSocketClose(oversized);
+  oversized.send(new Uint8Array(17 * 1024 * 1024));
+  await expect(closed).resolves.toMatchObject({ code: 4009 });
+
+  // The tunnel itself survives; other connections keep working.
+  const second = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(second);
+  second.send("still-alive");
+  await expect(nextWebSocketMessage(second).then(webSocketMessageText)).resolves.toBe(
+    "echo:still-alive",
+  );
+  second.close();
+  await delay(50);
+});
+
 test.concurrent("fails the public WebSocket when the local server rejects it", async ({ task }) => {
   await using tunnel = await createTunnelFixture(
     task.name,

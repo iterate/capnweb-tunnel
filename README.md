@@ -65,6 +65,37 @@ await new Promise(() => {}); // stay alive until killed
 
 That's all you need! No local ports, just a fetch function.
 
+### WebSockets
+
+Tunnels forward WebSockets too: `npx captun 3000` exposes any local WebSocket
+server (socket.io, `ws`, Bun, Deno, ...) with handshake headers, subprotocols,
+binary messages, and close codes passing through. In code, a fetch handler
+accepts WebSockets Workers-style on any runtime:
+
+```ts
+import {
+  createCaptunTunnel,
+  createWebSocketResponse,
+  isWebSocketUpgradeRequest,
+  WebSocketPair,
+} from "captun";
+
+await createCaptunTunnel({
+  fetch(request) {
+    if (!isWebSocketUpgradeRequest(request)) return new Response("hello");
+    const pair = new WebSocketPair();
+    pair[1].accept();
+    pair[1].addEventListener("message", (event) => pair[1].send(`echo:${event.data}`));
+    return createWebSocketResponse(pair[0]);
+  },
+});
+```
+
+Connections are relayed message by message over the tunnel, so ping/pong and
+compression are per-hop, close codes outside 1000/3000–4999 degrade to a plain
+close, and messages are capped at 16MiB so one oversized frame can't take down
+the tunnel.
+
 ### Vite plugin
 
 `captun/vite` serves your Vite dev server (and `vite preview`) through a public tunnel URL — handy for receiving webhooks against local code, sharing work in progress, or pointing remote devices and agents at your dev server.
