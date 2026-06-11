@@ -620,6 +620,9 @@ async function connectTargetWebSocket(
 
   try {
     await waitForWebSocketOpen(targetSocket);
+    // The local server may have closed right after the handshake; reject the
+    // public upgrade cleanly instead of accepting an already-dead socket.
+    if (targetSocket.readyState !== WebSocket.OPEN) throw new Error("WebSocket closed after open");
   } catch {
     targetSocket.close();
     log(502);
