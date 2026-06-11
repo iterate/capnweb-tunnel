@@ -2,7 +2,12 @@ import type { AddressInfo } from "node:net";
 
 import type { HttpServer, Logger, Plugin } from "vite";
 
-import { createCaptunTunnel, type CreateCaptunTunnelOptions, type TunnelReady } from "./index.js";
+import {
+  type CaptunTunnel,
+  createCaptunTunnel,
+  type CreateCaptunTunnelOptions,
+  type TunnelReady,
+} from "./index.js";
 
 /**
  * Options for the {@link captun} Vite plugin.
@@ -52,24 +57,18 @@ export default function captun(options: CaptunVitePluginOptions = {}): Plugin {
   const { onTunnel, onError, ...tunnelOptions } = options;
 
   const openTunnel = async (httpServer: HttpServer, logger: Logger, protocol: "http" | "https") => {
+    // The catch only covers creating the tunnel — an error thrown by the
+    // user's own onTunnel callback should not be reported as a tunnel failure.
+    let tunnel: CaptunTunnel;
     try {
       const address = httpServer.address();
       if (!address || typeof address === "string") {
         throw new Error("Captun requires the Vite server to listen on a TCP port");
       }
-      const tunnel = await createCaptunTunnel({
+      tunnel = await createCaptunTunnel({
         ...tunnelOptions,
         fetch: forwardToLocalServer(localOrigin(protocol, address)),
       });
-      if (!httpServer.listening) {
-        // The server closed while the tunnel was connecting; "close" already
-        // fired, so dispose here instead.
-        tunnel[Symbol.dispose]();
-        return;
-      }
-      httpServer.once("close", () => tunnel[Symbol.dispose]());
-      if (onTunnel) onTunnel({ url: tunnel.url, token: tunnel.token });
-      else logger.info(`  ➜  Captun:  ${tunnel.url}`);
     } catch (error) {
       if (onError) onError(error);
       else {
@@ -77,7 +76,17 @@ export default function captun(options: CaptunVitePluginOptions = {}): Plugin {
           `Captun tunnel failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      return;
     }
+    if (!httpServer.listening) {
+      // The server closed while the tunnel was connecting; "close" already
+      // fired, so dispose here instead.
+      tunnel[Symbol.dispose]();
+      return;
+    }
+    httpServer.once("close", () => tunnel[Symbol.dispose]());
+    if (onTunnel) onTunnel({ url: tunnel.url, token: tunnel.token });
+    else logger.info(`  ➜  Captun:  ${tunnel.url}`);
   };
 
   const tunnelWhenListening = (
@@ -122,6 +131,10 @@ function forwardToLocalServer(origin: string) {
   return (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const headers = new Headers(request.headers);
+    // Node's fetch already refuses to forward the public host (a forbidden
+    // header), but make it explicit: the local hop must use its own Host so
+    // Vite's allowed-hosts check doesn't reject tunnel traffic.
+    headers.delete("host");
     // Without this the local server may compress; Node's fetch would then
     // decompress the body but keep the content-encoding header, corrupting
     // the response on its way back through the tunnel.
