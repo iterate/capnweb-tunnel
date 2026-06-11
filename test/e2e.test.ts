@@ -347,6 +347,14 @@ test.concurrent("closes only the socket that sends an oversized message", async 
   oversized.send(new Uint8Array(17 * 1024 * 1024));
   await expect(closed).resolves.toMatchObject({ code: 4009 });
 
+  // Text is measured in wire bytes, not string length: ~10.5M UTF-16 units
+  // (under the cap) but ~20MiB of UTF-8.
+  const oversizedText = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
+  await waitForWebSocket(oversizedText);
+  const textClosed = nextWebSocketClose(oversizedText);
+  oversizedText.send("💥".repeat(5 * 1024 * 1024));
+  await expect(textClosed).resolves.toMatchObject({ code: 4009 });
+
   // The tunnel itself survives; other connections keep working.
   const second = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"));
   await waitForWebSocket(second);

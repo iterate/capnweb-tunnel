@@ -578,7 +578,7 @@ export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle
       // Cap'n Web frames the tunnel leg as base64 JSON with a ~32MiB frame
       // limit; an oversized message would kill the whole tunnel (closing
       // every connection on it) instead of just this socket.
-      if ((typeof message === "string" ? message.length : message.byteLength) > MAX_MESSAGE_BYTES) {
+      if (messageByteLength(message) > MAX_MESSAGE_BYTES) {
         closeWebSocket(socket, 4009, "Message too large to tunnel");
         return;
       }
@@ -590,6 +590,19 @@ export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle
 }
 
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * What a message costs on the Cap'n Web wire: bytes for binary (base64
+ * inflation fits in the 2x headroom below the ~32MiB frame limit), and
+ * JSON-escaped UTF-8 bytes for strings — `length` counts UTF-16 units, which
+ * undercounts multi-byte characters by up to 3x and escapes by up to 6x.
+ */
+function messageByteLength(message: WebSocketMessage) {
+  if (typeof message !== "string") return message.byteLength;
+  // Fast path: even at the 6-bytes-per-unit worst case it fits.
+  if (message.length * 6 <= MAX_MESSAGE_BYTES) return message.length;
+  return new TextEncoder().encode(JSON.stringify(message)).byteLength;
+}
 
 type StubLike = { dup?(): unknown; [Symbol.dispose]?(): void };
 
