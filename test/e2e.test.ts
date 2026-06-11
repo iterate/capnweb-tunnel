@@ -5,7 +5,12 @@ import { newWebSocketRpcSession } from "capnweb";
 import { expect, test, vi } from "vitest";
 
 import { createCaptunCliRouter } from "../src/cli/bin.js";
-import { createCaptunTunnel } from "../src/index.js";
+import {
+  createCaptunTunnel,
+  createWebSocketResponse,
+  isWebSocketUpgradeRequest,
+  WebSocketPair,
+} from "../src/index.js";
 import {
   createCaptunWorkerFixture,
   createHostedCaptunWorkerFixture,
@@ -250,6 +255,53 @@ test.concurrent("forwards concurrent WebSockets over one tunnel without cross-ta
   first.close();
   second.close();
   await delay(50);
+});
+
+// Workers-style WebSocket handling from a plain fetch handler running in
+// Node, using the library's runtime-agnostic WebSocketPair — no workerd on
+// the target side.
+test.concurrent("answers WebSockets Workers-style from a Node fetch handler", async ({ task }) => {
+  const serverClosed = Promise.withResolvers<{ code: number; reason: string }>();
+
+  await using tunnel = await createTunnelFixture(task.name, (request) => {
+    if (!isWebSocketUpgradeRequest(request)) return new Response("http ok\n");
+
+    const pair = new WebSocketPair();
+    const server = pair[1];
+    server.accept();
+    server.send("welcome");
+    server.addEventListener("message", (event) => {
+      const data = (event as MessageEvent).data as string;
+      if (data === "close-me") {
+        server.close(4002, "client asked");
+        return;
+      }
+      server.send(`node-echo:${data}`);
+    });
+    server.addEventListener("close", (event) => {
+      const { code, reason } = event as { code?: number; reason?: string };
+      serverClosed.resolve({ code: code ?? 0, reason: reason ?? "" });
+    });
+    return createWebSocketResponse(pair[0], { protocol: "node-pair" });
+  });
+
+  const socket = new WebSocket(`${tunnel.url}/ws`.replace(/^http/, "ws"), ["node-pair"]);
+  await waitForWebSocket(socket);
+  expect(socket).toMatchObject({ protocol: "node-pair" });
+
+  // The welcome was sent before the handler even returned; it must not be lost.
+  await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe("welcome");
+
+  socket.send("hello");
+  await expect(nextWebSocketMessage(socket).then(webSocketMessageText)).resolves.toBe(
+    "node-echo:hello",
+  );
+
+  // Server-initiated close reaches the public client with its code.
+  const closed = nextWebSocketClose(socket);
+  socket.send("close-me");
+  await expect(closed).resolves.toMatchObject({ code: 4002, reason: "client asked" });
+  await expect(serverClosed.promise).resolves.toMatchObject({ code: 4002 });
 });
 
 test.concurrent("fails the public WebSocket when the local server rejects it", async ({ task }) => {

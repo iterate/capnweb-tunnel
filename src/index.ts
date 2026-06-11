@@ -434,6 +434,92 @@ export function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get("upgrade")?.toLowerCase() === "websocket";
 }
 
+class PairedWebSocketPair {
+  0: PairedWebSocket;
+  1: PairedWebSocket;
+
+  constructor() {
+    const first = new PairedWebSocket();
+    const second = new PairedWebSocket();
+    first.peer = second;
+    second.peer = first;
+    this[0] = first;
+    this[1] = second;
+  }
+}
+
+class PairedWebSocket extends EventTarget {
+  peer!: PairedWebSocket;
+  private accepted = false;
+  private closed = false;
+  private queued: Event[] = [];
+
+  accept() {
+    if (this.accepted) return;
+    this.accepted = true;
+    // Flush asynchronously so listeners attached right after accept() still
+    // receive events that arrived earlier (matching Workers queuing).
+    queueMicrotask(() => {
+      for (const event of this.queued.splice(0)) this.dispatchEvent(event);
+    });
+  }
+
+  send(message: unknown) {
+    if (this.closed) throw new TypeError("Can't call WebSocket send() after close().");
+    this.peer.deliver(Object.assign(new Event("message"), { data: message }));
+  }
+
+  close(code?: number, reason?: string) {
+    if (this.closed) return;
+    this.closed = true;
+    this.peer.closed = true;
+    const detail = { code: code ?? 1005, reason: reason ?? "" };
+    this.peer.deliver(Object.assign(new Event("close"), detail));
+    this.deliver(Object.assign(new Event("close"), detail));
+  }
+
+  private deliver(event: Event) {
+    if (!this.accepted) {
+      this.queued.push(event);
+      return;
+    }
+    // Microtasks dispatch in order, after any pending accept() flush.
+    queueMicrotask(() => this.dispatchEvent(event));
+  }
+}
+
+/**
+ * `WebSocketPair` on every runtime: the Workers-native pair where the runtime
+ * provides one, otherwise an in-memory pair, so a plain `fetch` handler can
+ * answer tunneled WebSockets Workers-style anywhere. Pair sockets implement
+ * the surface Workers code uses — `accept()`, `send()`, `close()`, and
+ * message/close events — not every WebSocket property.
+ */
+export const WebSocketPair: WorkerWebSocketPairConstructor =
+  (globalThis as { WebSocketPair?: WorkerWebSocketPairConstructor }).WebSocketPair ??
+  (PairedWebSocketPair as unknown as WorkerWebSocketPairConstructor);
+
+/**
+ * Wraps one end of a WebSocketPair in the Response a tunneled `fetch` handler
+ * returns to accept the WebSocket. In Workers this is a real 101 upgrade
+ * response; on other runtimes the Response only carries the socket to the
+ * tunnel bridge (the public 101 is produced by the gateway), because their
+ * Response constructors reject status 101.
+ */
+export function createWebSocketResponse(
+  webSocket: WebSocket,
+  init?: { protocol?: string },
+): Response {
+  const headers = init?.protocol ? { "sec-websocket-protocol": init.protocol } : undefined;
+  try {
+    return new Response(null, { status: 101, webSocket, headers } as WebSocketResponseInit);
+  } catch {
+    const response = new Response(null, { headers });
+    Object.defineProperty(response, "webSocket", { value: webSocket });
+    return response;
+  }
+}
+
 /** Exposes a local WebSocket as a WebSocketHandle the other side of a tunnel can call. */
 export function webSocketHandleFromSocket(socket: WebSocket): WebSocketHandle {
   return new SocketHandle(socket);
