@@ -102,10 +102,14 @@ export default {
       customHostname,
       tunnelName,
     });
-    const response = await shard.forward(
+    const tunnelRequest = createTunnelForwardRequest(forwarded, {
       tunnelName,
-      createTunnelForwardRequest(forwarded, tunnelUrl),
-    );
+      tunnelUrl,
+    });
+    const response =
+      request.headers.get("upgrade") === "websocket"
+        ? await shard.fetch(tunnelRequest)
+        : await shard.forward(tunnelName, tunnelRequest);
     return stripSetCookieHeadersOutsideTunnel(response, new URL(tunnelUrl).hostname);
   },
 } satisfies ExportedHandler<HostedCaptunEnv>;

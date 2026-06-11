@@ -2,9 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import {
   acceptFetcherCapability,
   connectTokenFromRequest,
+  decodeWebSocketFrames,
+  encodeWebSocketFrame,
   GATEWAY_CONNECT_QUERY_PARAM,
+  sendWebSocketMessage,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
+  webSocketFrameFromMessage,
   type FetcherStub,
 } from "../index.js";
 import {
@@ -26,6 +30,19 @@ export type CaptunEnv = {
 /** Set by the top-level Worker on the WebSocket-upgrade request so the DO knows the tunnel. */
 const TUNNEL_NAME_HEADER = "x-captun-tunnel-name";
 const CUSTOM_HOSTNAME_RESERVED_TUNNEL_NAMES = ["captun", "gateway"];
+
+type WorkerWebSocket = WebSocket & {
+  accept(): void;
+};
+
+type WorkerWebSocketPairConstructor = new () => {
+  0: WorkerWebSocket;
+  1: WorkerWebSocket;
+};
+
+type WebSocketResponseInit = ResponseInit & {
+  webSocket: WebSocket;
+};
 
 type CaptunShardBindingEnv<Env extends { CAPTUN_TOKEN?: string }> = {
   CaptunServerShard: DurableObjectNamespace<CaptunServerShard<Env>>;
@@ -91,7 +108,14 @@ export class CaptunServerShard<
     const tunnelUrl = request.headers.get(TUNNEL_URL_HEADER);
     if (!tunnelUrl) return new Response("Missing tunnel URL\n", { status: 404 });
 
-    // Non-upgrade requests are diagnostic probes: run admission, skip the upgrade.
+    if (!isGatewayConnectRequest(request)) {
+      if (request.headers.get("upgrade") !== "websocket") {
+        return new Response("Expected WebSocket upgrade\n", { status: 400 });
+      }
+      return this.forward(tunnelName, request);
+    }
+
+    // Non-upgrade connect requests are diagnostic probes: run admission, skip the upgrade.
     if (request.headers.get("upgrade") !== "websocket") {
       return this.diagnoseConnect(tunnelName, request);
     }
@@ -136,6 +160,9 @@ export class CaptunServerShard<
     const tunnel = this.tunnels.get(tunnelName)?.fetcher;
     if (!tunnel) return new Response("No tunnel client connected\n", { status: 503 });
     try {
+      if (request.headers.get("upgrade") === "websocket") {
+        return await forwardWebSocket(tunnel, request);
+      }
       return await tunnel.fetch(request);
     } catch {
       return new Response("Tunnel fetch failed\n", { status: 502 });
@@ -179,7 +206,13 @@ export default {
       customHostname: env.CUSTOM_HOSTNAME,
       tunnelName,
     });
-    return shard.forward(tunnelName, createTunnelForwardRequest(forwarded, tunnelUrl));
+    const tunnelRequest = createTunnelForwardRequest(forwarded, {
+      tunnelName,
+      tunnelUrl,
+    });
+
+    if (request.headers.get("upgrade") === "websocket") return shard.fetch(tunnelRequest);
+    return shard.forward(tunnelName, tunnelRequest);
   },
 } satisfies ExportedHandler<CaptunEnv>;
 
@@ -238,10 +271,116 @@ export function createTunnelConnectRequest(input: {
   return new Request(input.request, { headers });
 }
 
-export function createTunnelForwardRequest(request: Request, tunnelUrl: string): Request {
+export function createTunnelForwardRequest(
+  request: Request,
+  input: { tunnelName?: string; tunnelUrl: string } | string,
+): Request {
   const headers = new Headers(request.headers);
-  headers.set(TUNNEL_URL_HEADER, tunnelUrl);
+  if (typeof input === "string") {
+    headers.set(TUNNEL_URL_HEADER, input);
+  } else {
+    if (input.tunnelName) headers.set(TUNNEL_NAME_HEADER, input.tunnelName);
+    headers.set(TUNNEL_URL_HEADER, input.tunnelUrl);
+  }
   return new Request(request, { headers });
+}
+
+async function forwardWebSocket(tunnel: FetcherStub, request: Request) {
+  if (!tunnel.connectWebSocket) {
+    return new Response("Tunnel client cannot forward WebSockets\n", { status: 501 });
+  }
+
+  const WorkerWebSocketPair = (
+    globalThis as typeof globalThis & { WebSocketPair: WorkerWebSocketPairConstructor }
+  ).WebSocketPair;
+  const pair = new WorkerWebSocketPair();
+  const clientSocket = pair[0];
+  const serverSocket = pair[1];
+  serverSocket.accept();
+  const incoming = new TransformStream<Uint8Array>();
+  const writer = incoming.writable.getWriter();
+
+  try {
+    const result = await tunnel.connectWebSocket(
+      createWebSocketConnectRequest(request, incoming.readable),
+    );
+    if (!result.accepted) {
+      serverSocket.close(1000, "WebSocket not accepted");
+      return result.response;
+    }
+
+    pipeWebSocketToRequestBody(serverSocket, writer);
+    pipeResponseBodyToWebSocket(result.response, serverSocket);
+    return new Response(null, {
+      status: 101,
+      webSocket: clientSocket,
+      headers: result.headers,
+    } as WebSocketResponseInit);
+  } catch (error) {
+    writer.releaseLock();
+    serverSocket.close(1011, "WebSocket tunnel failed");
+    throw error;
+  }
+}
+
+function createWebSocketConnectRequest(request: Request, body: ReadableStream<Uint8Array>) {
+  const headers = new Headers(request.headers);
+  headers.delete("upgrade");
+  headers.delete("connection");
+  return new Request(request.url, {
+    method: "POST",
+    headers,
+    body,
+    // Required by Node-compatible Request implementations; harmless in Workers.
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
+function pipeWebSocketToRequestBody(
+  socket: WebSocket,
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+) {
+  socket.addEventListener("message", (event) => {
+    void webSocketFrameFromMessage(event.data).then((frame) =>
+      writer.write(encodeWebSocketFrame(frame)),
+    );
+  });
+  socket.addEventListener("close", (event) => {
+    void writer
+      .write(encodeWebSocketFrame({ type: "close", code: event.code, reason: event.reason }))
+      .finally(() => {
+        writer.close();
+        writer.releaseLock();
+      });
+  });
+  socket.addEventListener("error", () => {
+    void writer.abort(new Error("WebSocket error"));
+  });
+}
+
+function pipeResponseBodyToWebSocket(response: Response, socket: WebSocket) {
+  void (async () => {
+    if (!response.body) return;
+    try {
+      for await (const frame of decodeWebSocketFrames(response.body)) {
+        if (frame.type === "close") {
+          closeWebSocket(socket, frame.code, frame.reason);
+          return;
+        }
+        sendWebSocketMessage(socket, frame.data);
+      }
+    } catch {
+      socket.close(1011, "WebSocket tunnel failed");
+    }
+  })();
+}
+
+function closeWebSocket(socket: WebSocket, code?: number, reason?: string) {
+  if (code === undefined || code === 1000 || (code >= 3000 && code <= 4999)) {
+    socket.close(code, reason);
+    return;
+  }
+  socket.close();
 }
 
 function constantTimeEqual(actual: Uint8Array, expected: Uint8Array) {

@@ -18,18 +18,32 @@ export interface Fetcher {
   fetch(request: Request): Response | Promise<Response>;
 }
 
+export interface WebSocketFetcher {
+  connectWebSocket(request: Request): WebSocketForwardResult | Promise<WebSocketForwardResult>;
+}
+
 export type TunnelReady = {
   url: string;
   token?: string;
 };
 
-export interface FetcherStub extends Fetcher, Disposable {
+export interface FetcherStub extends Fetcher, WebSocketFetcher, Disposable {
   ready(tunnel: TunnelReady): void | Promise<void>;
 }
 
 export interface RemoteFetcherCapability extends FetcherStub {
   onRpcBroken(callback: () => void): void;
 }
+
+export type WebSocketMessage = string | Uint8Array;
+
+export type WebSocketFrame =
+  | { type: "message"; data: WebSocketMessage }
+  | { type: "close"; code?: number; reason?: string };
+
+export type WebSocketForwardResult =
+  | { accepted: true; headers?: Array<[string, string]>; response: Response }
+  | { accepted: false; response: Response };
 
 export function fetcherStubFromRemoteCapability(
   remote: RemoteFetcherCapability,
@@ -39,6 +53,7 @@ export function fetcherStubFromRemoteCapability(
 
   return {
     fetch: (request) => remote.fetch(request),
+    connectWebSocket: async (request) => await remote.connectWebSocket(request),
     ready: (tunnel) => remote.ready(tunnel),
     [Symbol.dispose]: () => remote[Symbol.dispose](),
   };
@@ -48,7 +63,7 @@ export function acceptFetcherCapabilityFromSocket(
   socket: WebSocket,
   options: { onDisconnect?: () => void } = {},
 ): FetcherStub {
-  const remote = newWebSocketRpcSession<FetcherStub>(socket);
+  const remote = newWebSocketRpcSession<FetcherStub>(socket) as unknown as RemoteFetcherCapability;
   return fetcherStubFromRemoteCapability(remote, options);
 }
 
@@ -134,9 +149,10 @@ export class CaptunTunnelConnectError extends Error {
   }
 }
 
-type TunnelClientCapability = Fetcher & {
-  ready(tunnel: TunnelReady): void | Promise<void>;
-};
+type TunnelClientCapability = Fetcher &
+  WebSocketFetcher & {
+    ready(tunnel: TunnelReady): void | Promise<void>;
+  };
 
 type WorkerWebSocket = WebSocket & {
   accept(): void;
@@ -157,6 +173,7 @@ const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
 /** Creates a public tunnel by exposing a local fetch implementation to a Tunnel Gateway. */
 export async function createCaptunTunnel(
   options: Fetcher & {
+    connectWebSocket?: WebSocketFetcher["connectWebSocket"];
     gateway?: string | URL;
     name?: string;
     token?: string;
@@ -167,6 +184,7 @@ export async function createCaptunTunnel(
   const socket = createWebSocket(connect.url, connect.protocols);
   const fetcher = new TunnelTargetFetcher({
     fetch: options.fetch,
+    connectWebSocket: options.connectWebSocket,
     ready: (tunnel) => ready.resolve(tunnel),
   });
   const session = newWebSocketRpcSession(socket, fetcher);
@@ -216,12 +234,17 @@ function randomTunnelName() {
 }
 
 class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
-  private fetcher: Fetcher;
+  private fetcher: Fetcher & Partial<WebSocketFetcher>;
   private onReady: (tunnel: TunnelReady) => void;
 
-  constructor(options: { fetch: Fetcher["fetch"]; ready: (tunnel: TunnelReady) => void }) {
+  constructor(options: {
+    fetch: Fetcher["fetch"];
+    connectWebSocket?: WebSocketFetcher["connectWebSocket"];
+    ready: (tunnel: TunnelReady) => void;
+  }) {
     super();
     this.fetcher = { fetch: options.fetch };
+    if (options.connectWebSocket) this.fetcher.connectWebSocket = options.connectWebSocket;
     this.onReady = options.ready;
   }
 
@@ -231,6 +254,20 @@ class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
 
   ready(tunnel: TunnelReady) {
     this.onReady(tunnel);
+  }
+
+  async connectWebSocket(request: Request) {
+    if (this.fetcher.connectWebSocket) return this.fetcher.connectWebSocket(request);
+
+    const response = await this.fetcher.fetch(createWebSocketUpgradeRequest(request));
+    const webSocket = responseWebSocket(response);
+    if (!webSocket) return { accepted: false as const, response };
+
+    return {
+      accepted: true as const,
+      headers: [...response.headers],
+      response: createWebSocketForwardResponse(webSocket, request.body),
+    };
   }
 }
 
@@ -357,4 +394,151 @@ export function acceptFetcherCapability(
     fetcher,
     response: new Response(null, responseInit),
   };
+}
+
+export function createWebSocketForwardResponse(
+  socket: WebSocket,
+  incoming: ReadableStream<Uint8Array> | null,
+): Response {
+  acceptIfNeeded(socket);
+  if (incoming) {
+    void pipeFramesToWebSocket(incoming, socket);
+  }
+
+  return new Response(webSocketFramesFromSocket(socket), {
+    headers: { "content-type": "application/x-captun-websocket-frames" },
+  });
+}
+
+export async function pipeFramesToWebSocket(stream: ReadableStream<Uint8Array>, socket: WebSocket) {
+  for await (const frame of decodeWebSocketFrames(stream)) {
+    if (frame.type === "close") {
+      closeWebSocket(socket, frame.code, frame.reason);
+      return;
+    }
+    sendWebSocketMessage(socket, frame.data);
+  }
+}
+
+function closeWebSocket(socket: WebSocket, code?: number, reason?: string) {
+  if (code === undefined || code === 1000 || (code >= 3000 && code <= 4999)) {
+    socket.close(code, reason);
+    return;
+  }
+  socket.close();
+}
+
+export function webSocketFramesFromSocket(socket: WebSocket): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      socket.addEventListener("message", (event) => {
+        void webSocketFrameFromMessage(event.data).then((frame) => {
+          controller.enqueue(encodeWebSocketFrame(frame));
+        });
+      });
+      socket.addEventListener("close", (event) => {
+        controller.enqueue(
+          encodeWebSocketFrame({ type: "close", code: event.code, reason: event.reason }),
+        );
+        controller.close();
+      });
+      socket.addEventListener("error", (event) => {
+        controller.error(event instanceof ErrorEvent ? event.error : new Error("WebSocket error"));
+      });
+    },
+    cancel() {
+      socket.close(1000, "stream canceled");
+    },
+  });
+}
+
+export async function* decodeWebSocketFrames(
+  stream: ReadableStream<Uint8Array>,
+): AsyncIterable<WebSocketFrame> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of stream) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline !== -1) {
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line) yield decodeWebSocketFrame(line);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer) yield decodeWebSocketFrame(buffer);
+}
+
+export async function webSocketFrameFromMessage(data: unknown): Promise<WebSocketFrame> {
+  if (typeof data === "string" || data instanceof Uint8Array) {
+    return { type: "message", data };
+  }
+  if (data instanceof ArrayBuffer) return { type: "message", data: new Uint8Array(data) };
+  if (data instanceof Blob)
+    return { type: "message", data: new Uint8Array(await data.arrayBuffer()) };
+  return { type: "message", data: String(data) };
+}
+
+export function sendWebSocketMessage(socket: WebSocket, message: WebSocketMessage) {
+  if (typeof message === "string") {
+    socket.send(message);
+    return;
+  }
+  const bytes = new Uint8Array(message);
+  socket.send(bytes.buffer);
+}
+
+export function encodeWebSocketFrame(frame: WebSocketFrame): Uint8Array {
+  const encoded =
+    frame.type === "message"
+      ? {
+          type: "message",
+          text: typeof frame.data === "string" ? frame.data : undefined,
+          bytes: typeof frame.data === "string" ? undefined : base64Encode(frame.data),
+        }
+      : frame;
+  return new TextEncoder().encode(`${JSON.stringify(encoded)}\n`);
+}
+
+function decodeWebSocketFrame(line: string): WebSocketFrame {
+  const frame = JSON.parse(line) as {
+    type: "message" | "close";
+    text?: string;
+    bytes?: string;
+    code?: number;
+    reason?: string;
+  };
+  if (frame.type === "close") return { type: "close", code: frame.code, reason: frame.reason };
+  return {
+    type: "message",
+    data: frame.bytes ? base64Decode(frame.bytes) : frame.text || "",
+  };
+}
+
+function base64Encode(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64Decode(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function acceptIfNeeded(socket: WebSocket) {
+  const maybeWorkerSocket = socket as WebSocket & { accept?: () => void };
+  if (typeof maybeWorkerSocket.accept === "function") maybeWorkerSocket.accept();
+}
+
+function responseWebSocket(response: Response): WebSocket | undefined {
+  return (response as Response & { webSocket?: WebSocket | null }).webSocket || undefined;
+}
+
+function createWebSocketUpgradeRequest(request: Request) {
+  const headers = new Headers(request.headers);
+  headers.set("upgrade", "websocket");
+  return new Request(request.url, { headers });
 }
