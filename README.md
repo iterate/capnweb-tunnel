@@ -86,7 +86,7 @@ export default defineConfig({
   ➜  Captun:  https://abc123.captun.sh
 ```
 
-The plugin is a very thin wrapper around `createCaptunTunnel`: it waits for the server to start listening, opens a tunnel, and forwards every public request to the local server. All client tunnel options pass straight through, plus two plugin-level options:
+The plugin is a thin wrapper around `createCaptunTunnel`: it waits for the server to start listening, opens a tunnel, and forwards every public request to the local server. All client tunnel options pass straight through, plus two plugin-level callbacks:
 
 ```ts
 captun({
@@ -96,14 +96,22 @@ captun({
   token: process.env.CAPTUN_TOKEN, // Connect Token; random when omitted
 
   // plugin options
-  enabled: Boolean(process.env.TUNNEL), // skip tunneling unless opted in; defaults to true
   onTunnel: ({ url, token }) => {
-    // runs once the tunnel is connected, e.g. to register a webhook URL
+    // runs once the tunnel is connected, e.g. to register a webhook URL;
+    // replaces the default "➜ Captun: <url>" log
+  },
+  onError: (error) => {
+    // runs when creating the tunnel fails; replaces the default error log
+    // (which leaves the server running). Rethrow to make the failure fatal.
   },
 });
 ```
 
-After `npx captun deploy`, point the plugin at your own gateway by passing your deployment's `gateway` and `token` (for example via environment variables, as above).
+After `npx captun deploy`, point the plugin at your own self-hosted gateway by passing your deployment's `gateway` and `token` (for example via environment variables, as above). To only tunnel on demand, make the plugin conditional in your config:
+
+```ts
+plugins: [process.env.TUNNEL ? captun() : undefined],
+```
 
 Caveats: WebSockets are not forwarded, so Vite HMR only works on the local URL — the tunnel is for plain HTTP (webhooks, previews, e2e tests). For an https dev server, Node must trust the server's certificate (self-signed dev certificates will fail the local hop).
 

@@ -2,44 +2,28 @@ import type { AddressInfo } from "node:net";
 
 import type { HttpServer, Logger, Plugin } from "vite";
 
-import { createCaptunTunnel, type TunnelReady } from "./index.js";
+import { createCaptunTunnel, type CreateCaptunTunnelOptions, type TunnelReady } from "./index.js";
 
 /**
  * Options for the {@link captun} Vite plugin.
  *
- * The tunnel options (`gateway`, `name`, `token`) are passed through to
- * `createCaptunTunnel` verbatim — the plugin only supplies the `fetch`
- * implementation, which forwards public requests to the local Vite server.
+ * Every `createCaptunTunnel` option except `fetch` (which the plugin wires to
+ * the Vite server) is passed through verbatim — see
+ * {@link CreateCaptunTunnelOptions} for `gateway`, `name`, and `token`.
  */
-export type CaptunVitePluginOptions = {
-  /**
-   * Tunnel Gateway URL. Defaults to the hosted `https://captun.sh` service.
-   * After `npx captun deploy`, pass your own gateway URL here (for example
-   * from an environment variable: `gateway: process.env.CAPTUN_GATEWAY`).
-   */
-  gateway?: string | URL;
-  /**
-   * Tunnel Name — the public routing key in the tunnel URL. A random name is
-   * generated when omitted.
-   */
-  name?: string;
-  /**
-   * Connect Token sent with the Gateway Connect Request: a Gateway Secret for
-   * self-hosted deployments, or an Ownership Token to reclaim a named tunnel
-   * on the hosted service. Random when omitted.
-   */
-  token?: string;
-  /**
-   * Whether to create a tunnel at all. Defaults to `true`. Lets the plugin
-   * stay configured while only tunneling on demand:
-   * `captun({ enabled: Boolean(process.env.TUNNEL) })`.
-   */
-  enabled?: boolean;
+export type CaptunVitePluginOptions = Omit<CreateCaptunTunnelOptions, "fetch"> & {
   /**
    * Called once the tunnel is connected, with the public `url` and the
    * reusable connect `token` when the gateway provides or accepts one.
+   * Defaults to printing the public URL with Vite's logger.
    */
   onTunnel?: (tunnel: TunnelReady) => void;
+  /**
+   * Called when creating the tunnel fails. Defaults to logging the error with
+   * Vite's logger and leaving the server running; rethrow from here to make
+   * the failure fatal instead.
+   */
+  onError?: (error: unknown) => void;
 };
 
 /**
@@ -57,32 +41,43 @@ export type CaptunVitePluginOptions = {
  *
  * Once the server is listening, the plugin opens a tunnel with
  * `createCaptunTunnel`, prints the public URL, and forwards every public
- * request to the local server. Closing the server closes the tunnel.
+ * request to the local server. Closing the server closes the tunnel. To only
+ * tunnel on demand, make the plugin conditional in your Vite config:
+ * `plugins: [process.env.TUNNEL ? captun() : undefined]`.
  *
  * WebSockets are not forwarded, so Vite HMR only works on the local URL —
  * the tunnel is for plain HTTP: webhooks, previews, and e2e tests.
  */
 export default function captun(options: CaptunVitePluginOptions = {}): Plugin {
-  const { enabled = true, onTunnel, ...tunnelOptions } = options;
+  const { onTunnel, onError, ...tunnelOptions } = options;
 
   const openTunnel = async (httpServer: HttpServer, logger: Logger, protocol: "http" | "https") => {
-    const address = httpServer.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Captun requires the Vite server to listen on a TCP port");
+    try {
+      const address = httpServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Captun requires the Vite server to listen on a TCP port");
+      }
+      const tunnel = await createCaptunTunnel({
+        ...tunnelOptions,
+        fetch: forwardToLocalServer(localOrigin(protocol, address)),
+      });
+      if (!httpServer.listening) {
+        // The server closed while the tunnel was connecting; "close" already
+        // fired, so dispose here instead.
+        tunnel[Symbol.dispose]();
+        return;
+      }
+      httpServer.once("close", () => tunnel[Symbol.dispose]());
+      if (onTunnel) onTunnel({ url: tunnel.url, token: tunnel.token });
+      else logger.info(`  ➜  Captun:  ${tunnel.url}`);
+    } catch (error) {
+      if (onError) onError(error);
+      else {
+        logger.error(
+          `Captun tunnel failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
-    const tunnel = await createCaptunTunnel({
-      ...tunnelOptions,
-      fetch: forwardToLocalServer(localOrigin(protocol, address)),
-    });
-    if (!httpServer.listening) {
-      // The server closed while the tunnel was connecting; "close" already
-      // fired, so dispose here instead.
-      tunnel[Symbol.dispose]();
-      return;
-    }
-    httpServer.once("close", () => tunnel[Symbol.dispose]());
-    logger.info(`  ➜  Captun:  ${tunnel.url}`);
-    onTunnel?.({ url: tunnel.url, token: tunnel.token });
   };
 
   const tunnelWhenListening = (
@@ -90,16 +85,9 @@ export default function captun(options: CaptunVitePluginOptions = {}): Plugin {
     logger: Logger,
     protocol: "http" | "https",
   ) => {
-    if (!enabled || !httpServer) return;
-    const open = () => {
-      openTunnel(httpServer, logger, protocol).catch((error: unknown) => {
-        logger.error(
-          `  ➜  Captun tunnel failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
-    };
-    if (httpServer.listening) open();
-    else httpServer.once("listening", open);
+    if (!httpServer) return;
+    if (httpServer.listening) void openTunnel(httpServer, logger, protocol);
+    else httpServer.once("listening", () => void openTunnel(httpServer, logger, protocol));
   };
 
   return {
@@ -123,12 +111,10 @@ export default function captun(options: CaptunVitePluginOptions = {}): Plugin {
 }
 
 function localOrigin(protocol: "http" | "https", address: AddressInfo) {
-  const host =
-    address.address === "::" || address.address === "0.0.0.0"
-      ? "localhost"
-      : address.family === "IPv6"
-        ? `[${address.address}]`
-        : address.address;
+  // Wildcard listeners need a loopback address of the same family.
+  if (address.address === "::") return `${protocol}://[::1]:${address.port}`;
+  if (address.address === "0.0.0.0") return `${protocol}://127.0.0.1:${address.port}`;
+  const host = address.family === "IPv6" ? `[${address.address}]` : address.address;
   return `${protocol}://${host}:${address.port}`;
 }
 
@@ -140,6 +126,9 @@ function forwardToLocalServer(origin: string) {
     // decompress the body but keep the content-encoding header, corrupting
     // the response on its way back through the tunnel.
     headers.delete("accept-encoding");
+    // Node's fetch enforces a forwarded content-length against the body it
+    // actually streams; let it derive the framing from the body instead.
+    headers.delete("content-length");
     headers.set("x-forwarded-proto", url.protocol.slice(0, -1));
     headers.set("x-forwarded-host", url.host);
     const init: RequestInit & { duplex?: "half" } = {

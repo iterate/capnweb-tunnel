@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createServer, preview, type Plugin } from "vite";
+import { createLogger, createServer, preview, type Plugin } from "vite";
 import { expect, test, vi } from "vitest";
 
 import type { TunnelReady } from "../src/index.js";
@@ -12,23 +12,18 @@ import { createCaptunWorkerFixture } from "./miniflare.js";
 
 vi.setConfig({ testTimeout: 15_000 });
 
-test.concurrent("serves the dev server through a tunnel", async () => {
-  await using fixture = await createDevServerFixture();
+test.concurrent("serves the dev server through a tunnel", async ({ task }) => {
+  await using fixture = await createDevServerFixture(task.name);
 
+  expect(fixture.tunnel).toMatchObject({ url: `${fixture.gateway}/${fixture.name}` });
   const response = await fetch(fixture.tunnel.url);
   expect(response).toMatchObject({ status: 200 });
   expect(response.headers.get("content-type")).toContain("text/html");
   expect(await response.text()).toContain("captun vite fixture");
 });
 
-test.concurrent("reports the tunnel through onTunnel", async () => {
-  await using fixture = await createDevServerFixture();
-
-  expect(fixture.tunnel).toMatchObject({ url: `${fixture.gateway}/${fixture.name}` });
-});
-
-test.concurrent("forwards request bodies", async () => {
-  await using fixture = await createDevServerFixture();
+test.concurrent("forwards request bodies", async ({ task }) => {
+  await using fixture = await createDevServerFixture(task.name);
 
   const response = await fetch(`${fixture.tunnel.url}/echo`, {
     method: "POST",
@@ -37,16 +32,16 @@ test.concurrent("forwards request bodies", async () => {
   expect(await response.json()).toMatchObject({ method: "POST", body: "hello through vite" });
 });
 
-test.concurrent("passes redirects through to the public client", async () => {
-  await using fixture = await createDevServerFixture();
+test.concurrent("passes redirects through to the public client", async ({ task }) => {
+  await using fixture = await createDevServerFixture(task.name);
 
   const response = await fetch(`${fixture.tunnel.url}/redirect`, { redirect: "manual" });
   expect(response).toMatchObject({ status: 302 });
   expect(response.headers.get("location")).toBe("/after");
 });
 
-test.concurrent("closes the tunnel when the server closes", async () => {
-  await using fixture = await createDevServerFixture();
+test.concurrent("closes the tunnel when the server closes", async ({ expect, task }) => {
+  await using fixture = await createDevServerFixture(task.name);
 
   expect(await fetch(fixture.tunnel.url)).toMatchObject({ status: 200 });
   await fixture.server.close();
@@ -56,28 +51,103 @@ test.concurrent("closes the tunnel when the server closes", async () => {
     .toBeGreaterThanOrEqual(400);
 });
 
-test.concurrent("creates no tunnel when disabled", async () => {
+test.concurrent("prints the tunnel URL with Vite's logger by default", async ({ expect, task }) => {
   await using worker = await createCaptunWorkerFixture({});
   await using root = await createAppFixture();
-  const name = tunnelName();
+  const lines: string[] = [];
+  const logger = createLogger("silent");
+  logger.info = (message) => {
+    lines.push(message);
+  };
+
+  const server = await createServer({
+    root: root.path,
+    configFile: false,
+    customLogger: logger,
+    server: { port: 0 },
+    plugins: [captun({ gateway: worker.origin, name: tunnelName(task.name) })],
+  });
+  try {
+    await server.listen();
+    await expect.poll(() => lines.some((line) => line.includes("Captun:"))).toBe(true);
+    const url = lines
+      .find((line) => line.includes("Captun:"))!
+      .split("Captun:")[1]
+      .trim();
+    expect(await (await fetch(url)).text()).toContain("captun vite fixture");
+  } finally {
+    await server.close();
+  }
+});
+
+test.concurrent("tunnels through a self-hosted gateway that requires a Gateway Secret", async ({
+  task,
+}) => {
+  await using fixture = await createDevServerFixture(task.name, {
+    bindings: { CAPTUN_TOKEN: "gateway-secret" },
+    token: "gateway-secret",
+  });
+
+  const response = await fetch(fixture.tunnel.url);
+  expect(response).toMatchObject({ status: 200 });
+  expect(await response.text()).toContain("captun vite fixture");
+});
+
+test.concurrent("reports a rejected Connect Token through onError", async ({ expect, task }) => {
+  await using worker = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "gateway-secret" });
+  await using root = await createAppFixture();
+  const errors: unknown[] = [];
 
   const server = await createServer({
     root: root.path,
     configFile: false,
     logLevel: "silent",
     server: { port: 0 },
-    plugins: [captun({ gateway: worker.origin, name, enabled: false })],
+    plugins: [
+      captun({
+        gateway: worker.origin,
+        name: tunnelName(task.name),
+        token: "wrong-token",
+        onError: (error) => errors.push(error),
+      }),
+    ],
   });
   try {
     await server.listen();
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect((await fetch(`${worker.origin}/${name}`)).status).toBeGreaterThanOrEqual(400);
+    await expect.poll(() => errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toMatchObject({ name: "CaptunTunnelConnectError" });
   } finally {
     await server.close();
   }
 });
 
-test.concurrent("serves vite preview through a tunnel", async () => {
+test.concurrent("logs tunnel failures with Vite's logger by default", async ({ expect, task }) => {
+  await using worker = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "gateway-secret" });
+  await using root = await createAppFixture();
+  const errors: string[] = [];
+  const logger = createLogger("silent");
+  logger.error = (message) => {
+    errors.push(message);
+  };
+
+  const server = await createServer({
+    root: root.path,
+    configFile: false,
+    customLogger: logger,
+    server: { port: 0 },
+    plugins: [
+      captun({ gateway: worker.origin, name: tunnelName(task.name), token: "wrong-token" }),
+    ],
+  });
+  try {
+    await server.listen();
+    await expect.poll(() => errors.join("\n")).toContain("Captun tunnel failed");
+  } finally {
+    await server.close();
+  }
+});
+
+test.concurrent("serves vite preview through a tunnel", async ({ task }) => {
   await using worker = await createCaptunWorkerFixture({});
   await using root = await createAppFixture();
   await mkdir(join(root.path, "dist"));
@@ -92,7 +162,9 @@ test.concurrent("serves vite preview through a tunnel", async () => {
     configFile: false,
     logLevel: "silent",
     preview: { port: 0 },
-    plugins: [captun({ gateway: worker.origin, name: tunnelName(), onTunnel: ready.resolve })],
+    plugins: [
+      captun({ gateway: worker.origin, name: tunnelName(task.name), onTunnel: ready.resolve }),
+    ],
   });
   try {
     const tunnel = await ready.promise;
@@ -104,10 +176,13 @@ test.concurrent("serves vite preview through a tunnel", async () => {
   }
 });
 
-async function createDevServerFixture() {
-  const worker = await createCaptunWorkerFixture({});
+async function createDevServerFixture(
+  testName: string,
+  options: { bindings?: Record<string, string>; token?: string } = {},
+) {
+  const worker = await createCaptunWorkerFixture(options.bindings ?? {});
   const root = await createAppFixture();
-  const name = tunnelName();
+  const name = tunnelName(testName);
   const ready = Promise.withResolvers<TunnelReady>();
 
   const server = await createServer({
@@ -115,7 +190,10 @@ async function createDevServerFixture() {
     configFile: false,
     logLevel: "silent",
     server: { port: 0 },
-    plugins: [testEndpoints(), captun({ gateway: worker.origin, name, onTunnel: ready.resolve })],
+    plugins: [
+      testEndpoints(),
+      captun({ gateway: worker.origin, name, token: options.token, onTunnel: ready.resolve }),
+    ],
   });
   try {
     await server.listen();
@@ -173,6 +251,13 @@ function testEndpoints(): Plugin {
   };
 }
 
-function tunnelName() {
-  return `vite-plugin-${randomBytes(6).toString("hex")}`;
+function tunnelName(testName: string) {
+  const seed = `${testName}-${process.pid}-${Date.now()}-${Math.random()}`;
+  const slug = testName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const prefix = slug.slice(0, 32).replace(/-$/, "") || "test";
+  const hash = createHash("sha256").update(seed).digest("hex").slice(0, 12);
+  return `${prefix}-${hash}`;
 }
