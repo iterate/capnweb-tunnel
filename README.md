@@ -65,6 +65,56 @@ await new Promise(() => {}); // stay alive until killed
 
 That's all you need! No local ports, just a fetch function.
 
+### Vite plugin
+
+`captun/vite` serves your Vite dev server (and `vite preview`) through a public tunnel URL — handy for receiving webhooks against local code, sharing work in progress, or pointing remote devices and agents at your dev server.
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import captun from "captun/vite";
+
+export default defineConfig({
+  plugins: [captun()],
+});
+```
+
+`vite dev` then prints a public URL next to the local ones:
+
+```
+  ➜  Local:   http://localhost:5173/
+  ➜  Captun:  https://abc123.captun.sh
+```
+
+The plugin is a thin wrapper around `createCaptunTunnel`: it waits for the server to start listening, opens a tunnel, and forwards every public request to the local server. All client tunnel options pass straight through, plus two plugin-level callbacks:
+
+```ts
+captun({
+  // createCaptunTunnel options
+  gateway: process.env.CAPTUN_GATEWAY, // Tunnel Gateway URL; defaults to the hosted captun.sh service
+  name: "my-app", // Tunnel Name used in the public URL; random when omitted
+  token: process.env.CAPTUN_TOKEN, // Connect Token; random when omitted
+
+  // plugin options
+  onTunnel: ({ url, token }) => {
+    // runs once the tunnel is connected, e.g. to register a webhook URL;
+    // replaces the default "➜ Captun: <url>" log
+  },
+  onError: (error) => {
+    // runs when creating the tunnel fails; replaces the default error log
+    // (which leaves the server running). Rethrow to make the failure fatal.
+  },
+});
+```
+
+After `npx captun deploy`, point the plugin at your own self-hosted gateway by passing your deployment's `gateway` and `token` (for example via environment variables, as above). To only tunnel on demand, make the plugin conditional in your config:
+
+```ts
+plugins: [process.env.TUNNEL ? captun() : undefined],
+```
+
+Caveats: WebSockets are not forwarded, so Vite HMR only works on the local URL — the tunnel is for plain HTTP (webhooks, previews, e2e tests). For an https dev server, Node must trust the server's certificate (self-signed dev certificates will fail the local hop).
+
 ## Advanced usage
 
 The captun [worker.ts](./src/server/worker.ts) implementation has useful opinions about "named tunnels", but you can also take full control of the server implementation (which is what we do in [iterate/iterate](https://github.com/iterate/iterate)). For example, here's a weather application which allows mocking its egress to the weather API:

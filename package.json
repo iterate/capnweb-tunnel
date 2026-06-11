@@ -34,6 +34,10 @@
       "types": "./src/server/node.ts",
       "import": "./src/server/node.ts"
     },
+    "./vite": {
+      "types": "./src/vite.ts",
+      "import": "./src/vite.ts"
+    },
     "./worker": {
       "types": "./src/server/worker.ts",
       "import": "./src/server/worker.ts"
@@ -59,6 +63,10 @@
       "./node": {
         "types": "./dist/server/node.d.ts",
         "import": "./dist/server/node.js"
+      },
+      "./vite": {
+        "types": "./dist/vite.d.ts",
+        "import": "./dist/vite.js"
       },
       "./worker": {
         "types": "./dist/server/worker.d.ts",
@@ -106,8 +114,17 @@
     "oxlint": "^1.50.0",
     "tsx": "^4.22.2",
     "typescript": "^6.0.3",
+    "vite": "^8.0.16",
     "vitest": "^4.1.6",
     "wrangler": "^4.92.0"
+  },
+  "peerDependencies": {
+    "vite": ">=5.1.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
   },
   "packageManager": "pnpm@10.11.1"
 }
