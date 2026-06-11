@@ -30,6 +30,7 @@ export class WeatherReporterEgressTunnel extends DurableObject<WeatherReporterEn
     if (url.pathname === "/__intercept-egress-traffic") {
       // Here we set up our worker to allow clients/tests to intercept egress traffic
       const { response, fetcher } = acceptFetcherCapability({
+        request,
         onDisconnect: () => {
           if (this.egressTunnel === fetcher) this.egressTunnel = undefined;
         },

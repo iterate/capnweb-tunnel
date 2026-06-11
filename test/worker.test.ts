@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 import { expect, test } from "vitest";
-import { createCaptunTunnel } from "../src/index.js";
+import { connectTokenFromRequest, createCaptunTunnel } from "../src/index.js";
 import { captunHealthResponse, isCaptunHealthRequest } from "../src/cli/tunnel-health.js";
 import {
   captunShardName,
@@ -276,6 +276,117 @@ test("Captun Worker requires the configured token before accepting a tunnel clie
   expect(await response.text()).toBe("Unauthorized\n");
 });
 
+test("Captun Worker admits a token sent via Sec-WebSocket-Protocol", async () => {
+  // Non-URL-safe characters prove the base64url subprotocol encoding: this
+  // token could not have survived as a raw query param or subprotocol value.
+  const token = "s3cret token+with/odd=chars";
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: token });
+
+  using tunnel = await createCaptunTunnel({
+    gateway: fixture.origin,
+    name: "subprotocol-token-demo",
+    token,
+    fetch: () => Response.json({ ok: true }),
+  });
+
+  const response = await fetch(`${tunnel.url}/hello`);
+  expect(await response.json()).toEqual({ ok: true });
+});
+
+test("createCaptunTunnel diagnoses a wrong token as 401", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "right-token" });
+
+  await expect(
+    createCaptunTunnel({
+      gateway: fixture.origin,
+      name: "wrong-token-demo",
+      token: "wrong-token",
+      fetch: () => new Response("unused\n"),
+    }),
+  ).rejects.toThrow(/401 Unauthorized/);
+});
+
+test("Captun Worker ignores tokens sent as a query param", async () => {
+  await using fixture = await createCaptunWorkerFixture({ CAPTUN_TOKEN: "right-token" });
+
+  // Even the correct token is rejected when it arrives via the URL: URLs are
+  // logged by default, so the URL is not a Connect Token transport.
+  const response = await fixture.worker.fetch(
+    `${fixture.origin}/?captun-connect=1&captun-name=legacy&captun-token=right-token`,
+    { headers: { upgrade: "websocket" } },
+  );
+
+  expect(response).toMatchObject({ status: 401 });
+});
+
+test("Captun Worker echoes the captun subprotocol on the 101 response", async () => {
+  await using fixture = await createCaptunWorkerFixture({});
+
+  const response = await fixture.worker.fetch(
+    `${fixture.origin}/?captun-connect=1&captun-name=echo-demo`,
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": `captun, captun-token.${Buffer.from("tok").toString("base64url")}`,
+      },
+    },
+  );
+
+  expect(response).toMatchObject({ status: 101 });
+  expect(response.headers.get("sec-websocket-protocol")).toBe("captun");
+});
+
+test("createCaptunTunnel keeps the Connect Token out of the URL", async () => {
+  await using gateway = await createUpgradeCapturingServer();
+
+  await createCaptunTunnel({
+    gateway: gateway.origin,
+    name: "demo",
+    token: "super secret token",
+    fetch: () => new Response("unused\n"),
+  }).catch(() => undefined); // the capturing server rejects every upgrade
+
+  expect(gateway.upgrades).toHaveLength(1);
+  expect(gateway.upgrades[0]!.url).not.toContain("captun-token");
+  expect(gateway.upgrades[0]!.subprotocols).toContain("captun");
+  expect(gateway.upgrades[0]!.subprotocols).toContain(
+    `captun-token.${Buffer.from("super secret token").toString("base64url")}`,
+  );
+});
+
+test("connectTokenFromRequest prefers subprotocol, then header, and never the URL", () => {
+  const url = "https://gateway.example/?captun-token=from-query";
+  const subprotocols = `captun, captun-token.${Buffer.from("from subprotocol ✨").toString("base64url")}`;
+
+  expect(connectTokenFromRequest(new Request(url))).toBe(null);
+  expect(
+    connectTokenFromRequest(
+      new Request(url, { headers: { "x-captun-connect-token": "from-header" } }),
+    ),
+  ).toBe("from-header");
+  expect(
+    connectTokenFromRequest(
+      new Request(url, {
+        headers: {
+          "x-captun-connect-token": "from-header",
+          "sec-websocket-protocol": subprotocols,
+        },
+      }),
+    ),
+  ).toBe("from subprotocol ✨");
+  // Malformed base64url falls through to the next transport.
+  expect(
+    connectTokenFromRequest(
+      new Request(url, {
+        headers: {
+          "sec-websocket-protocol": "captun, captun-token.%%%",
+          "x-captun-connect-token": "from-header",
+        },
+      }),
+    ),
+  ).toBe("from-header");
+});
+
 test("Captun Worker rejects the legacy CAPTUN_SECRET binding", async () => {
   await using fixture = await createCaptunWorkerFixture({ CAPTUN_SECRET: "legacy-secret" });
 
@@ -319,6 +430,34 @@ test("createCaptunTunnel falls back when the rejected upgrade probe does not res
 
   expect(caught).toMatchObject({ message: "WebSocket connection failed" });
 });
+
+async function createUpgradeCapturingServer() {
+  const upgrades: Array<{ url: string; subprotocols: string[] }> = [];
+  const server = createServer();
+  server.on("upgrade", (request, socket) => {
+    upgrades.push({
+      url: request.url || "",
+      subprotocols: (request.headers["sec-websocket-protocol"] || "")
+        .split(",")
+        .map((protocol) => protocol.trim()),
+    });
+    socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not start test server");
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    upgrades,
+    async [Symbol.asyncDispose]() {
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    },
+  };
+}
 
 async function createRejectedWebSocketUpgradeServer(options: {
   status: number;

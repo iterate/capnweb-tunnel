@@ -65,7 +65,7 @@ The **Tunnel Gateway** policy decision that accepts, rejects, or diagnoses a **G
 _Avoid_: Hosted admission, auth check
 
 **Connect Token**:
-A credential carried on a **Gateway Connect Request** and interpreted by **Tunnel Admission**.
+A credential carried on a **Gateway Connect Request** and interpreted by **Tunnel Admission**. Rides in the `Sec-WebSocket-Protocol` header as `captun-token.<base64url>` — never the URL, because URLs are logged by default. The `x-captun-connect-token` header is also accepted (diagnostic probes, curl).
 _Avoid_: Secret, owner token
 
 **Gateway Secret**:

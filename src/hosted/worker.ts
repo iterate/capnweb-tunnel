@@ -7,7 +7,7 @@ import {
   type TunnelAdmissionInput,
 } from "../server/worker.js";
 import {
-  CONNECT_TOKEN_QUERY_PARAM,
+  connectTokenFromRequest,
   GATEWAY_CONNECT_QUERY_PARAM,
   TUNNEL_CONNECT_DIAGNOSTIC_HEADER,
   TUNNEL_NAME_QUERY_PARAM,
@@ -29,7 +29,7 @@ import { hostedCaptunResponse, HOSTED_CAPTUN_HOSTNAME, isLoopbackHostname } from
 export class CaptunServerShard extends CloudflareTunnelGatewayShard<HostedCaptunEnv> {
   protected decideTunnelAdmission(input: TunnelAdmissionInput<HostedCaptunEnv>): TunnelAdmission {
     const configuredToken = input.env.CAPTUN_TOKEN;
-    const token = connectToken(input.request) || undefined;
+    const token = connectTokenFromRequest(input.request) || undefined;
     if (configuredToken) {
       if (!token || !constantTimeEqual(token, configuredToken)) {
         return { ok: false, response: reject("Unauthorized\n", 401) };
@@ -38,7 +38,10 @@ export class CaptunServerShard extends CloudflareTunnelGatewayShard<HostedCaptun
     }
 
     if (!token) return { ok: false, response: reject("Missing tunnel token\n", 400) };
-    if (!/^[a-zA-Z0-9._~-]{1,128}$/.test(token)) {
+    // Printable ASCII without spaces. Tokens used to be restricted to URL-safe
+    // characters because they rode in a query param; the subprotocol transport
+    // base64url-encodes them, so only sanity limits remain.
+    if (!/^[\x21-\x7e]{1,128}$/.test(token)) {
       return { ok: false, response: reject("Invalid tunnel token\n", 400) };
     }
     if (input.activeToken && input.activeToken !== token) {
@@ -157,10 +160,6 @@ function isGatewayConnectRequest(request: Request) {
 function isConnectDiagnostic(request: Request) {
   if (request.headers.get("upgrade") === "websocket") return false;
   return request.headers.get(TUNNEL_CONNECT_DIAGNOSTIC_HEADER) === "1";
-}
-
-function connectToken(request: Request) {
-  return new URL(request.url).searchParams.get(CONNECT_TOKEN_QUERY_PARAM);
 }
 
 function customHostnameForRequest(request: Request, env: HostedCaptunEnv) {

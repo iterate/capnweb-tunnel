@@ -18,9 +18,9 @@ test("Hosted Captun lets apex gateway connects reach the tunnel gateway", async 
   await using fixture = await createHostedCaptunWorkerFixture();
 
   const response = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
     {
-      headers: { upgrade: "websocket" },
+      headers: { upgrade: "websocket", "sec-websocket-protocol": tunnelSubprotocols("token-a") },
       redirect: "manual",
     },
   );
@@ -278,7 +278,8 @@ test("Hosted Captun uses folder tunnel routing on loopback dev origins", async (
   });
   using _tunnel = await createDirectWorkerTunnel({
     fixture,
-    url: `${fixture.origin}/?captun-connect=1&captun-name=demo&captun-token=token-a`,
+    url: `${fixture.origin}/?captun-connect=1&captun-name=demo`,
+    token: "token-a",
     response: (request) =>
       Response.json({
         path: new URL(request.url).pathname,
@@ -438,7 +439,8 @@ test("Hosted Captun accepts the configured gateway token when token auth is enab
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=secret",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "secret",
     response: "configured token\n",
     clientIp: "203.0.113.65",
   });
@@ -457,12 +459,33 @@ test("Hosted Captun rejects invalid anonymous ownership tokens", async () => {
   });
 
   const response = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=no%20spaces",
-    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.67" } },
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": tunnelSubprotocols("no spaces"),
+        "cf-connecting-ip": "203.0.113.67",
+      },
+    },
   );
 
   expect(response).toMatchObject({ status: 400 });
   expect(await response.text()).toBe("Invalid tunnel token\n");
+});
+
+test("Hosted Captun ignores tokens sent as a query param", async () => {
+  await using fixture = await createHostedCaptunWorkerFixture({
+    HOSTED_CONNECTS_PER_IP_PER_WINDOW: "100",
+  });
+
+  // URLs are logged by default, so the URL is not a Connect Token transport.
+  const response = await fixture.worker.fetch(
+    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.68" } },
+  );
+
+  expect(response).toMatchObject({ status: 400 });
+  expect(await response.text()).toBe("Missing tunnel token\n");
 });
 
 test("Hosted Captun rejects a different token while a tunnel is active", async () => {
@@ -471,14 +494,21 @@ test("Hosted Captun rejects a different token while a tunnel is active", async (
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "token a\n",
     clientIp: "203.0.113.70",
   });
 
   const conflict = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
-    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.71" } },
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": tunnelSubprotocols("token-b"),
+        "cf-connecting-ip": "203.0.113.71",
+      },
+    },
   );
   expect(conflict).toMatchObject({ status: 409 });
   expect(await conflict.text()).toBe("Tunnel name is already connected\n");
@@ -497,16 +527,18 @@ test("Hosted Captun connect diagnostics do not replace active tunnels", async ()
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "token a\n",
     clientIp: "203.0.113.74",
   });
 
   const diagnostic = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
     {
       headers: {
         "cf-connecting-ip": "203.0.113.75",
+        "x-captun-connect-token": "token-a",
         [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
       },
     },
@@ -526,27 +558,41 @@ test("Hosted Captun connect diagnostics do not spend connect rate-limit slots", 
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "token a\n",
     clientIp: "203.0.113.77",
   });
 
   const firstConflict = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
-    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.78" } },
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": tunnelSubprotocols("token-b"),
+        "cf-connecting-ip": "203.0.113.78",
+      },
+    },
   );
   const diagnostic = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
     {
       headers: {
         "cf-connecting-ip": "203.0.113.78",
+        "x-captun-connect-token": "token-b",
         [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
       },
     },
   );
   const secondConflict = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-c",
-    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.78" } },
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": tunnelSubprotocols("token-c"),
+        "cf-connecting-ip": "203.0.113.78",
+      },
+    },
   );
 
   expect(firstConflict).toMatchObject({ status: 409 });
@@ -561,20 +607,28 @@ test("Hosted Captun connect diagnostics surface recent connect rate limits", asy
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "token a\n",
     clientIp: "203.0.113.79",
   });
 
   const rateLimited = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
-    { headers: { upgrade: "websocket", "cf-connecting-ip": "203.0.113.79" } },
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
+    {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": tunnelSubprotocols("token-b"),
+        "cf-connecting-ip": "203.0.113.79",
+      },
+    },
   );
   const diagnostic = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-b",
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
     {
       headers: {
         "cf-connecting-ip": "203.0.113.79",
+        "x-captun-connect-token": "token-b",
         [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
       },
     },
@@ -593,10 +647,11 @@ test("Hosted Captun connect diagnostics fail closed when rate limiter binding is
   });
 
   const diagnostic = await fixture.worker.fetch(
-    "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    "https://captun.sh/?captun-connect=1&captun-name=demo",
     {
       headers: {
         "cf-connecting-ip": "203.0.113.84",
+        "x-captun-connect-token": "token-a",
         [TUNNEL_CONNECT_DIAGNOSTIC_HEADER]: "1",
       },
     },
@@ -612,13 +667,15 @@ test("Hosted Captun lets the same token replace its active tunnel", async () => 
   });
   using _firstTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "first\n",
     clientIp: "203.0.113.80",
   });
   using _secondTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: "second\n",
     clientIp: "203.0.113.81",
   });
@@ -653,7 +710,8 @@ test("Hosted Captun strips response cookies scoped outside the tunnel hostname",
   });
   using _tokenTunnel = await createDirectWorkerTunnel({
     fixture,
-    url: "https://captun.sh/?captun-connect=1&captun-name=demo&captun-token=token-a",
+    url: "https://captun.sh/?captun-connect=1&captun-name=demo",
+    token: "token-a",
     response: () => {
       const headers = new Headers();
       headers.append("set-cookie", "host=1; Path=/; Secure");
@@ -715,15 +773,21 @@ test.each([
   expect(await response.text()).toBe("Reserved Captun tunnel name\n");
 });
 
+function tunnelSubprotocols(token: string) {
+  return `captun, captun-token.${Buffer.from(token).toString("base64url")}`;
+}
+
 async function createDirectWorkerTunnel(options: {
   fixture: any;
   url: string;
+  token: string;
   response: string | ((request: Request) => Response);
   clientIp: string;
 }) {
   const response = await options.fixture.worker.fetch(options.url, {
     headers: {
       upgrade: "websocket",
+      "sec-websocket-protocol": tunnelSubprotocols(options.token),
       "cf-connecting-ip": options.clientIp,
     },
   });
