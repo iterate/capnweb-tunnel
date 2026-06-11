@@ -607,7 +607,9 @@ function disposeStub(handle: WebSocketHandle) {
  * realm-safe (no bare instanceof) because tunneled sockets can come from
  * other contexts — e.g. miniflare delivers Blobs from its own realm — and
  * the copy yields a true Uint8Array, which Cap'n Web's serializer requires
- * (a Node Buffer's prototype is not Uint8Array.prototype).
+ * (a Node Buffer's prototype is not Uint8Array.prototype). Anything else
+ * throws, which fails just that socket (the pipe closes it with 1011)
+ * rather than delivering a stringified payload.
  */
 async function webSocketMessage(data: unknown): Promise<WebSocketMessage> {
   if (typeof data === "string") return data;
@@ -620,7 +622,9 @@ async function webSocketMessage(data: unknown): Promise<WebSocketMessage> {
   if (typeof (data as Blob | null)?.arrayBuffer === "function") {
     return new Uint8Array(await (data as Blob).arrayBuffer());
   }
-  return String(data);
+  throw new TypeError(
+    `Cannot tunnel WebSocket message ${Object.prototype.toString.call(data)}; expected string or binary`,
+  );
 }
 
 function closeWebSocket(socket: WebSocket, code?: number, reason?: string) {
