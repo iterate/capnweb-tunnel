@@ -18,18 +18,42 @@ export interface Fetcher {
   fetch(request: Request): Response | Promise<Response>;
 }
 
+export interface WebSocketFetcher {
+  connectWebSocket(
+    request: Request,
+    remote: WebSocketHandle,
+  ): WebSocketConnectResult | Promise<WebSocketConnectResult>;
+}
+
 export type TunnelReady = {
   url: string;
   token?: string;
 };
 
-export interface FetcherStub extends Fetcher, Disposable {
+export interface FetcherStub extends Fetcher, WebSocketFetcher, Disposable {
   ready(tunnel: TunnelReady): void | Promise<void>;
 }
 
 export interface RemoteFetcherCapability extends FetcherStub {
   onRpcBroken(callback: () => void): void;
 }
+
+export type WebSocketMessage = string | Uint8Array;
+
+/**
+ * A tunneled WebSocket as a Cap'n Web capability: each side of a tunneled
+ * connection holds a handle to the socket on the other side and forwards
+ * messages by calling it. Cap'n Web delivers calls in order, so no extra
+ * framing is needed.
+ */
+export interface WebSocketHandle {
+  send(message: WebSocketMessage): unknown;
+  close(code?: number, reason?: string): unknown;
+}
+
+export type WebSocketConnectResult =
+  | { accepted: true; protocol?: string; socket: WebSocketHandle }
+  | { accepted: false; response: Response };
 
 export function fetcherStubFromRemoteCapability(
   remote: RemoteFetcherCapability,
@@ -39,6 +63,7 @@ export function fetcherStubFromRemoteCapability(
 
   return {
     fetch: (request) => remote.fetch(request),
+    connectWebSocket: (request, handle) => remote.connectWebSocket(request, handle),
     ready: (tunnel) => remote.ready(tunnel),
     [Symbol.dispose]: () => remote[Symbol.dispose](),
   };
@@ -48,7 +73,7 @@ export function acceptFetcherCapabilityFromSocket(
   socket: WebSocket,
   options: { onDisconnect?: () => void } = {},
 ): FetcherStub {
-  const remote = newWebSocketRpcSession<FetcherStub>(socket);
+  const remote = newWebSocketRpcSession<RemoteFetcherCapability>(socket);
   return fetcherStubFromRemoteCapability(remote, options);
 }
 
@@ -134,20 +159,21 @@ export class CaptunTunnelConnectError extends Error {
   }
 }
 
-type TunnelClientCapability = Fetcher & {
-  ready(tunnel: TunnelReady): void | Promise<void>;
-};
+type TunnelClientCapability = Fetcher &
+  WebSocketFetcher & {
+    ready(tunnel: TunnelReady): void | Promise<void>;
+  };
 
-type WorkerWebSocket = WebSocket & {
+export type WorkerWebSocket = WebSocket & {
   accept(): void;
 };
 
-type WorkerWebSocketPairConstructor = new () => {
+export type WorkerWebSocketPairConstructor = new () => {
   0: WorkerWebSocket;
   1: WorkerWebSocket;
 };
 
-type WebSocketResponseInit = ResponseInit & {
+export type WebSocketResponseInit = ResponseInit & {
   webSocket: WebSocket;
 };
 
@@ -156,6 +182,13 @@ const WEBSOCKET_REJECTION_PROBE_TIMEOUT_MS = 500;
 
 /** Options for {@link createCaptunTunnel}. */
 export type CreateCaptunTunnelOptions = Fetcher & {
+  /**
+   * Low-level hook for forwarding public WebSockets, e.g. by dialing out to a
+   * separate local WebSocket server the way the CLI does. Without it, `fetch`
+   * handles WebSockets too: a returned Worker-style response with a
+   * `webSocket` is bridged automatically.
+   */
+  connectWebSocket?: WebSocketFetcher["connectWebSocket"];
   /**
    * Tunnel Gateway URL. Defaults to the hosted `https://captun.sh` service.
    * After `npx captun deploy`, pass your own gateway URL here.
@@ -183,6 +216,7 @@ export async function createCaptunTunnel(
   const socket = createWebSocket(connect.url, connect.protocols);
   const fetcher = new TunnelTargetFetcher({
     fetch: options.fetch,
+    connectWebSocket: options.connectWebSocket,
     ready: (tunnel) => ready.resolve(tunnel),
   });
   const session = newWebSocketRpcSession(socket, fetcher);
@@ -232,12 +266,17 @@ function randomTunnelName() {
 }
 
 class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
-  private fetcher: Fetcher;
+  private fetcher: Fetcher & Partial<WebSocketFetcher>;
   private onReady: (tunnel: TunnelReady) => void;
 
-  constructor(options: { fetch: Fetcher["fetch"]; ready: (tunnel: TunnelReady) => void }) {
+  constructor(options: {
+    fetch: Fetcher["fetch"];
+    connectWebSocket?: WebSocketFetcher["connectWebSocket"];
+    ready: (tunnel: TunnelReady) => void;
+  }) {
     super();
     this.fetcher = { fetch: options.fetch };
+    if (options.connectWebSocket) this.fetcher.connectWebSocket = options.connectWebSocket;
     this.onReady = options.ready;
   }
 
@@ -247,6 +286,22 @@ class TunnelTargetFetcher extends RpcTarget implements TunnelClientCapability {
 
   ready(tunnel: TunnelReady) {
     this.onReady(tunnel);
+  }
+
+  async connectWebSocket(request: Request, remote: WebSocketHandle) {
+    if (this.fetcher.connectWebSocket) return this.fetcher.connectWebSocket(request, remote);
+
+    const response = await this.fetcher.fetch(createWebSocketUpgradeRequest(request));
+    const socket = responseWebSocket(response);
+    if (!socket) return { accepted: false as const, response };
+
+    acceptIfNeeded(socket);
+    pipeWebSocketToHandle(socket, remote);
+    return {
+      accepted: true as const,
+      protocol: response.headers.get("sec-websocket-protocol") || undefined,
+      socket: webSocketHandleFromSocket(socket),
+    };
   }
 }
 
@@ -373,4 +428,243 @@ export function acceptFetcherCapability(
     fetcher,
     response: new Response(null, responseInit),
   };
+}
+
+export function isWebSocketUpgradeRequest(request: Request): boolean {
+  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
+}
+
+class PairedWebSocketPair {
+  0: PairedWebSocket;
+  1: PairedWebSocket;
+
+  constructor() {
+    const first = new PairedWebSocket();
+    const second = new PairedWebSocket();
+    first.peer = second;
+    second.peer = first;
+    this[0] = first;
+    this[1] = second;
+  }
+}
+
+class PairedWebSocket extends EventTarget {
+  peer!: PairedWebSocket;
+  private accepted = false;
+  private closed = false;
+  private queued: Event[] = [];
+
+  accept() {
+    if (this.accepted) return;
+    this.accepted = true;
+    // Flush asynchronously so listeners attached right after accept() still
+    // receive events that arrived earlier (matching Workers queuing).
+    queueMicrotask(() => {
+      for (const event of this.queued.splice(0)) this.dispatchEvent(event);
+    });
+  }
+
+  send(message: unknown) {
+    if (this.closed) throw new TypeError("Can't call WebSocket send() after close().");
+    this.peer.deliver(Object.assign(new Event("message"), { data: message }));
+  }
+
+  close(code?: number, reason?: string) {
+    if (this.closed) return;
+    this.closed = true;
+    this.peer.closed = true;
+    const detail = { code: code ?? 1005, reason: reason ?? "" };
+    this.peer.deliver(Object.assign(new Event("close"), detail));
+    this.deliver(Object.assign(new Event("close"), detail));
+  }
+
+  private deliver(event: Event) {
+    if (!this.accepted) {
+      this.queued.push(event);
+      return;
+    }
+    // Microtasks dispatch in order, after any pending accept() flush.
+    queueMicrotask(() => this.dispatchEvent(event));
+  }
+}
+
+/**
+ * `WebSocketPair` on every runtime: the Workers-native pair where the runtime
+ * provides one, otherwise an in-memory pair, so a plain `fetch` handler can
+ * answer tunneled WebSockets Workers-style anywhere. Pair sockets implement
+ * the surface Workers code uses — `accept()`, `send()`, `close()`, and
+ * message/close events — not every WebSocket property.
+ */
+export const WebSocketPair: WorkerWebSocketPairConstructor =
+  (globalThis as { WebSocketPair?: WorkerWebSocketPairConstructor }).WebSocketPair ??
+  (PairedWebSocketPair as unknown as WorkerWebSocketPairConstructor);
+
+/**
+ * Wraps one end of a WebSocketPair in the Response a tunneled `fetch` handler
+ * returns to accept the WebSocket. In Workers this is a real 101 upgrade
+ * response; on other runtimes the Response only carries the socket to the
+ * tunnel bridge (the public 101 is produced by the gateway), because their
+ * Response constructors reject status 101.
+ */
+export function createWebSocketResponse(
+  webSocket: WebSocket,
+  init?: { protocol?: string },
+): Response {
+  const headers = init?.protocol ? { "sec-websocket-protocol": init.protocol } : undefined;
+  try {
+    return new Response(null, { status: 101, webSocket, headers } as WebSocketResponseInit);
+  } catch {
+    const response = new Response(null, { headers });
+    Object.defineProperty(response, "webSocket", { value: webSocket });
+    return response;
+  }
+}
+
+/** Exposes a local WebSocket as a WebSocketHandle the other side of a tunnel can call. */
+export function webSocketHandleFromSocket(socket: WebSocket): WebSocketHandle {
+  return new SocketHandle(socket);
+}
+
+class SocketHandle extends RpcTarget implements WebSocketHandle {
+  constructor(private socket: WebSocket) {
+    super();
+  }
+
+  send(message: WebSocketMessage) {
+    this.socket.send(message);
+  }
+
+  close(code?: number, reason?: string) {
+    closeWebSocket(this.socket, code, reason);
+  }
+}
+
+/**
+ * Forwards every message and the final close from a local WebSocket to the
+ * remote side's handle. Conversions are chained so messages arrive in order
+ * even when a runtime delivers binary frames as Blobs (async to read).
+ */
+export function pipeWebSocketToHandle(socket: WebSocket, handle: WebSocketHandle): void {
+  // Cap'n Web disposes stubs received as call arguments when the call
+  // returns; dup() keeps the capability alive for the socket's lifetime.
+  const remote = dupStub(handle);
+  const closeFailed = () => closeWebSocket(socket, 1011, "WebSocket tunnel failed");
+  let pending = Promise.resolve();
+  const enqueue = (action: () => void | Promise<void>) => {
+    pending = pending.then(action).catch(closeFailed);
+  };
+  // A failed forward means the tunnel side is gone; close our side too.
+  const forward = (call: unknown) => {
+    void Promise.resolve(call).catch(closeFailed);
+  };
+
+  let finished = false;
+  const finish = (code?: number, reason?: string) => {
+    if (finished) return;
+    finished = true;
+    enqueue(() => {
+      try {
+        forward(remote.close(code, reason));
+      } finally {
+        disposeStub(remote);
+      }
+    });
+  };
+
+  socket.addEventListener("message", (event) => {
+    if (finished) return;
+    enqueue(async () => {
+      const message = await webSocketMessage(event.data);
+      // Cap'n Web frames the tunnel leg as base64 JSON with a ~32MiB frame
+      // limit; an oversized message would kill the whole tunnel (closing
+      // every connection on it) instead of just this socket.
+      if (messageByteLength(message) > MAX_MESSAGE_BYTES) {
+        closeWebSocket(socket, 4009, "Message too large to tunnel");
+        return;
+      }
+      forward(remote.send(message));
+    });
+  });
+  socket.addEventListener("close", (event) => finish(event.code, event.reason));
+  socket.addEventListener("error", () => finish(1011, "WebSocket error"));
+}
+
+const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * What a message costs on the Cap'n Web wire: bytes for binary (base64
+ * inflation fits in the 2x headroom below the ~32MiB frame limit), and
+ * JSON-escaped UTF-8 bytes for strings — `length` counts UTF-16 units, which
+ * undercounts multi-byte characters by up to 3x and escapes by up to 6x.
+ */
+function messageByteLength(message: WebSocketMessage) {
+  if (typeof message !== "string") return message.byteLength;
+  // Fast path: even at the 6-bytes-per-unit worst case it fits.
+  if (message.length * 6 <= MAX_MESSAGE_BYTES) return message.length;
+  return new TextEncoder().encode(JSON.stringify(message)).byteLength;
+}
+
+type StubLike = { dup?(): unknown; [Symbol.dispose]?(): void };
+
+function dupStub(handle: WebSocketHandle): WebSocketHandle {
+  const dup = (handle as WebSocketHandle & StubLike).dup;
+  return typeof dup === "function" ? (dup.call(handle) as WebSocketHandle) : handle;
+}
+
+function disposeStub(handle: WebSocketHandle) {
+  (handle as WebSocketHandle & StubLike)[Symbol.dispose]?.();
+}
+
+/**
+ * Normalizes a message event payload to string | Uint8Array. Checks are
+ * realm-safe (no bare instanceof) because tunneled sockets can come from
+ * other contexts — e.g. miniflare delivers Blobs from its own realm — and
+ * the copy yields a true Uint8Array, which Cap'n Web's serializer requires
+ * (a Node Buffer's prototype is not Uint8Array.prototype). Anything else
+ * throws, which fails just that socket (the pipe closes it with 1011)
+ * rather than delivering a stringified payload.
+ */
+async function webSocketMessage(data: unknown): Promise<WebSocketMessage> {
+  if (typeof data === "string") return data;
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
+  }
+  if (Object.prototype.toString.call(data) === "[object ArrayBuffer]") {
+    return new Uint8Array(data as ArrayBuffer).slice();
+  }
+  if (typeof (data as Blob | null)?.arrayBuffer === "function") {
+    return new Uint8Array(await (data as Blob).arrayBuffer());
+  }
+  throw new TypeError(
+    `Cannot tunnel WebSocket message ${Object.prototype.toString.call(data)}; expected string or binary`,
+  );
+}
+
+function closeWebSocket(socket: WebSocket, code?: number, reason?: string) {
+  // WebSocket.close() only accepts 1000 or 3000-4999; other codes (1001,
+  // 1011, ...) are receive-only and must fall back to a bare close.
+  try {
+    if (code === undefined || code === 1000 || (code >= 3000 && code <= 4999)) {
+      socket.close(code, reason);
+    } else {
+      socket.close();
+    }
+  } catch {
+    // Already closed or closing.
+  }
+}
+
+function acceptIfNeeded(socket: WebSocket) {
+  const maybeWorkerSocket = socket as WebSocket & { accept?: () => void };
+  if (typeof maybeWorkerSocket.accept === "function") maybeWorkerSocket.accept();
+}
+
+function responseWebSocket(response: Response): WebSocket | undefined {
+  return (response as Response & { webSocket?: WebSocket | null }).webSocket || undefined;
+}
+
+function createWebSocketUpgradeRequest(request: Request) {
+  const headers = new Headers(request.headers);
+  headers.set("upgrade", "websocket");
+  return new Request(request.url, { headers });
 }

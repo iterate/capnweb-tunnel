@@ -23,6 +23,8 @@ jobs:
       - run: pnpm install
       - run: pnpm build
       - run: pnpm test
+      # Example tests need the pinned Bun/Deno versions above; local runs skip them.
+      - run: pnpm test:examples
       - run: pnpm lint
       - name: arethetypeswrong
         run: |
