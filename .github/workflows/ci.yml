@@ -22,6 +22,8 @@ jobs:
       - run: corepack enable
       - run: pnpm install
       - run: pnpm build
+      # pnpm build regenerates the hosted browser module; fail if the committed copy drifted.
+      - run: git diff --exit-code src/hosted/browser-module.generated.ts
       - run: pnpm test
       # Example tests need the pinned Bun/Deno versions above; local runs skip them.
       - run: pnpm test:examples
