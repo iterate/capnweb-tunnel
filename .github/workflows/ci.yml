@@ -28,6 +28,9 @@ jobs:
       # Example tests need the pinned Bun/Deno versions above; local runs skip them.
       - run: pnpm test:examples
       - run: pnpm lint
+      # Includes the example workspaces, whose stricter runtime types (Bun, Deno)
+      # aren't covered by pnpm build's tsconfig.lib.json.
+      - run: pnpm typecheck
       - name: arethetypeswrong
         run: |
           pnpm pack

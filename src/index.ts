@@ -38,7 +38,10 @@ export interface RemoteFetcherCapability extends FetcherStub {
   onRpcBroken(callback: () => void): void;
 }
 
-export type WebSocketMessage = string | Uint8Array;
+// Uint8Array<ArrayBuffer> (not ArrayBufferLike): Bun's WebSocket#send rejects
+// SharedArrayBuffer-backed views, and everything the tunnel produces is
+// ArrayBuffer-backed anyway.
+export type WebSocketMessage = string | Uint8Array<ArrayBuffer>;
 
 /**
  * A tunneled WebSocket as a Cap'n Web capability: each side of a tunneled
