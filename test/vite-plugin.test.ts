@@ -31,6 +31,32 @@ test.concurrent("serves the dev server through a tunnel", async ({ task }) => {
   expect(await response.text()).toContain("captun vite fixture");
 });
 
+test.concurrent("forwards Vite HMR WebSockets through a tunnel", async ({ task }) => {
+  await using worker = await createCaptunWorkerFixture({});
+  await using root = await createAppFixture();
+  const ready = Promise.withResolvers<TunnelReady>();
+  await using server = await devServer({
+    root: root.path,
+    plugins: [
+      captun({ gateway: worker.origin, name: tunnelName(task.name), onTunnel: ready.resolve }),
+    ],
+  });
+
+  const tunnel = await ready.promise;
+  const socket = new WebSocket(
+    `${tunnel.url}/?token=${server.config.webSocketToken}`.replace(/^http/, "ws"),
+    "vite-hmr",
+  );
+  try {
+    await waitForWebSocket(socket);
+    await expect(nextWebSocketMessage(socket).then(webSocketMessageJson)).resolves.toMatchObject({
+      type: "connected",
+    });
+  } finally {
+    socket.close();
+  }
+});
+
 test.concurrent("forwards request bodies", async ({ task }) => {
   await using worker = await createCaptunWorkerFixture({});
   await using root = await createAppFixture();
@@ -287,4 +313,35 @@ function tunnelName(testName: string) {
   const prefix = slug.slice(0, 32).replace(/-$/, "") || "test";
   const hash = createHash("sha256").update(seed).digest("hex").slice(0, 12);
   return `${prefix}-${hash}`;
+}
+
+function waitForWebSocket(socket: WebSocket) {
+  if (socket.readyState === WebSocket.OPEN) return Promise.resolve();
+  return new Promise<void>((resolveOpen, rejectOpen) => {
+    socket.addEventListener("open", () => resolveOpen(), { once: true });
+    socket.addEventListener("error", () => rejectOpen(new Error("WebSocket error")), {
+      once: true,
+    });
+    socket.addEventListener("close", () => rejectOpen(new Error("WebSocket closed")), {
+      once: true,
+    });
+  });
+}
+
+function nextWebSocketMessage(socket: WebSocket) {
+  return new Promise<unknown>((resolveMessage, rejectMessage) => {
+    socket.addEventListener("message", (event) => resolveMessage(event.data), { once: true });
+    socket.addEventListener("error", () => rejectMessage(new Error("WebSocket error")), {
+      once: true,
+    });
+    socket.addEventListener("close", () => rejectMessage(new Error("WebSocket closed")), {
+      once: true,
+    });
+  });
+}
+
+function webSocketMessageJson(data: unknown) {
+  if (typeof data !== "string")
+    throw new Error(`Expected text WebSocket message, got ${typeof data}`);
+  return JSON.parse(data) as unknown;
 }
